@@ -103,7 +103,7 @@ export class SchedulerDispatcher {
     let receipt: DeliveryReceipt;
     try {
       receipt = await this.provider.deliver({
-        action,
+        delivery: run.deliverySnapshot,
         run,
         idempotencyKey: run.occurrenceKey,
       });
