@@ -42,7 +42,7 @@ create table tasks (
 
 create table events (
   id uuid primary key,
-  mutation_id text not null,
+  mutation_id text not null unique,
   entity_type text not null check (entity_type in ('PARTY', 'JOB', 'TASK')),
   entity_id uuid not null,
   event_type text not null check (
