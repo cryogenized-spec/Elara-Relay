@@ -7,7 +7,7 @@ function makeKernel() {
   const ids = Array.from(
     { length: 80 },
     (_, index) =>
-      `70000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      `${(0x70000000 + index + 1).toString(16).padStart(8, '0')}-0000-4000-8000-000000000001`,
   );
   let idIndex = 0;
   const kernel = new DomainKernel(store, {
