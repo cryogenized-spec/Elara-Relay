@@ -3,7 +3,7 @@ import { mutationActorSchema } from './foundation';
 import { mutationIdSchema } from './mutation';
 import { entityIdSchema, revisionSchema, timestampSchema } from './shared';
 
-export const eventEntityTypeSchema = z.enum(['PARTY', 'JOB', 'TASK']);
+export const eventEntityTypeSchema = z.enum(['PARTY', 'JOB', 'TASK', 'REPAIR']);
 
 export const eventTypeSchema = z.enum([
   'PARTY_CREATED',
@@ -13,6 +13,10 @@ export const eventTypeSchema = z.enum([
   'TASK_WAITING',
   'TASK_COMPLETED',
   'TASK_CANCELLED',
+  'REPAIR_CREATED',
+  'REPAIR_DETAILS_UPDATED',
+  'REPAIR_STAGE_CHANGED',
+  'REPAIR_TEST_RECORDED',
   'JOB_NOTE',
 ]);
 
