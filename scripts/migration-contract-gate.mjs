@@ -172,6 +172,14 @@ if (
 }
 
 if (
+  !/completed_at is null or completed_at <= lease_expires_at/i.test(
+    schedulerSql,
+  )
+) {
+  findings.push('scheduler completion must remain bounded by lease ownership');
+}
+
+if (
   !/action_type <> 'EMAIL'[\s\S]*payload ->> 'recipient' = 'OWNER'/i.test(
     schedulerSql,
   )
