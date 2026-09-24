@@ -1263,7 +1263,10 @@ export class DomainKernel {
             nextRunAt,
             lastRunAt: run.scheduledFor,
             updatedAt: input.completedAt,
-            revision: current.revision + 1,
+            revision: nextRevision(
+              current.revision,
+              current.revision,
+            ),
           });
           await transaction.updateScheduledAction(next);
         }
@@ -1604,7 +1607,6 @@ export class DomainKernel {
     if (
       jobId !== null &&
       task !== undefined &&
-      task.jobId !== null &&
       task.jobId !== jobId
     ) {
       throw new DomainValidationError(
