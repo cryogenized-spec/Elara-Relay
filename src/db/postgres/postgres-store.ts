@@ -420,6 +420,22 @@ class PostgresRead implements DomainRead {
       : mapScheduledActionRun(result.rows[0]);
   }
 
+  public async getScheduledActionRunActionId(
+    id: string,
+  ): Promise<string | undefined> {
+    const result = await this.client.query(
+      'select scheduled_action_id::text as "scheduledActionId" from scheduled_action_runs where id = $1',
+      [id],
+    );
+    const row = result.rows[0];
+    if (row === undefined) return undefined;
+    const value = rowRecord(row)['scheduledActionId'];
+    if (typeof value !== 'string') {
+      throw new TypeError('Scheduled action run owner id is invalid');
+    }
+    return value;
+  }
+
   public async getScheduledActionRunByOccurrenceKey(
     occurrenceKey: string,
   ): Promise<ScheduledActionRun | undefined> {
