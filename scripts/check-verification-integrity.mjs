@@ -83,7 +83,8 @@ for (const [flag, value] of Object.entries(hardFlags)) {
 const vitest = read('vitest.config.mjs');
 for (const marker of [
   "environment: 'jsdom'",
-  "include: ['src/{api,auth,contracts,domain,db}/**/*.ts', 'src/runtime/node/auth-config.ts']",
+  "'src/{api,auth,contracts,domain,db}/**/*.ts'",
+  "'src/runtime/node/auth-config.ts'",
   "exclude: ['src/**/*.test.ts']",
   'lines: 80',
   'statements: 80',
