@@ -1,4 +1,5 @@
 import type { ScheduledAction } from '../contracts/scheduler';
+import { DomainValidationError } from '../domain/errors';
 import { DomainKernel } from '../domain/kernel';
 import type { DeliveryProvider } from './delivery-provider';
 
@@ -82,37 +83,24 @@ export class SchedulerDispatcher {
           leaseSeconds: this.leaseSeconds,
         },
       );
-    } catch {
-      return {
-        actionId: action.id,
-        outcome: 'SKIPPED',
-        runId: null,
-      };
+    } catch (error) {
+      if (error instanceof DomainValidationError) {
+        return {
+          actionId: action.id,
+          outcome: 'SKIPPED',
+          runId: null,
+        };
+      }
+      throw error;
     }
 
+    let receipt;
     try {
-      const receipt = await this.provider.deliver({
+      receipt = await this.provider.deliver({
         action,
         run,
         idempotencyKey: run.occurrenceKey,
       });
-      await this.kernel.recordScheduledActionSuccess(
-        {
-          mutationId: this.mutationIdGenerator(),
-          actor: 'system',
-        },
-        {
-          runId: run.id,
-          leaseToken: run.leaseToken,
-          completedAt: this.completedAt(),
-          providerMessageId: receipt.providerMessageId,
-        },
-      );
-      return {
-        actionId: action.id,
-        outcome: 'SUCCEEDED',
-        runId: run.id,
-      };
     } catch (error) {
       await this.kernel.recordScheduledActionFailure(
         {
@@ -133,5 +121,23 @@ export class SchedulerDispatcher {
         runId: run.id,
       };
     }
+
+    await this.kernel.recordScheduledActionSuccess(
+      {
+        mutationId: this.mutationIdGenerator(),
+        actor: 'system',
+      },
+      {
+        runId: run.id,
+        leaseToken: run.leaseToken,
+        completedAt: this.completedAt(),
+        providerMessageId: receipt.providerMessageId,
+      },
+    );
+    return {
+      actionId: action.id,
+      outcome: 'SUCCEEDED',
+      runId: run.id,
+    };
   }
 }
