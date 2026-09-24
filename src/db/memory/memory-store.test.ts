@@ -26,6 +26,20 @@ describe('memory domain store', () => {
     expect(parties).toEqual([]);
   });
 
+  it('does not commit state if returning the transaction result fails', async () => {
+    const store = new MemoryDomainStore();
+
+    await expect(
+      store.transact(async (transaction) => {
+        await transaction.insertParty(party);
+        return (): void => undefined;
+      }),
+    ).rejects.toThrow();
+
+    const parties = await store.read(async (read) => await read.listParties());
+    expect(parties).toEqual([]);
+  });
+
   it('returns defensive copies from reads', async () => {
     const store = new MemoryDomainStore();
     await store.transact(async (transaction) => {
