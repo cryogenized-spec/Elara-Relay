@@ -126,6 +126,13 @@ class MemoryView implements DomainTransaction {
     if (this.state.events.some((value) => value.id === event.id)) {
       throw new DuplicateEntityError('Event', event.id);
     }
+    if (
+      this.state.events.some(
+        (value) => value.mutationId === event.mutationId,
+      )
+    ) {
+      throw new DuplicateEntityError('EventMutation', event.mutationId);
+    }
     this.state.events.push(structuredClone(event));
   }
 
