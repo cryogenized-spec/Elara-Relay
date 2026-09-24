@@ -9,6 +9,10 @@ const securitySql = readFileSync(
   'src/db/migrations/0002_security_hardening.sql',
   'utf8',
 );
+const repairsSql = readFileSync(
+  'src/db/migrations/0003_repairs_domain.sql',
+  'utf8',
+);
 const findings = [];
 
 for (const marker of [
@@ -54,6 +58,62 @@ if ([...kernelSql.matchAll(safeRevisionConstraint)].length < 3) {
 
 if (!/before update or delete on events/i.test(kernelSql)) {
   findings.push('events must remain database-level append-only');
+}
+
+for (const marker of [
+  'create table repairs',
+  'job_id uuid not null unique references jobs(id) on delete restrict',
+  "stage in (",
+  "'AWAITING_PARTS'",
+  "'AWAITING_CUSTOMER'",
+  "'READY'",
+  "'COLLECTED'",
+  "'CANCELLED'",
+  "serial_state in ('KNOWN', 'UNKNOWN', 'NOT_APPLICABLE')",
+  "final_test_result in ('PASS', 'FAIL')",
+  'alter table public.repairs enable row level security',
+  'revoke all on table public.repairs from anon',
+  'revoke all on table public.repairs from authenticated',
+]) {
+  if (!repairsSql.toLowerCase().includes(marker.toLowerCase())) {
+    findings.push(`repair migration lost required contract: ${marker}`);
+  }
+}
+
+if (
+  !/revision\s+bigint\s+not null\s+check\s*\(\s*revision between 1 and 9007199254740991\s*\)/i.test(
+    repairsSql,
+  )
+) {
+  findings.push('repairs must retain JavaScript-safe positive revisions');
+}
+
+if (
+  !/stage not in \('READY', 'COLLECTED'\)[\s\S]*final_test_result = 'PASS'/i.test(
+    repairsSql,
+  )
+) {
+  findings.push('ready/collected repairs must retain passing-test constraint');
+}
+
+if (
+  !/stage in \('AWAITING_PARTS', 'AWAITING_CUSTOMER'\)[\s\S]*waiting_on is not null[\s\S]*follow_up_at is not null/i.test(
+    repairsSql,
+  )
+) {
+  findings.push('waiting repair stages must retain follow-up metadata constraint');
+}
+
+for (const eventMarker of [
+  "'REPAIR'",
+  "'REPAIR_CREATED'",
+  "'REPAIR_DETAILS_UPDATED'",
+  "'REPAIR_STAGE_CHANGED'",
+  "'REPAIR_TEST_RECORDED'",
+]) {
+  if (!repairsSql.includes(eventMarker)) {
+    findings.push(`repair migration must extend event vocabulary: ${eventMarker}`);
+  }
 }
 
 for (const table of [
@@ -104,5 +164,5 @@ if (findings.length > 0) {
 }
 
 process.stdout.write(
-  'Migration contract gate passed: kernel tables, revisions, append-only events, RLS, browser-role revocations, and fixed trigger search_path are intact.\n',
+  'Migration contract gate passed: kernel tables, Repairs, revisions, append-only events, RLS, browser-role revocations, repair invariants, and fixed trigger search_path are intact.\n',
 );

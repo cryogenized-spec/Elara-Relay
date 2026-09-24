@@ -126,6 +126,38 @@ mutate(
   'trigger search_path hardening removal',
 );
 
+mutate(
+  'src/domain/kernel.ts',
+  'COLLECTED: [],',
+  "COLLECTED: ['REPAIRING'],",
+  () => runVitest('src/domain/repair-kernel.test.ts'),
+  'collected Repair reopening protection removal',
+);
+
+mutate(
+  'src/contracts/repair.ts',
+  "repair.finalTestResult !== 'PASS'",
+  'false',
+  () => runVitest('src/domain/repair-kernel.test.ts'),
+  'Repair Ready passing-test invariant removal',
+);
+
+mutate(
+  'src/db/migrations/0003_repairs_domain.sql',
+  'job_id uuid not null unique references jobs(id) on delete restrict',
+  'job_id uuid not null references jobs(id) on delete restrict',
+  () => runNode('scripts/migration-contract-gate.mjs'),
+  'Repair one-to-one Job constraint removal',
+);
+
+mutate(
+  'src/db/migrations/0003_repairs_domain.sql',
+  'alter table public.repairs enable row level security;',
+  '-- hostile mutation: Repair RLS removed',
+  () => runNode('scripts/migration-contract-gate.mjs'),
+  'Repair RLS removal',
+);
+
 process.stdout.write(
-  'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, append-only, advisory-lock, row-lock, one-event-per-mutation, RLS, privilege-revocation, and search_path mutations were rejected.\n',
+  'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, Repair lifecycle/test/one-to-one controls, append-only, advisory-lock, row-lock, one-event-per-mutation, RLS, privilege-revocation, and search_path mutations were rejected.\n',
 );

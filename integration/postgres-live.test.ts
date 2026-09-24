@@ -59,6 +59,7 @@ beforeAll(async () => {
   const migrationFiles = [
     'src/db/migrations/0001_domain_kernel.sql',
     'src/db/migrations/0002_security_hardening.sql',
+    'src/db/migrations/0003_repairs_domain.sql',
   ] as const;
 
   for (const migrationFile of migrationFiles) {
@@ -86,12 +87,13 @@ describe('live PostgreSQL runtime', () => {
           'jobs',
           'tasks',
           'events',
-          'mutation_receipts'
+          'mutation_receipts',
+          'repairs'
         )
       order by relname
     `);
 
-    expect(rls.rows).toHaveLength(5);
+    expect(rls.rows).toHaveLength(6);
     expect(rls.rows.every((row) => row.relrowsecurity)).toBe(true);
 
     const privileges = await resources.rawPool.query<{
@@ -111,12 +113,12 @@ describe('live PostgreSQL runtime', () => {
         has_table_privilege(role_name, format('public.%I', table_name), 'delete') as can_delete
       from unnest(array['anon', 'authenticated']) as role_name
       cross join unnest(
-        array['parties','jobs','tasks','events','mutation_receipts']
+        array['parties','jobs','tasks','events','mutation_receipts','repairs']
       ) as table_name
       order by role_name, table_name
     `);
 
-    expect(privileges.rows).toHaveLength(10);
+    expect(privileges.rows).toHaveLength(12);
     expect(
       privileges.rows.every(
         (row) =>
@@ -185,6 +187,73 @@ describe('live PostgreSQL runtime', () => {
       revision: number;
     };
 
+    const repairResponse = await jsonRequest('/repairs', 'POST', {
+      mutation: {
+        mutationId: 'MUT-live-repair-0001',
+      },
+      input: {
+        jobId: job.id,
+        reportedFault: 'Losing pressure overnight',
+        serialState: 'UNKNOWN',
+        serialValue: null,
+        storageLocation: 'Repair shelf A',
+      },
+    });
+    expect(repairResponse.status).toBe(201);
+    const repair = (await repairResponse.json()) as {
+      id: string;
+      revision: number;
+    };
+
+    const repairStages = ['DIAGNOSING', 'REPAIRING', 'TESTING'] as const;
+    let repairRevision = repair.revision;
+    for (const [index, stage] of repairStages.entries()) {
+      const stageResponse = await jsonRequest(
+        `/repairs/${repair.id}/stage`,
+        'POST',
+        {
+          mutation: {
+            mutationId: `MUT-live-repair-stage-${index + 1}`,
+            expectedRevision: repairRevision,
+          },
+          input: { stage },
+        },
+      );
+      expect(stageResponse.status).toBe(200);
+      const staged = (await stageResponse.json()) as { revision: number };
+      repairRevision = staged.revision;
+    }
+
+    const testResponse = await jsonRequest(
+      `/repairs/${repair.id}/test`,
+      'POST',
+      {
+        mutation: {
+          mutationId: 'MUT-live-repair-test1',
+          expectedRevision: repairRevision,
+        },
+        input: {
+          result: 'PASS',
+          detail: 'Held pressure through final soak',
+        },
+      },
+    );
+    expect(testResponse.status).toBe(200);
+    const tested = (await testResponse.json()) as { revision: number };
+
+    const readyResponse = await jsonRequest(
+      `/repairs/${repair.id}/stage`,
+      'POST',
+      {
+        mutation: {
+          mutationId: 'MUT-live-repair-ready1',
+          expectedRevision: tested.revision,
+        },
+        input: { stage: 'READY' },
+      },
+    );
+    expect(readyResponse.status).toBe(200);
+
     const taskResponse = await jsonRequest('/tasks', 'POST', {
       mutation: {
         mutationId: 'MUT-live-task-00001',
@@ -242,9 +311,14 @@ describe('live PostgreSQL runtime', () => {
     expect(jobViewResponse.status).toBe(200);
     const jobView = (await jobViewResponse.json()) as {
       tasks: Array<{ status: string; revision: number }>;
+      repair: { id: string; stage: string } | null;
       events: Array<{ eventType: string }>;
     };
     expect(jobView.tasks).toHaveLength(1);
+    expect(jobView.repair).toMatchObject({
+      id: repair.id,
+      stage: 'READY',
+    });
     expect(jobView.tasks[0]?.status).toBe('DONE');
     expect(jobView.tasks[0]?.revision).toBe(2);
     expect(
@@ -253,18 +327,21 @@ describe('live PostgreSQL runtime', () => {
 
     const counts = await resources.rawPool.query<{
       parties: string;
+      repairs: string;
       receipts: string;
       events: string;
     }>(`
       select
         (select count(*)::text from parties) as parties,
+        (select count(*)::text from repairs) as repairs,
         (select count(*)::text from mutation_receipts) as receipts,
         (select count(*)::text from events) as events
     `);
     expect(counts.rows[0]).toEqual({
       parties: '1',
-      receipts: '4',
-      events: '4',
+      repairs: '1',
+      receipts: '10',
+      events: '10',
     });
   });
 });

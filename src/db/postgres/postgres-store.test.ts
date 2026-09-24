@@ -3,6 +3,7 @@ import type { DomainEvent } from '../../contracts/event';
 import type { Job } from '../../contracts/job';
 import type { MutationReceipt } from '../../contracts/mutation';
 import type { Party } from '../../contracts/party';
+import type { Repair } from '../../contracts/repair';
 import type { Task } from '../../contracts/task';
 import { DomainNotFoundError } from '../../domain/errors';
 import {
@@ -42,6 +43,30 @@ const task: Task = {
   followUpAt: null,
   waitingOn: null,
   waitingSince: null,
+  createdAt: '2026-09-24T09:00:00.000Z',
+  updatedAt: '2026-09-24T09:00:00.000Z',
+  revision: 1,
+};
+
+const repair: Repair = {
+  id: '20000000-0000-4000-8000-000000000005',
+  jobId: job.id,
+  stage: 'RECEIVED',
+  reportedFault: 'Losing pressure overnight',
+  diagnosis: null,
+  currentFinding: null,
+  serialState: 'UNKNOWN',
+  serialValue: null,
+  storageLocation: 'Repair shelf A',
+  waitingOn: null,
+  followUpAt: null,
+  finalTestResult: null,
+  finalTestDetail: null,
+  testedAt: null,
+  receivedAt: '2026-09-24T09:00:00.000Z',
+  readyAt: null,
+  collectedAt: null,
+  cancelledAt: null,
   createdAt: '2026-09-24T09:00:00.000Z',
   updatedAt: '2026-09-24T09:00:00.000Z',
   revision: 1,
@@ -114,6 +139,32 @@ function taskRow() {
   };
 }
 
+function repairRow() {
+  return {
+    id: repair.id,
+    jobId: repair.jobId,
+    stage: repair.stage,
+    reportedFault: repair.reportedFault,
+    diagnosis: repair.diagnosis,
+    currentFinding: repair.currentFinding,
+    serialState: repair.serialState,
+    serialValue: repair.serialValue,
+    storageLocation: repair.storageLocation,
+    waitingOn: repair.waitingOn,
+    followUpAt: repair.followUpAt,
+    finalTestResult: repair.finalTestResult,
+    finalTestDetail: repair.finalTestDetail,
+    testedAt: repair.testedAt,
+    receivedAt: repair.receivedAt,
+    readyAt: repair.readyAt,
+    collectedAt: repair.collectedAt,
+    cancelledAt: repair.cancelledAt,
+    createdAt: repair.createdAt,
+    updatedAt: repair.updatedAt,
+    revision: String(repair.revision),
+  };
+}
+
 function eventRow() {
   return {
     id: event.id,
@@ -180,6 +231,9 @@ function defaultResponder(sql: string): SqlQueryResult {
   if (normalized.includes(' from tasks')) {
     return { rows: [taskRow()], rowCount: 1 };
   }
+  if (normalized.includes(' from repairs')) {
+    return { rows: [repairRow()], rowCount: 1 };
+  }
   if (normalized.includes(' from events')) {
     return { rows: [eventRow()], rowCount: 1 };
   }
@@ -200,19 +254,25 @@ describe('PostgresDomainStore', () => {
         oneParty,
         oneJob,
         oneTask,
+        oneRepair,
+        oneRepairByJob,
         oneReceipt,
         parties,
         jobs,
         tasks,
+        repairs,
         events,
       ] = await Promise.all([
         read.getParty(party.id),
         read.getJob(job.id),
         read.getTask(task.id),
+        read.getRepair(repair.id),
+        read.getRepairByJobId(job.id),
         read.getMutationReceipt(receipt.mutationId),
         read.listParties(),
         read.listJobs(),
         read.listTasks(),
+        read.listRepairs(),
         read.listEvents(),
       ]);
 
@@ -220,10 +280,13 @@ describe('PostgresDomainStore', () => {
         oneParty,
         oneJob,
         oneTask,
+        oneRepair,
+        oneRepairByJob,
         oneReceipt,
         parties,
         jobs,
         tasks,
+        repairs,
         events,
       };
     });
@@ -231,10 +294,13 @@ describe('PostgresDomainStore', () => {
     expect(result.oneParty).toEqual(party);
     expect(result.oneJob).toEqual(job);
     expect(result.oneTask).toEqual(task);
+    expect(result.oneRepair).toEqual(repair);
+    expect(result.oneRepairByJob).toEqual(repair);
     expect(result.oneReceipt).toEqual(receipt);
     expect(result.parties).toEqual([party]);
     expect(result.jobs).toEqual([job]);
     expect(result.tasks).toEqual([task]);
+    expect(result.repairs).toEqual([repair]);
     expect(result.events).toEqual([event]);
 
     expect(client.queries[0]?.sql.toLowerCase()).toContain(
@@ -260,6 +326,8 @@ describe('PostgresDomainStore', () => {
       expect(await transaction.getParty(party.id)).toEqual(party);
       expect(await transaction.getJob(job.id)).toEqual(job);
       expect(await transaction.getTask(task.id)).toEqual(task);
+      expect(await transaction.getRepair(repair.id)).toEqual(repair);
+      expect(await transaction.getRepairByJobId(job.id)).toEqual(repair);
 
       await transaction.insertParty(party);
       await transaction.updateParty({ ...party, revision: 2 });
@@ -267,6 +335,8 @@ describe('PostgresDomainStore', () => {
       await transaction.updateJob({ ...job, revision: 2 });
       await transaction.insertTask(task);
       await transaction.updateTask({ ...task, revision: 2 });
+      await transaction.insertRepair(repair);
+      await transaction.updateRepair({ ...repair, revision: 2 });
       await transaction.appendEvent(event);
       await transaction.saveMutationReceipt(receipt);
     });
@@ -278,7 +348,7 @@ describe('PostgresDomainStore', () => {
     expect(sql.some((query) => query.includes('pg_advisory_xact_lock'))).toBe(
       true,
     );
-    expect(sql.filter((query) => query.includes('for update')).length).toBe(3);
+    expect(sql.filter((query) => query.includes('for update')).length).toBe(5);
     expect(sql.at(-1)).toBe('commit');
     expect(client.released).toBe(true);
   });
@@ -288,6 +358,7 @@ describe('PostgresDomainStore', () => {
       const normalized = sql.replaceAll(/\s+/g, ' ').trim().toLowerCase();
       if (
         normalized.includes(' where id = $1') ||
+        normalized.includes(' where job_id = $1') ||
         normalized.includes(' where mutation_id = $1')
       ) {
         return { rows: [], rowCount: 0 };
@@ -300,6 +371,8 @@ describe('PostgresDomainStore', () => {
       expect(await read.getParty(party.id)).toBeUndefined();
       expect(await read.getJob(job.id)).toBeUndefined();
       expect(await read.getTask(task.id)).toBeUndefined();
+      expect(await read.getRepair(repair.id)).toBeUndefined();
+      expect(await read.getRepairByJobId(job.id)).toBeUndefined();
       expect(
         await read.getMutationReceipt(receipt.mutationId),
       ).toBeUndefined();
