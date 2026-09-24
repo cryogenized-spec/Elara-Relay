@@ -40,6 +40,36 @@ describe('memory domain store', () => {
     expect(parties).toEqual([]);
   });
 
+  it('rejects a second event for the same mutation id', async () => {
+    const store = new MemoryDomainStore();
+    const firstEvent = {
+      id: '00000000-0000-4000-8000-000000000101',
+      mutationId: 'MUT-memory-event-001',
+      entityType: 'PARTY' as const,
+      entityId: party.id,
+      eventType: 'PARTY_CREATED' as const,
+      actor: 'system' as const,
+      occurredAt: '2026-09-24T09:00:00.000Z',
+      detail: null,
+      changes: {},
+      revisionAfter: 1,
+    };
+    const secondEvent = {
+      ...firstEvent,
+      id: '00000000-0000-4000-8000-000000000102',
+    };
+
+    await expect(
+      store.transact(async (transaction) => {
+        await transaction.appendEvent(firstEvent);
+        await transaction.appendEvent(secondEvent);
+      }),
+    ).rejects.toThrow('EventMutation');
+
+    const events = await store.read(async (read) => await read.listEvents());
+    expect(events).toEqual([]);
+  });
+
   it('returns defensive copies from reads', async () => {
     const store = new MemoryDomainStore();
     await store.transact(async (transaction) => {
