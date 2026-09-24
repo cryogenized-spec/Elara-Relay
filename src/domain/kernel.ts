@@ -530,7 +530,7 @@ export class DomainKernel {
       payload,
     });
 
-    return this.store.transact((transaction) => {
+    return this.store.transact(async (transaction) => {
       const existing = transaction.getMutationReceipt(context.mutationId);
       if (existing !== undefined) {
         if (
