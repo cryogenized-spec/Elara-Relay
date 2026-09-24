@@ -1,7 +1,13 @@
-import type { ScheduledAction } from '../contracts/scheduler';
+import type {
+  ScheduledAction,
+  ScheduledActionRun,
+} from '../contracts/scheduler';
 import { DomainValidationError } from '../domain/errors';
 import { DomainKernel } from '../domain/kernel';
-import type { DeliveryProvider } from './delivery-provider';
+import type {
+  DeliveryProvider,
+  DeliveryReceipt,
+} from './delivery-provider';
 
 export interface SchedulerDispatchResult {
   actionId: string;
@@ -69,7 +75,7 @@ export class SchedulerDispatcher {
     asOf: string,
     workerId: string,
   ): Promise<SchedulerDispatchResult> {
-    let run;
+    let run: ScheduledActionRun;
     try {
       run = await this.kernel.claimScheduledAction(
         {
@@ -94,7 +100,7 @@ export class SchedulerDispatcher {
       throw error;
     }
 
-    let receipt;
+    let receipt: DeliveryReceipt;
     try {
       receipt = await this.provider.deliver({
         action,
