@@ -70,6 +70,30 @@ mutate(
   'append-only event trigger bypass',
 );
 
+mutate(
+  'src/db/postgres/postgres-store.ts',
+  "await this.client.query(\n      'select pg_advisory_xact_lock(hashtextextended($1, 0))',",
+  "await this.client.query(\n      'select 1',",
+  () => runVitest('src/db/postgres/postgres-store.test.ts'),
+  'mutation-id advisory lock removal',
+);
+
+mutate(
+  'src/db/postgres/postgres-store.ts',
+  "${this.lockRows ? ' for update' : ''}",
+  "''",
+  () => runVitest('src/db/postgres/postgres-store.test.ts'),
+  'mutable-row lock removal',
+);
+
+mutate(
+  'src/db/migrations/0001_domain_kernel.sql',
+  'mutation_id text not null unique',
+  'mutation_id text not null',
+  () => runNode('scripts/migration-contract-gate.mjs'),
+  'one-event-per-mutation uniqueness removal',
+);
+
 process.stdout.write(
-  'Adversarial domain gate passed: replay, foreign-key, event-history, and append-only migration mutations were rejected.\n',
+  'Adversarial domain gate passed: replay, foreign-key, event-history, append-only, advisory-lock, row-lock, and one-event-per-mutation mutations were rejected.\n',
 );
