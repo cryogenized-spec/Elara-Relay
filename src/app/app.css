@@ -1,0 +1,127 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: #f2f4f8;
+  background: #0b0d12;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(115, 105, 255, 0.18), transparent 36rem),
+    #0b0d12;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.shell {
+  width: min(100% - 2rem, 60rem);
+  margin: 0 auto;
+  padding: 4rem 0;
+}
+
+.hero {
+  border: 1px solid #262b37;
+  border-radius: 1.5rem;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  background: rgba(16, 19, 27, 0.92);
+  box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.24);
+}
+
+.eyebrow {
+  color: #a8afc1;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+h1 {
+  margin: 0.55rem 0 0.75rem;
+  font-size: clamp(2.4rem, 12vw, 5rem);
+  line-height: 0.95;
+  letter-spacing: -0.055em;
+}
+
+p {
+  max-width: 42rem;
+  margin: 0;
+  color: #b9c0ce;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+  color: #dbe7df;
+  font-weight: 650;
+}
+
+.statusDot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: #72d79b;
+  box-shadow: 0 0 1rem rgba(114, 215, 155, 0.65);
+}
+
+.gateGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+.gate {
+  min-width: 0;
+  border: 1px solid #262b37;
+  border-radius: 1rem;
+  padding: 1rem;
+  background: #10131b;
+}
+
+.gate span,
+.gate strong {
+  display: block;
+}
+
+.gate span {
+  color: #848da1;
+  font-size: 0.78rem;
+}
+
+.gate strong {
+  margin-top: 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .shell {
+    width: min(100% - 1rem, 60rem);
+    padding: 0.5rem 0 5rem;
+  }
+
+  .hero {
+    border-radius: 1.1rem;
+    padding: 1.25rem;
+  }
+
+  .gateGrid {
+    grid-template-columns: 1fr;
+  }
+}
