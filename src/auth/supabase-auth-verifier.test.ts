@@ -1,3 +1,4 @@
+import { createSecretKey } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import {
   SignJWT,
@@ -162,8 +163,8 @@ describe('SupabaseAuthVerifier', () => {
 
   it('validates legacy HS256 sessions through the Supabase Auth user endpoint', async () => {
     const now = Math.floor(Date.now() / 1000);
-    const secret = new TextEncoder().encode(
-      'test-only-hs256-secret-with-sufficient-length',
+    const secret = createSecretKey(
+      Buffer.from('test-only-hs256-secret-with-sufficient-length'),
     );
     const token = await new SignJWT({
       role: 'authenticated',
@@ -224,8 +225,8 @@ describe('SupabaseAuthVerifier', () => {
 
   it('rejects a legacy token when the Auth server does not validate it', async () => {
     const now = Math.floor(Date.now() / 1000);
-    const secret = new TextEncoder().encode(
-      'test-only-hs256-secret-with-sufficient-length',
+    const secret = createSecretKey(
+      Buffer.from('test-only-hs256-secret-with-sufficient-length'),
     );
     const token = await new SignJWT({
       role: 'authenticated',
