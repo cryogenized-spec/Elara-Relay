@@ -20,7 +20,7 @@
     "verify:gates": "node scripts/check-verification-integrity.mjs",
     "secrets:check": "node scripts/secret-scan.mjs",
     "adversarial:check": "node scripts/adversarial-foundation-gate.mjs",
-    "verify": "npm run verify:gates && npm run secrets:check && npm run security:check && npm run auth:check && npm run supply-chain:check && npm run test:quality && npm run lint && npm run typecheck:ts6 && npm run typecheck:ts7 && npm run test:coverage && npm run adversarial:check && npm run adversarial:domain && npm run adversarial:auth && npm run schema:check && npm run build",
+    "verify": "npm run verify:gates && npm run secrets:check && npm run security:check && npm run auth:check && npm run docs:check && npm run supply-chain:check && npm run test:quality && npm run lint && npm run typecheck:ts6 && npm run typecheck:ts7 && npm run test:coverage && npm run adversarial:check && npm run adversarial:domain && npm run adversarial:auth && npm run schema:check && npm run build",
     "supply-chain:check": "node scripts/supply-chain-gate.mjs",
     "test:quality": "node scripts/test-quality-gate.mjs",
     "security:check": "node scripts/security-architecture-gate.mjs",
@@ -28,7 +28,8 @@
     "schema:check": "node scripts/migration-contract-gate.mjs",
     "test:postgres": "vitest run --config vitest.postgres.config.mjs",
     "auth:check": "node scripts/auth-boundary-gate.mjs",
-    "adversarial:auth": "node scripts/adversarial-auth-gate.mjs"
+    "adversarial:auth": "node scripts/adversarial-auth-gate.mjs",
+    "docs:check": "node scripts/documentation-contract-gate.mjs"
   },
   "dependencies": {
     "hono": "4.13.8",
