@@ -89,6 +89,10 @@ class MemoryView implements DomainTransaction {
     return value === undefined ? undefined : structuredClone(value);
   }
 
+  public getScheduledActionRunActionId(id: string): string | undefined {
+    return this.state.scheduledActionRuns.get(id)?.scheduledActionId;
+  }
+
   public getScheduledActionRunByOccurrenceKey(
     occurrenceKey: string,
   ): ScheduledActionRun | undefined {
