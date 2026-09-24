@@ -222,6 +222,14 @@ mutate(
   'scheduler completion lease bound removal',
 );
 
+mutate(
+  'src/contracts/scheduler.ts',
+  'run.completedAt < run.claimedAt ||',
+  'false ||',
+  () => runVitest('src/contracts/scheduler.test.ts'),
+  'scheduler pre-claim completion validation removal',
+);
+
 process.stdout.write(
   'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, Repair lifecycle/test/one-to-one controls, Scheduler lease/catch-up/occurrence/delivery-snapshot/owner-email/completion controls, append-only, advisory-lock, row-lock, one-event-per-mutation, RLS, privilege-revocation, and search_path mutations were rejected.\n',
 );
