@@ -1245,6 +1245,11 @@ export class DomainKernel {
             'Scheduler lease token no longer owns this run',
           );
         }
+        if (input.completedAt > run.leaseExpiresAt) {
+          throw new DomainValidationError(
+            'Scheduler lease expired before completion',
+          );
+        }
 
         const succeeded = scheduledActionRunSchema.parse({
           ...run,
@@ -1341,6 +1346,11 @@ export class DomainKernel {
         if (run.leaseToken !== input.leaseToken) {
           throw new DomainValidationError(
             'Scheduler lease token no longer owns this run',
+          );
+        }
+        if (input.completedAt > run.leaseExpiresAt) {
+          throw new DomainValidationError(
+            'Scheduler lease expired before completion',
           );
         }
 
