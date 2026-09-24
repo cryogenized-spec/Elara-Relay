@@ -96,6 +96,7 @@ export interface ScheduleResult {
   asOf: string;
   due: ScheduledAction[];
   upcoming: ScheduledAction[];
+  paused: ScheduledAction[];
 }
 
 export interface SearchResult {
@@ -1086,15 +1087,20 @@ export class DomainKernel {
       const upcoming = actions
         .filter(
           (action) =>
-            (action.status === 'ACTIVE' || action.status === 'PAUSED') &&
+            action.status === 'ACTIVE' &&
             action.nextRunAt !== null &&
             action.nextRunAt > asOf,
         )
         .sort((left, right) =>
           (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
         );
+      const paused = actions
+        .filter((action) => action.status === 'PAUSED')
+        .sort((left, right) =>
+          (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
+        );
 
-      return { asOf, due, upcoming };
+      return { asOf, due, upcoming, paused };
     });
   }
 
