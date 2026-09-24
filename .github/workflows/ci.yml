@@ -16,6 +16,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_DB: elara
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d elara"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout exact event commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -76,6 +90,11 @@ jobs:
 
       - name: Migration contract gate
         run: npm run schema:check
+
+      - name: PostgreSQL integration gate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/elara?sslmode=disable
+        run: npm run test:postgres
 
       - name: Production build
         run: npm run build

@@ -102,6 +102,30 @@ mutate(
   'one-event-per-mutation uniqueness removal',
 );
 
+mutate(
+  'src/db/migrations/0002_security_hardening.sql',
+  'alter table public.tasks enable row level security;',
+  '-- hostile mutation: tasks RLS removed',
+  () => runNode('scripts/migration-contract-gate.mjs'),
+  'tasks RLS removal',
+);
+
+mutate(
+  'src/db/migrations/0002_security_hardening.sql',
+  'from authenticated;',
+  'from postgres;',
+  () => runNode('scripts/migration-contract-gate.mjs'),
+  'authenticated privilege revocation removal',
+);
+
+mutate(
+  'src/db/migrations/0002_security_hardening.sql',
+  'set search_path = pg_catalog, public;',
+  'reset search_path;',
+  () => runNode('scripts/migration-contract-gate.mjs'),
+  'trigger search_path hardening removal',
+);
+
 process.stdout.write(
-  'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, append-only, advisory-lock, row-lock, and one-event-per-mutation mutations were rejected.\n',
+  'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, append-only, advisory-lock, row-lock, one-event-per-mutation, RLS, privilege-revocation, and search_path mutations were rejected.\n',
 );
