@@ -21,6 +21,7 @@ export interface DomainRead {
   getScheduledActionRun(
     id: string,
   ): MaybePromise<ScheduledActionRun | undefined>;
+  getScheduledActionRunActionId(id: string): MaybePromise<string | undefined>;
   getScheduledActionRunByOccurrenceKey(
     occurrenceKey: string,
   ): MaybePromise<ScheduledActionRun | undefined>;
