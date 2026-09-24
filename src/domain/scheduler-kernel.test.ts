@@ -174,6 +174,21 @@ describe('Scheduler domain', () => {
     );
     expect(failed.status).toBe('FAILED');
 
+    await kernel.updateScheduledAction(
+      {
+        mutationId: 'MUT-schedule-retry-edit',
+        actor: 'operator-ui',
+        expectedRevision: action.revision,
+      },
+      action.id,
+      {
+        payload: {
+          kind: 'REMINDER',
+          message: 'Edited after the original occurrence was claimed',
+        },
+      },
+    );
+
     const retry = await kernel.claimScheduledAction(
       {
         mutationId: 'MUT-schedule-retry-001',
@@ -189,6 +204,10 @@ describe('Scheduler domain', () => {
     expect(retry.id).toBe(first.id);
     expect(retry.occurrenceKey).toBe(first.occurrenceKey);
     expect(retry.attempt).toBe(3);
+    expect(retry.deliverySnapshot).toEqual(first.deliverySnapshot);
+    expect(retry.deliverySnapshot.payload).toMatchObject({
+      message: 'Check seal order',
+    });
 
     const snapshot = await store.read((read) =>
       read.listScheduledActionRuns(),
