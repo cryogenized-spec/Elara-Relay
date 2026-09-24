@@ -6,7 +6,7 @@ create table parties (
   kind text not null check (kind in ('CUSTOMER', 'SUPPLIER', 'COLLEAGUE', 'OTHER')),
   created_at timestamptz not null,
   updated_at timestamptz not null,
-  revision bigint not null check (revision > 0)
+  revision bigint not null check (revision between 1 and 9007199254740991)
 );
 
 create table jobs (
@@ -17,7 +17,7 @@ create table jobs (
   party_id uuid references parties(id) on delete restrict,
   created_at timestamptz not null,
   updated_at timestamptz not null,
-  revision bigint not null check (revision > 0)
+  revision bigint not null check (revision between 1 and 9007199254740991)
 );
 
 create table tasks (
@@ -28,11 +28,11 @@ create table tasks (
   priority text not null check (priority in ('URGENT', 'HIGH', 'NORMAL', 'LOW')),
   due_at timestamptz,
   follow_up_at timestamptz,
-  waiting_on text,
+  waiting_on text check (waiting_on is null or char_length(trim(waiting_on)) between 1 and 240),
   waiting_since timestamptz,
   created_at timestamptz not null,
   updated_at timestamptz not null,
-  revision bigint not null check (revision > 0),
+  revision bigint not null check (revision between 1 and 9007199254740991),
   check (
     (status = 'WAITING' and waiting_on is not null and waiting_since is not null)
     or
@@ -58,7 +58,7 @@ create table events (
   ),
   actor text not null check (actor in ('operator-ui', 'chatgpt', 'embedded-ai', 'system')),
   occurred_at timestamptz not null,
-  detail text,
+  detail text check (detail is null or char_length(detail) <= 4000),
   changes jsonb not null default '{}'::jsonb,
   revision_after bigint not null check (revision_after > 0)
 );
