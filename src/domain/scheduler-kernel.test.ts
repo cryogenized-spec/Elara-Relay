@@ -109,6 +109,41 @@ describe('Scheduler domain', () => {
     );
   });
 
+  it('rejects a worker that completes after its lease has expired', async () => {
+    const { kernel } = makeKernel();
+    const action = await createReminder(
+      kernel,
+      'MUT-schedule-create-expired',
+    );
+    const run = await kernel.claimScheduledAction(
+      {
+        mutationId: 'MUT-schedule-expired-claim',
+        actor: 'system',
+      },
+      action.id,
+      {
+        asOf: '2026-09-24T07:00:00.000Z',
+        workerId: 'worker-a',
+        leaseSeconds: 60,
+      },
+    );
+
+    await expect(
+      kernel.recordScheduledActionSuccess(
+        {
+          mutationId: 'MUT-schedule-expired-success',
+          actor: 'system',
+        },
+        {
+          runId: run.id,
+          leaseToken: run.leaseToken,
+          completedAt: '2026-09-24T07:01:01.000Z',
+          providerMessageId: 'too-late',
+        },
+      ),
+    ).rejects.toThrow('lease expired before completion');
+  });
+
   it('reclaims stale and failed leases without creating a second occurrence', async () => {
     const { kernel, store } = makeKernel();
     const action = await createReminder(kernel, 'MUT-schedule-create-002');
