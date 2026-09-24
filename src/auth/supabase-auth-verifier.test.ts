@@ -1,5 +1,4 @@
 import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import {
   SignJWT,
   exportJWK,
@@ -97,7 +96,7 @@ beforeAll(async () => {
   if (address === null || typeof address === 'string') {
     throw new Error('Test JWKS server did not expose an address');
   }
-  origin = `http://127.0.0.1:${(address as AddressInfo).port}`;
+  origin = `http://127.0.0.1:${address.port}`;
 });
 
 afterAll(async () => {
@@ -187,17 +186,19 @@ describe('SupabaseAuthVerifier', () => {
       apiKey: string | null;
     }> = [];
 
-    const fakeFetch: typeof fetch = async (input, init) => {
+    const fakeFetch: typeof fetch = (input, init) => {
       const request = new Request(input, init);
       calls.push({
         input: request.url,
         authorization: request.headers.get('authorization'),
         apiKey: request.headers.get('apikey'),
       });
-      return new Response(JSON.stringify({ id: ALLOWED_USER }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: ALLOWED_USER }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
     };
 
     const verifier = new SupabaseAuthVerifier(
@@ -247,7 +248,8 @@ describe('SupabaseAuthVerifier', () => {
         allowedUserIds: new Set([ALLOWED_USER]),
       },
       {
-        fetch: async () => new Response(null, { status: 401 }),
+        fetch: () =>
+          Promise.resolve(new Response(null, { status: 401 })),
       },
     );
 
