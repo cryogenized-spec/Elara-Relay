@@ -62,8 +62,14 @@ if (!rootLock) {
   fail('package-lock is missing the root package record');
 } else {
   const compareGroup = (label, expected, actual) => {
-    const left = JSON.stringify(expected ?? {});
-    const right = JSON.stringify(actual ?? {});
+    const normalize = (value) =>
+      Object.fromEntries(
+        Object.entries(value ?? {}).sort(([left], [right]) =>
+          left.localeCompare(right),
+        ),
+      );
+    const left = JSON.stringify(normalize(expected));
+    const right = JSON.stringify(normalize(actual));
     if (left !== right) fail(`package-lock root ${label} does not match package.json`);
   };
   compareGroup('dependencies', pkg.dependencies, rootLock.dependencies);
