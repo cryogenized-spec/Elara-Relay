@@ -31,7 +31,7 @@ function makeFixture(provider: DeliveryProvider) {
       mutationIndex += 1;
       return `MUT-DISPATCH-0000-${String(mutationIndex).padStart(4, '0')}`;
     },
-    completedAt: () => '2026-09-24T07:01:00.000Z',
+    completedAt: () => '2026-09-24T07:03:00.000Z',
     leaseSeconds: 300,
   });
   return { kernel, dispatcher };
