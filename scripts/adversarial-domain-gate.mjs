@@ -48,7 +48,7 @@ mutate(
 
 mutate(
   'src/domain/kernel.ts',
-  'input.jobId !== null && transaction.getJob(input.jobId) === undefined',
+  'input.jobId !== null && (await transaction.getJob(input.jobId)) === undefined',
   'false',
   () => runVitest('src/domain/kernel.test.ts'),
   'orphan task foreign-key bypass',
@@ -64,8 +64,8 @@ mutate(
 
 mutate(
   'src/domain/kernel.ts',
-  "if (current.status === 'CANCELLED') {",
-  "if (false) {",
+  "patch.status !== undefined &&\n          (current.status === 'DONE' || current.status === 'CANCELLED')",
+  "false",
   () => runVitest('src/domain/kernel.test.ts'),
   'terminal task reopening protection removal',
 );
@@ -103,5 +103,5 @@ mutate(
 );
 
 process.stdout.write(
-  'Adversarial domain gate passed: replay, foreign-key, event-history, append-only, advisory-lock, row-lock, and one-event-per-mutation mutations were rejected.\n',
+  'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, append-only, advisory-lock, row-lock, and one-event-per-mutation mutations were rejected.\n',
 );
