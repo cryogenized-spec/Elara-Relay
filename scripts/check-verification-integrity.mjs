@@ -72,6 +72,21 @@ for (const [flag, value] of Object.entries(hardFlags)) {
   }
 }
 
+const vitest = read('vitest.config.mjs');
+for (const marker of [
+  "environment: 'jsdom'",
+  "include: ['src/{api,contracts,domain}/**/*.ts']",
+  "exclude: ['src/**/*.test.ts']",
+  'lines: 80',
+  'statements: 80',
+  'functions: 80',
+  'branches: 75',
+]) {
+  if (!vitest.includes(marker)) {
+    fail(`Vitest coverage authority changed: ${marker}`);
+  }
+}
+
 const playwright = read('playwright.config.ts');
 for (const marker of [
   "name: 'chromium'",
