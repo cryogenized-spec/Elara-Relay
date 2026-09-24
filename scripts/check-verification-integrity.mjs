@@ -153,6 +153,8 @@ for (const forbidden of [
 for (const required of [
   'permissions: {}',
   'persist-credentials: false',
+  'ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+  'test "$(npm --version)" = "11.19.0"',
   'npm ci --ignore-scripts --no-audit --no-fund',
   'npm run verify:gates',
   'npm run secrets:check',
