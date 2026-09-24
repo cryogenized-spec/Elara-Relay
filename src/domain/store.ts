@@ -2,6 +2,7 @@ import type { DomainEvent } from '../contracts/event';
 import type { Job } from '../contracts/job';
 import type { MutationReceipt } from '../contracts/mutation';
 import type { Party } from '../contracts/party';
+import type { Repair } from '../contracts/repair';
 import type { Task } from '../contracts/task';
 
 export type MaybePromise<T> = T | Promise<T>;
@@ -10,12 +11,15 @@ export interface DomainRead {
   getParty(id: string): MaybePromise<Party | undefined>;
   getJob(id: string): MaybePromise<Job | undefined>;
   getTask(id: string): MaybePromise<Task | undefined>;
+  getRepair(id: string): MaybePromise<Repair | undefined>;
+  getRepairByJobId(jobId: string): MaybePromise<Repair | undefined>;
   getMutationReceipt(
     mutationId: string,
   ): MaybePromise<MutationReceipt | undefined>;
   listParties(): MaybePromise<Party[]>;
   listJobs(): MaybePromise<Job[]>;
   listTasks(): MaybePromise<Task[]>;
+  listRepairs(): MaybePromise<Repair[]>;
   listEvents(): MaybePromise<DomainEvent[]>;
 }
 
@@ -26,6 +30,8 @@ export interface DomainTransaction extends DomainRead {
   updateJob(job: Job): MaybePromise<void>;
   insertTask(task: Task): MaybePromise<void>;
   updateTask(task: Task): MaybePromise<void>;
+  insertRepair(repair: Repair): MaybePromise<void>;
+  updateRepair(repair: Repair): MaybePromise<void>;
   appendEvent(event: DomainEvent): MaybePromise<void>;
   saveMutationReceipt(receipt: MutationReceipt): MaybePromise<void>;
 }
