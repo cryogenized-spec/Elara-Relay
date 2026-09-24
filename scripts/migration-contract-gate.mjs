@@ -25,6 +25,9 @@ for (const marker of [
 if (!/mutation_id\s+text\s+primary key/i.test(sql)) {
   findings.push('mutation_receipts.mutation_id must remain the idempotency primary key');
 }
+if (!/create table events[\s\S]*mutation_id\s+text\s+not null\s+unique/i.test(sql)) {
+  findings.push('events.mutation_id must remain unique so one mutation cannot append multiple events');
+}
 if (!/revision\s+bigint\s+not null\s+check\s*\(revision > 0\)/i.test(sql)) {
   findings.push('mutable records must retain positive revision constraints');
 }
