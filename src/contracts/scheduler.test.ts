@@ -119,6 +119,38 @@ describe('Scheduler contracts', () => {
     ).toThrow('must clear nextRunAt');
   });
 
+  it('rejects completion timestamps outside the lease window', () => {
+    const baseRun = {
+      id: RUN_ID,
+      scheduledActionId: ACTION_ID,
+      occurrenceKey: `OCC-${ACTION_ID}-2026-09-25T07:00:00.000Z`,
+      scheduledFor: '2026-09-25T07:00:00.000Z',
+      status: 'SUCCEEDED' as const,
+      leaseToken: LEASE_ID,
+      workerId: 'worker-a',
+      leaseExpiresAt: '2026-09-25T07:05:00.000Z',
+      attempt: 1,
+      providerMessageId: null,
+      errorCode: null,
+      errorDetail: null,
+      claimedAt: '2026-09-25T07:00:00.000Z',
+    };
+
+    expect(() =>
+      scheduledActionRunSchema.parse({
+        ...baseRun,
+        completedAt: '2026-09-25T06:59:59.000Z',
+      }),
+    ).toThrow('within the current lease window');
+
+    expect(() =>
+      scheduledActionRunSchema.parse({
+        ...baseRun,
+        completedAt: '2026-09-25T07:05:01.000Z',
+      }),
+    ).toThrow('within the current lease window');
+  });
+
   it('keeps run completion metadata consistent with run status', () => {
     expect(
       scheduledActionRunSchema.parse({
