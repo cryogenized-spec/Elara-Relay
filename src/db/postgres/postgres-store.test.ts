@@ -103,6 +103,12 @@ const scheduledActionRun: ScheduledActionRun = {
   occurrenceKey:
     'OCC-20000000-0000-4000-8000-000000000006-2026-09-24T10:00:00.000Z',
   scheduledFor: '2026-09-24T10:00:00.000Z',
+  deliverySnapshot: {
+    title: scheduledAction.title,
+    actionType: scheduledAction.actionType,
+    payload: scheduledAction.payload,
+    timezone: scheduledAction.timezone,
+  },
   status: 'CLAIMED',
   leaseToken: '20000000-0000-4000-8000-000000000008',
   workerId: 'worker-a',
@@ -234,6 +240,9 @@ function scheduledActionRunRow() {
     scheduledActionId: scheduledActionRun.scheduledActionId,
     occurrenceKey: scheduledActionRun.occurrenceKey,
     scheduledFor: scheduledActionRun.scheduledFor,
+    deliverySnapshot: JSON.stringify(
+      scheduledActionRun.deliverySnapshot,
+    ),
     status: scheduledActionRun.status,
     leaseToken: scheduledActionRun.leaseToken,
     workerId: scheduledActionRun.workerId,
