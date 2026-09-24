@@ -214,6 +214,14 @@ mutate(
   'scheduler snapshot owner-email boundary removal',
 );
 
+mutate(
+  'src/db/migrations/0004_scheduler.sql',
+  'check (completed_at is null or completed_at <= lease_expires_at),',
+  '-- hostile mutation: completion no longer bounded by lease',
+  () => runNode('scripts/migration-contract-gate.mjs'),
+  'scheduler completion lease bound removal',
+);
+
 process.stdout.write(
-  'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, Repair lifecycle/test/one-to-one controls, Scheduler lease/catch-up/occurrence/delivery-snapshot/owner-email controls, append-only, advisory-lock, row-lock, one-event-per-mutation, RLS, privilege-revocation, and search_path mutations were rejected.\n',
+  'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, Repair lifecycle/test/one-to-one controls, Scheduler lease/catch-up/occurrence/delivery-snapshot/owner-email/completion controls, append-only, advisory-lock, row-lock, one-event-per-mutation, RLS, privilege-revocation, and search_path mutations were rejected.\n',
 );
