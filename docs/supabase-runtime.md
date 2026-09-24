@@ -29,3 +29,19 @@ a production database password or Supabase service-role credential.
 DDL remains source-controlled under `src/db/migrations/`. A live Supabase
 project should receive those reviewed migrations through the migration API;
 the application runtime does not auto-create or mutate its schema on startup.
+
+
+## Browser access boundary
+
+Operational tables live in the `public` schema only because Supabase exposes
+that schema by default. Elara does not use browser-to-table access.
+
+Migration `0002_security_hardening.sql` enables RLS on all operational tables
+and revokes direct table privileges from both `anon` and `authenticated`.
+No client policies are installed in Phase 1B. The application server connects
+to PostgreSQL directly and remains the only supported mutation/read gateway for
+operational data.
+
+The append-only event trigger also pins its function `search_path` to
+`pg_catalog, public` so object resolution cannot be redirected by a caller's
+role-level search path.
