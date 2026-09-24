@@ -8,6 +8,7 @@ import type {
   DomainRead,
   DomainStore,
   DomainTransaction,
+  MaybePromise,
 } from '../../domain/store';
 
 interface MemoryState {
@@ -136,7 +137,7 @@ export class MemoryDomainStore implements DomainStore {
   private tail: Promise<void> = Promise.resolve();
 
   public async transact<T>(
-    work: (transaction: DomainTransaction) => Promise<T>,
+    work: (transaction: DomainTransaction) => MaybePromise<T>,
   ): Promise<T> {
     const previous = this.tail;
     let release = (): void => undefined;
@@ -156,7 +157,7 @@ export class MemoryDomainStore implements DomainStore {
     }
   }
 
-  public async read<T>(work: (read: DomainRead) => Promise<T>): Promise<T> {
+  public async read<T>(work: (read: DomainRead) => MaybePromise<T>): Promise<T> {
     await this.tail;
     const snapshot = cloneState(this.state);
     return structuredClone(await work(new MemoryView(snapshot)));
