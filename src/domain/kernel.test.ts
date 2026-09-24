@@ -166,6 +166,52 @@ describe('domain kernel', () => {
     expect(snapshot.events.filter((event) => event.eventType === 'TASK_COMPLETED')).toHaveLength(1);
   });
 
+  it('moves waiting work back to an execution state and clears waiting metadata', async () => {
+    const { kernel } = makeKernel();
+    const task = await kernel.createTask(
+      {
+        mutationId: 'MUT-transition-task-01',
+        actor: 'operator-ui',
+      },
+      {
+        jobId: null,
+        title: 'Await supplier response',
+        priority: 'NORMAL',
+        dueAt: null,
+        followUpAt: null,
+      },
+    );
+
+    const waiting = await kernel.markTaskWaiting(
+      {
+        mutationId: 'MUT-transition-wait-01',
+        actor: 'operator-ui',
+        expectedRevision: task.revision,
+      },
+      task.id,
+      {
+        waitingOn: 'Supplier',
+        followUpAt: '2026-09-25T08:00:00.000Z',
+      },
+    );
+    expect(waiting.status).toBe('WAITING');
+    expect(waiting.waitingOn).toBe('Supplier');
+
+    const next = await kernel.updateTask(
+      {
+        mutationId: 'MUT-transition-next-01',
+        actor: 'operator-ui',
+        expectedRevision: waiting.revision,
+      },
+      task.id,
+      { status: 'NEXT' },
+    );
+
+    expect(next.status).toBe('NEXT');
+    expect(next.waitingOn).toBeNull();
+    expect(next.waitingSince).toBeNull();
+  });
+
   it('surfaces due and follow-up work while excluding completed work', async () => {
     const { kernel } = makeKernel();
     const due = await kernel.createTask(
