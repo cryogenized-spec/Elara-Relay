@@ -25,5 +25,8 @@ export function nextRevision(
   if (currentRevision !== expectedRevision) {
     throw new RevisionConflictError(currentRevision, expectedRevision);
   }
+  if (currentRevision === Number.MAX_SAFE_INTEGER) {
+    throw new RangeError('currentRevision cannot be incremented safely');
+  }
   return currentRevision + 1;
 }
