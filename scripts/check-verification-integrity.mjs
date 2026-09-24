@@ -148,7 +148,7 @@ for (const file of [...walk('src'), ...walk('e2e'), ...walk('scripts')]) {
     fail(`${path} contains a forbidden TypeScript suppression`);
   }
   for (const line of source.split(/\r?\n/)) {
-    if (/(?:\\/\\/|\\/\\*)\\s*eslint-disable/.test(line) && !reasonedDisable.test(line)) {
+    if (/(?:\/\/|\/\*)\s*eslint-disable/.test(line) && !reasonedDisable.test(line)) {
       fail(`${path} contains an eslint-disable without an inline reason`);
       break;
     }
