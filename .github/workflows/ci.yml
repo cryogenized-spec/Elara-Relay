@@ -1,0 +1,76 @@
+name: Certification
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: certification-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact event commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Pin npm
+        run: npm install --global npm@11.19.0 --ignore-scripts --no-audit --no-fund
+
+      - name: Install exact dependency graph
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Verification integrity
+        run: npm run verify:gates
+
+      - name: Secret scan
+        run: npm run secrets:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript 6
+        run: npm run typecheck:ts6
+
+      - name: TypeScript 7
+        run: npm run typecheck:ts7
+
+      - name: Unit and coverage gates
+        run: npm run test:coverage
+
+      - name: Adversarial mutation gate
+        run: npm run adversarial:check
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Playwright desktop and Android portrait
+        run: npm run e2e -- --project=chromium --project=android-portrait
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
