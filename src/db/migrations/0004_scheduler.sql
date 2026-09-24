@@ -209,6 +209,7 @@ create table scheduled_action_runs (
   ),
   check (lease_expires_at > claimed_at),
   check (completed_at is null or completed_at >= claimed_at),
+  check (completed_at is null or completed_at <= lease_expires_at),
   check (
     (
       status = 'CLAIMED'
