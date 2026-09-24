@@ -20,7 +20,9 @@ export function createPersistentApiFromResources(
 
   return {
     app: createApi(kernel),
-    close: resources.close,
+    close: async () => {
+      await resources.close();
+    },
   };
 }
 
