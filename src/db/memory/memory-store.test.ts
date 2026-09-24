@@ -16,29 +16,29 @@ describe('memory domain store', () => {
     const store = new MemoryDomainStore();
 
     await expect(
-      store.transact((transaction) => {
-        transaction.insertParty(party);
+      store.transact(async (transaction) => {
+        await transaction.insertParty(party);
         throw new Error('force rollback');
       }),
     ).rejects.toThrow('force rollback');
 
-    const parties = await store.read((read) => read.listParties());
+    const parties = await store.read(async (read) => await read.listParties());
     expect(parties).toEqual([]);
   });
 
   it('returns defensive copies from reads', async () => {
     const store = new MemoryDomainStore();
-    await store.transact((transaction) => {
-      transaction.insertParty(party);
+    await store.transact(async (transaction) => {
+      await transaction.insertParty(party);
     });
 
-    const first = await store.read((read) => read.getParty(party.id));
+    const first = await store.read(async (read) => await read.getParty(party.id));
     expect(first).toBeDefined();
     if (first !== undefined) {
       first.name = 'Mutated copy';
     }
 
-    const second = await store.read((read) => read.getParty(party.id));
+    const second = await store.read(async (read) => await read.getParty(party.id));
     expect(second?.name).toBe('Rollback Example');
   });
 });
