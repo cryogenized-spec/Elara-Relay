@@ -12,6 +12,7 @@ export const eventTypeSchema = z.enum([
   'TASK_UPDATED',
   'TASK_WAITING',
   'TASK_COMPLETED',
+  'TASK_CANCELLED',
   'JOB_NOTE',
 ]);
 
