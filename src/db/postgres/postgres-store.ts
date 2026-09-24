@@ -176,6 +176,7 @@ function mapScheduledActionRun(row: unknown): ScheduledActionRun {
     scheduledActionId: value['scheduledActionId'],
     occurrenceKey: value['occurrenceKey'],
     scheduledFor: timestamp(value['scheduledFor']),
+    deliverySnapshot: jsonValue(value['deliverySnapshot']),
     status: value['status'],
     leaseToken: value['leaseToken'],
     workerId: value['workerId'],
@@ -310,6 +311,7 @@ const SCHEDULED_ACTION_RUN_SELECT = `
     scheduled_action_id::text as "scheduledActionId",
     occurrence_key as "occurrenceKey",
     scheduled_for as "scheduledFor",
+    delivery_snapshot as "deliverySnapshot",
     status,
     lease_token::text as "leaseToken",
     worker_id as "workerId",
@@ -760,18 +762,20 @@ class PostgresTransaction
   ): Promise<void> {
     await this.client.query(
       `insert into scheduled_action_runs
-        (id, scheduled_action_id, occurrence_key, scheduled_for, status,
-         lease_token, worker_id, lease_expires_at, attempt,
-         provider_message_id, error_code, error_detail, claimed_at,
-         completed_at)
+        (id, scheduled_action_id, occurrence_key, scheduled_for,
+         delivery_snapshot, status, lease_token, worker_id,
+         lease_expires_at, attempt, provider_message_id, error_code,
+         error_detail, claimed_at, completed_at)
        values (
-         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+         $1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12,
+         $13, $14, $15
        )`,
       [
         run.id,
         run.scheduledActionId,
         run.occurrenceKey,
         run.scheduledFor,
+        JSON.stringify(run.deliverySnapshot),
         run.status,
         run.leaseToken,
         run.workerId,
