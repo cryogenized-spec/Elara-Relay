@@ -104,6 +104,27 @@ hostileMutation(
   }
 }
 
+{
+  const path = '.github/workflows/ci.yml';
+  const absolute = join(root, path);
+  const original = readFileSync(absolute, 'utf8');
+  const hostile = original.replace('contents: read', 'contents: write');
+  if (hostile === original) {
+    throw new Error('Mutation target disappeared: certification token permission');
+  }
+  try {
+    writeFileSync(absolute, hostile);
+    const result = runNode('scripts/supply-chain-gate.mjs');
+    if (result.status === 0) {
+      throw new Error(
+        'Adversarial mutation survived: certification workflow gained repository write authority.',
+      );
+    }
+  } finally {
+    writeFileSync(absolute, original);
+  }
+}
+
 process.stdout.write(
-  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, and focused-test mutations were rejected.\n',
+  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, and workflow-permission mutations were rejected.\n',
 );
