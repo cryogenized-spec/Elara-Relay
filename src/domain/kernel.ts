@@ -267,6 +267,10 @@ export class DomainKernel {
       { expectedRevision: context.expectedRevision, taskId: id, input },
       (transaction) => {
         const current = this.requireTask(transaction, id);
+        const revision = nextRevision(
+          current.revision,
+          context.expectedRevision,
+        );
         if (current.status === 'DONE' || current.status === 'CANCELLED') {
           throw new DomainValidationError(
             `Cannot mark a ${current.status.toLowerCase()} task as waiting`,
@@ -281,7 +285,7 @@ export class DomainKernel {
           waitingSince: now,
           followUpAt: input.followUpAt,
           updatedAt: now,
-          revision: nextRevision(current.revision, context.expectedRevision),
+          revision,
         });
 
         transaction.updateTask(next);
@@ -324,6 +328,10 @@ export class DomainKernel {
       { expectedRevision: context.expectedRevision, taskId: id },
       (transaction) => {
         const current = this.requireTask(transaction, id);
+        const revision = nextRevision(
+          current.revision,
+          context.expectedRevision,
+        );
         if (current.status === 'DONE') {
           throw new DomainValidationError('Task is already complete');
         }
@@ -338,7 +346,7 @@ export class DomainKernel {
           waitingOn: null,
           waitingSince: null,
           updatedAt: now,
-          revision: nextRevision(current.revision, context.expectedRevision),
+          revision,
         });
 
         transaction.updateTask(next);
