@@ -300,9 +300,12 @@ describe('API foundation', () => {
     expect(jobView.status).toBe(200);
     const view = (await jobView.json()) as { tasks: unknown[]; events: unknown[] };
     expect(view.tasks).toHaveLength(2);
-    const eventTypes = (view as { events: Array<{ eventType: string }> }).events.map(
-      (event) => event.eventType,
-    );
+    const events = (
+      view as {
+        events: Array<{ eventType: string; actor: string }>;
+      }
+    ).events;
+    const eventTypes = events.map((event) => event.eventType);
     expect(eventTypes).toEqual([
       'JOB_CREATED',
       'TASK_CREATED',
@@ -313,6 +316,7 @@ describe('API foundation', () => {
       'TASK_CANCELLED',
       'JOB_NOTE',
     ]);
+    expect(events.every((event) => event.actor === 'operator-ui')).toBe(true);
 
     const search = await app.request('/search?q=transfer', {
       headers: authorizationHeaders(),
