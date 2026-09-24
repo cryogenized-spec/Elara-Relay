@@ -28,7 +28,7 @@ export const repairTestResultSchema = z.enum(['PASS', 'FAIL']);
 const nullableText = (max: number) =>
   z.string().trim().min(1).max(max).nullable();
 
-export const repairSchema = z
+const repairObjectSchema = z
   .object({
     id: entityIdSchema,
     jobId: entityIdSchema,
@@ -52,8 +52,9 @@ export const repairSchema = z
     updatedAt: timestampSchema,
     revision: revisionSchema,
   })
-  .strict()
-  .superRefine((repair, context) => {
+  .strict();
+
+export const repairSchema = repairObjectSchema.superRefine((repair, context) => {
     if (
       (repair.serialState === 'KNOWN' && repair.serialValue === null) ||
       (repair.serialState !== 'KNOWN' && repair.serialValue !== null)
@@ -143,10 +144,10 @@ export const repairSchema = z
 export const createRepairInputSchema = z
   .object({
     jobId: entityIdSchema,
-    reportedFault: repairSchema.shape.reportedFault,
+    reportedFault: repairObjectSchema.shape.reportedFault,
     serialState: repairSerialStateSchema.default('UNKNOWN'),
-    serialValue: repairSchema.shape.serialValue.default(null),
-    storageLocation: repairSchema.shape.storageLocation.default(null),
+    serialValue: repairObjectSchema.shape.serialValue.default(null),
+    storageLocation: repairObjectSchema.shape.storageLocation.default(null),
   })
   .strict()
   .superRefine((input, context) => {
@@ -165,12 +166,12 @@ export const createRepairInputSchema = z
 
 export const repairDetailsPatchSchema = z
   .object({
-    reportedFault: repairSchema.shape.reportedFault.optional(),
-    diagnosis: repairSchema.shape.diagnosis.optional(),
-    currentFinding: repairSchema.shape.currentFinding.optional(),
+    reportedFault: repairObjectSchema.shape.reportedFault.optional(),
+    diagnosis: repairObjectSchema.shape.diagnosis.optional(),
+    currentFinding: repairObjectSchema.shape.currentFinding.optional(),
     serialState: repairSerialStateSchema.optional(),
-    serialValue: repairSchema.shape.serialValue.optional(),
-    storageLocation: repairSchema.shape.storageLocation.optional(),
+    serialValue: repairObjectSchema.shape.serialValue.optional(),
+    storageLocation: repairObjectSchema.shape.storageLocation.optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
@@ -180,8 +181,8 @@ export const repairDetailsPatchSchema = z
 export const moveRepairStageInputSchema = z
   .object({
     stage: repairStageSchema,
-    waitingOn: repairSchema.shape.waitingOn.optional(),
-    followUpAt: repairSchema.shape.followUpAt.optional(),
+    waitingOn: repairObjectSchema.shape.waitingOn.optional(),
+    followUpAt: repairObjectSchema.shape.followUpAt.optional(),
   })
   .strict()
   .superRefine((input, context) => {
@@ -220,7 +221,7 @@ export const moveRepairStageInputSchema = z
 export const recordRepairTestInputSchema = z
   .object({
     result: repairTestResultSchema,
-    detail: repairSchema.shape.finalTestDetail.default(null),
+    detail: repairObjectSchema.shape.finalTestDetail.default(null),
   })
   .strict();
 
