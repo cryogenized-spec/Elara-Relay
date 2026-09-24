@@ -34,7 +34,7 @@ import {
   MutationReplayMismatchError,
 } from './errors';
 import { nextRevision } from './revision';
-import type { DomainStore, DomainTransaction } from './store';
+import type { DomainStore, DomainTransaction, MaybePromise } from './store';
 
 export interface JobView {
   job: Job;
@@ -86,7 +86,7 @@ export class DomainKernel {
     const context = mutationContextSchema.parse(rawContext);
     const input = createPartyInputSchema.parse(rawInput);
 
-    return this.executeOnce(context, 'createParty', input, async (transaction) => {
+    return this.executeOnce(context, 'createParty', input, (transaction) => {
       const now = this.now();
       const party: Party = {
         id: this.newId(),
@@ -119,7 +119,7 @@ export class DomainKernel {
     const context = mutationContextSchema.parse(rawContext);
     const input = createJobInputSchema.parse(rawInput);
 
-    return this.executeOnce(context, 'createJob', input, async (transaction) => {
+    return this.executeOnce(context, 'createJob', input, (transaction) => {
       if (input.partyId !== null && transaction.getParty(input.partyId) === undefined) {
         throw new DomainNotFoundError('Party', input.partyId);
       }
@@ -159,7 +159,7 @@ export class DomainKernel {
     const context = mutationContextSchema.parse(rawContext);
     const input = createTaskInputSchema.parse(rawInput);
 
-    return this.executeOnce(context, 'createTask', input, async (transaction) => {
+    return this.executeOnce(context, 'createTask', input, (transaction) => {
       if (input.jobId !== null && transaction.getJob(input.jobId) === undefined) {
         throw new DomainNotFoundError('Job', input.jobId);
       }
@@ -208,7 +208,7 @@ export class DomainKernel {
       { mutationId: context.mutationId, actor: context.actor },
       'updateTask',
       { expectedRevision: context.expectedRevision, taskId: id, patch },
-      async (transaction) => {
+      (transaction) => {
         const current = this.requireTask(transaction, id);
         const revision = nextRevision(current.revision, context.expectedRevision);
         const now = this.now();
@@ -265,7 +265,7 @@ export class DomainKernel {
       { mutationId: context.mutationId, actor: context.actor },
       'markTaskWaiting',
       { expectedRevision: context.expectedRevision, taskId: id, input },
-      async (transaction) => {
+      (transaction) => {
         const current = this.requireTask(transaction, id);
         if (current.status === 'DONE' || current.status === 'CANCELLED') {
           throw new DomainValidationError(
@@ -322,7 +322,7 @@ export class DomainKernel {
       { mutationId: context.mutationId, actor: context.actor },
       'completeTask',
       { expectedRevision: context.expectedRevision, taskId: id },
-      async (transaction) => {
+      (transaction) => {
         const current = this.requireTask(transaction, id);
         if (current.status === 'DONE') {
           throw new DomainValidationError('Task is already complete');
@@ -384,7 +384,7 @@ export class DomainKernel {
         jobId: id,
         detail: normalizedDetail,
       },
-      async (transaction) => {
+      (transaction) => {
         const current = this.requireJob(transaction, id);
         const now = this.now();
         const next: Job = {
@@ -411,7 +411,7 @@ export class DomainKernel {
 
   public async getJob(jobId: string): Promise<JobView> {
     const id = entityIdSchema.parse(jobId);
-    return this.store.read(async (read) => {
+    return this.store.read((read) => {
       const job = read.getJob(id);
       if (job === undefined) {
         throw new DomainNotFoundError('Job', id);
@@ -428,7 +428,7 @@ export class DomainKernel {
 
   public async getToday(rawAsOf: string): Promise<TodayResult> {
     const asOf = timestampSchema.parse(rawAsOf);
-    return this.store.read(async (read) => {
+    return this.store.read((read) => {
       const tasks = read
         .listTasks()
         .filter((task) => task.status !== 'DONE' && task.status !== 'CANCELLED')
@@ -522,7 +522,7 @@ export class DomainKernel {
     context: MutationContext,
     command: string,
     payload: unknown,
-    work: (transaction: DomainTransaction) => Promise<T>,
+    work: (transaction: DomainTransaction) => MaybePromise<T>,
   ): Promise<T> {
     const fingerprint = canonicalJson({
       actor: context.actor,
@@ -530,7 +530,7 @@ export class DomainKernel {
       payload,
     });
 
-    return this.store.transact(async (transaction) => {
+    return this.store.transact((transaction) => {
       const existing = transaction.getMutationReceipt(context.mutationId);
       if (existing !== undefined) {
         if (
