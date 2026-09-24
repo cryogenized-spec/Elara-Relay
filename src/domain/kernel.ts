@@ -220,8 +220,7 @@ export class DomainKernel {
           );
         }
         const now = this.now();
-        const leavesWaiting =
-          patch.status !== undefined && patch.status !== 'WAITING';
+        const leavesWaiting = patch.status !== undefined;
         const next = taskSchema.parse({
           ...current,
           ...patch,
