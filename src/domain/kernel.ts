@@ -1249,15 +1249,19 @@ export class DomainKernel {
 
         let next = current;
         if (current.status !== 'CANCELLED') {
-          const nextRunAt = nextOccurrenceAfter(
-            current.recurrenceRule,
-            run.scheduledFor,
-            input.completedAt,
-          );
+          const scheduleStillPointsToRun =
+            current.nextRunAt === run.scheduledFor;
+          const nextRunAt = scheduleStillPointsToRun
+            ? nextOccurrenceAfter(
+                current.recurrenceRule,
+                run.scheduledFor,
+                input.completedAt,
+              )
+            : current.nextRunAt;
           next = scheduledActionSchema.parse({
             ...current,
             status:
-              nextRunAt === null
+              scheduleStillPointsToRun && nextRunAt === null
                 ? 'COMPLETED'
                 : current.status,
             nextRunAt,
