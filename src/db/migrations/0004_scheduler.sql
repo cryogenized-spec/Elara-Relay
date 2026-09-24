@@ -174,8 +174,38 @@ create table scheduled_action_runs (
   claimed_at timestamptz not null,
   completed_at timestamptz,
   check (
+    char_length(trim(delivery_snapshot ->> 'title')) between 1 and 240
+  ),
+  check (
     delivery_snapshot ->> 'actionType' <> 'EMAIL'
-    or delivery_snapshot -> 'payload' ->> 'recipient' = 'OWNER'
+    or (
+      delivery_snapshot -> 'payload' ? 'recipient'
+      and delivery_snapshot -> 'payload' ? 'subject'
+      and delivery_snapshot -> 'payload' ? 'body'
+      and delivery_snapshot -> 'payload' ->> 'recipient' = 'OWNER'
+      and char_length(
+        trim(delivery_snapshot -> 'payload' ->> 'subject')
+      ) between 1 and 240
+      and char_length(
+        trim(delivery_snapshot -> 'payload' ->> 'body')
+      ) between 1 and 12000
+    )
+  ),
+  check (
+    delivery_snapshot ->> 'actionType' <> 'REMINDER'
+    or (
+      delivery_snapshot -> 'payload' ? 'message'
+      and char_length(
+        trim(delivery_snapshot -> 'payload' ->> 'message')
+      ) between 1 and 4000
+    )
+  ),
+  check (
+    delivery_snapshot ->> 'actionType' <> 'DIGEST'
+    or (
+      delivery_snapshot -> 'payload' ? 'scope'
+      and delivery_snapshot -> 'payload' ->> 'scope' = 'TODAY'
+    )
   ),
   check (lease_expires_at > claimed_at),
   check (completed_at is null or completed_at >= claimed_at),
