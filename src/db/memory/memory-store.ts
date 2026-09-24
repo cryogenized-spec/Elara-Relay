@@ -3,7 +3,10 @@ import type { Job } from '../../contracts/job';
 import type { MutationReceipt } from '../../contracts/mutation';
 import type { Party } from '../../contracts/party';
 import type { Task } from '../../contracts/task';
-import { DuplicateEntityError } from '../../domain/errors';
+import {
+  DomainNotFoundError,
+  DuplicateEntityError,
+} from '../../domain/errors';
 import type {
   DomainRead,
   DomainStore,
@@ -82,6 +85,9 @@ class MemoryView implements DomainTransaction {
   }
 
   public updateParty(party: Party): void {
+    if (!this.state.parties.has(party.id)) {
+      throw new DomainNotFoundError('Party', party.id);
+    }
     this.state.parties.set(party.id, structuredClone(party));
   }
 
@@ -96,6 +102,9 @@ class MemoryView implements DomainTransaction {
   }
 
   public updateJob(job: Job): void {
+    if (!this.state.jobs.has(job.id)) {
+      throw new DomainNotFoundError('Job', job.id);
+    }
     this.state.jobs.set(job.id, structuredClone(job));
   }
 
@@ -107,6 +116,9 @@ class MemoryView implements DomainTransaction {
   }
 
   public updateTask(task: Task): void {
+    if (!this.state.tasks.has(task.id)) {
+      throw new DomainNotFoundError('Task', task.id);
+    }
     this.state.tasks.set(task.id, structuredClone(task));
   }
 
@@ -150,8 +162,9 @@ export class MemoryDomainStore implements DomainStore {
     try {
       const draft = cloneState(this.state);
       const result = await work(new MemoryView(draft));
+      const safeResult = structuredClone(result);
       this.state = draft;
-      return structuredClone(result);
+      return safeResult;
     } finally {
       release();
     }
