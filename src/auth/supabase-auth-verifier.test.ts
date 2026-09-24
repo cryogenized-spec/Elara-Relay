@@ -1,4 +1,3 @@
-import { createSecretKey } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import {
   SignJWT,
@@ -25,6 +24,30 @@ const SESSION_ID = '60000000-0000-4000-8000-000000000003';
 let server: Server;
 let origin: string;
 let privateKey: CryptoKey;
+
+function encodeJwtPart(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function legacyTokenFor(userId: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  return [
+    encodeJwtPart({ alg: 'HS256', typ: 'JWT' }),
+    encodeJwtPart({
+      iss: 'https://legacy.supabase.co/auth/v1',
+      aud: 'authenticated',
+      exp: now + 3600,
+      iat: now,
+      sub: userId,
+      role: 'authenticated',
+      aal: 'aal1',
+      session_id: SESSION_ID,
+      email: 'owner@example.com',
+      is_anonymous: false,
+    }),
+    'server-validated-signature',
+  ].join('.');
+}
 
 async function tokenFor(
   userId: string,
@@ -162,24 +185,7 @@ describe('SupabaseAuthVerifier', () => {
   });
 
   it('validates legacy HS256 sessions through the Supabase Auth user endpoint', async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const secret = createSecretKey(
-      Buffer.from('test-only-hs256-secret-with-sufficient-length'),
-    );
-    const token = await new SignJWT({
-      role: 'authenticated',
-      aal: 'aal1',
-      session_id: SESSION_ID,
-      email: 'owner@example.com',
-      is_anonymous: false,
-    })
-      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-      .setSubject(ALLOWED_USER)
-      .setIssuer('https://legacy.supabase.co/auth/v1')
-      .setAudience('authenticated')
-      .setIssuedAt(now)
-      .setExpirationTime(now + 3600)
-      .sign(secret);
+    const token = legacyTokenFor(ALLOWED_USER);
 
     const calls: Array<{
       input: string;
@@ -224,23 +230,7 @@ describe('SupabaseAuthVerifier', () => {
   });
 
   it('rejects a legacy token when the Auth server does not validate it', async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const secret = createSecretKey(
-      Buffer.from('test-only-hs256-secret-with-sufficient-length'),
-    );
-    const token = await new SignJWT({
-      role: 'authenticated',
-      aal: 'aal1',
-      session_id: SESSION_ID,
-      is_anonymous: false,
-    })
-      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-      .setSubject(ALLOWED_USER)
-      .setIssuer('https://legacy.supabase.co/auth/v1')
-      .setAudience('authenticated')
-      .setIssuedAt(now)
-      .setExpirationTime(now + 3600)
-      .sign(secret);
+    const token = legacyTokenFor(ALLOWED_USER);
 
     const verifier = new SupabaseAuthVerifier(
       {
