@@ -41,6 +41,9 @@ jobs:
       - name: Secret scan
         run: npm run secrets:check
 
+      - name: Security architecture gate
+        run: npm run security:check
+
       - name: Verify registry signatures
         run: npm audit signatures
 
