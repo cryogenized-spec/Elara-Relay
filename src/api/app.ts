@@ -69,7 +69,7 @@ const addJobEventRequestSchema = z
 
 async function requestJson(context: Context): Promise<unknown> {
   try {
-    return await requestJson(context);
+    return await context.req.json<unknown>();
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new DomainValidationError('Request body must be valid JSON');
