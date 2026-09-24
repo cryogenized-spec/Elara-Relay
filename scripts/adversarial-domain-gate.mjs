@@ -158,6 +158,46 @@ mutate(
   'Repair RLS removal',
 );
 
+mutate(
+  'src/domain/kernel.ts',
+  "existing.leaseExpiresAt > input.asOf",
+  'false',
+  () => runVitest('src/domain/scheduler-kernel.test.ts'),
+  'scheduler live-lease exclusion removal',
+);
+
+mutate(
+  'src/domain/scheduler-recurrence.ts',
+  'Math.floor(elapsed / intervalMs) + 1',
+  '1',
+  () => runVitest('src/domain/scheduler-kernel.test.ts'),
+  'scheduler missed-interval catch-up protection removal',
+);
+
+mutate(
+  'src/db/migrations/0004_scheduler.sql',
+  'occurrence_key text not null unique',
+  'occurrence_key text not null',
+  () => runNode('scripts/migration-contract-gate.mjs'),
+  'scheduler occurrence uniqueness removal',
+);
+
+mutate(
+  'src/db/migrations/0004_scheduler.sql',
+  'alter table public.scheduled_actions enable row level security;',
+  '-- hostile mutation: scheduler RLS removed',
+  () => runNode('scripts/migration-contract-gate.mjs'),
+  'scheduled action RLS removal',
+);
+
+mutate(
+  'src/db/migrations/0004_scheduler.sql',
+  "payload ->> 'recipient' = 'OWNER'",
+  "payload ->> 'recipient' <> 'OWNER'",
+  () => runNode('scripts/migration-contract-gate.mjs'),
+  'owner-only scheduler email boundary removal',
+);
+
 process.stdout.write(
-  'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, Repair lifecycle/test/one-to-one controls, append-only, advisory-lock, row-lock, one-event-per-mutation, RLS, privilege-revocation, and search_path mutations were rejected.\n',
+  'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, Repair lifecycle/test/one-to-one controls, Scheduler lease/catch-up/occurrence/owner-email controls, append-only, advisory-lock, row-lock, one-event-per-mutation, RLS, privilege-revocation, and search_path mutations were rejected.\n',
 );
