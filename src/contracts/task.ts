@@ -10,6 +10,13 @@ export const taskStatusSchema = z.enum([
   'CANCELLED',
 ]);
 
+export const taskDirectStatusSchema = z.enum([
+  'INBOX',
+  'NEXT',
+  'DOING',
+  'CANCELLED',
+]);
+
 export const taskPrioritySchema = z.enum([
   'URGENT',
   'HIGH',
@@ -17,7 +24,7 @@ export const taskPrioritySchema = z.enum([
   'LOW',
 ]);
 
-export const taskSchema = z
+const taskObjectSchema = z
   .object({
     id: entityIdSchema,
     jobId: entityIdSchema.nullable(),
@@ -34,10 +41,31 @@ export const taskSchema = z
   })
   .strict();
 
+export const taskSchema = taskObjectSchema.superRefine((task, context) => {
+  if (task.status === 'WAITING') {
+    if (task.waitingOn === null || task.waitingSince === null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Waiting tasks require waitingOn and waitingSince',
+        path: ['status'],
+      });
+    }
+    return;
+  }
+
+  if (task.waitingOn !== null || task.waitingSince !== null) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Non-waiting tasks cannot retain waiting metadata',
+      path: ['status'],
+    });
+  }
+});
+
 export const createTaskInputSchema = z
   .object({
     jobId: entityIdSchema.nullable().default(null),
-    title: taskSchema.shape.title,
+    title: taskObjectSchema.shape.title,
     priority: taskPrioritySchema.default('NORMAL'),
     dueAt: timestampSchema.nullable().default(null),
     followUpAt: timestampSchema.nullable().default(null),
@@ -46,7 +74,8 @@ export const createTaskInputSchema = z
 
 export const updateTaskPatchSchema = z
   .object({
-    title: taskSchema.shape.title.optional(),
+    title: taskObjectSchema.shape.title.optional(),
+    status: taskDirectStatusSchema.optional(),
     priority: taskPrioritySchema.optional(),
     dueAt: timestampSchema.nullable().optional(),
     followUpAt: timestampSchema.nullable().optional(),
@@ -65,6 +94,7 @@ export const markTaskWaitingInputSchema = z
 
 export type Task = z.infer<typeof taskSchema>;
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
+export type TaskDirectStatus = z.infer<typeof taskDirectStatusSchema>;
 export type TaskPriority = z.infer<typeof taskPrioritySchema>;
 export type CreateTaskInput = z.infer<typeof createTaskInputSchema>;
 export type UpdateTaskPatch = z.infer<typeof updateTaskPatchSchema>;
