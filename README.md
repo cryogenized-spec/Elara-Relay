@@ -2,33 +2,63 @@
 
 Elara Relay is the clean-room successor to the Elara Angelic Utility Applet.
 
-The project is being rebuilt around a small set of durable rules:
+It is being built as a durable, mobile-first operations system for Jobs, Tasks,
+Repairs, scheduling, search, history, and controlled external actions.
+
+Core rules:
 
 - **AI is optional.** Elara must remain useful with no model provider connected.
-- **Providers are adapters.** OpenAI, Meta, Google, storage hosts, and external services must not own the application architecture.
+- **Providers are adapters.** External services must not own the architecture.
 - **State belongs to Elara.** Models request typed operations; they do not mutate durable state directly.
-- **Portability matters.** The schema, migrations, API contracts, backups, and event history are treated as the durable asset.
-- **Mobile-first operations.** The primary product surface will prioritize Today/attention, repairs, scheduling, search, and fast capture.
-- **External actions are controlled.** Mutations are validated, revision-checked, auditable, and designed for explicit approval where appropriate.
+- **Portability matters.** Schema, migrations, contracts, backups, and event history are durable assets.
+- **Mobile-first operations.** Today/attention, repairs, scheduling, search, and capture are primary.
+- **External actions are controlled.** Mutations are validated, revision-checked, auditable, and approval-aware.
 
-## Pass 0 — Fortress Floor
+## Current state
 
-The first pass intentionally contains very little product functionality. Its purpose is to make weak foundations difficult to introduce later.
+Completed foundation:
 
-Current certification includes:
+- Pass 0 — Fortress Floor
+- Pass 1A — Transactional Domain Kernel
+- Pass 1B — Persistent PostgreSQL / Supabase Runtime
+- Pass 1C — Authentication Boundary
+- Pass 1D — Repairs Domain
+- Pass 1E — Scheduler & Delivery Kernel
+
+Current work: **Pass 1F — documentation and visual system**.
+
+## Canonical documentation
+
+High-level product/design/history documentation lives under
+[`/documents/`](./documents/README.md):
+
+- [Layout Guide](./documents/Layout_Guide.md)
+- [Product Direction](./documents/Product_Direction.md)
+- [Build History](./documents/Build_History.md)
+
+Focused technical references remain under `/docs/`:
+
+- [Supabase / PostgreSQL runtime](./docs/supabase-runtime.md)
+- [Repairs domain](./docs/repairs-domain.md)
+- [Scheduler domain](./docs/scheduler-domain.md)
+
+## Certification floor
+
+The project currently certifies:
 
 - Node 24.21.0 and npm 11.19.0 pins
-- TypeScript 6 and native TypeScript 7 hard typecheck gates
+- TypeScript 6 and native TypeScript 7
 - zero-warning ESLint
-- Vitest coverage controls
-- Playwright Chromium and 412×915 Android-portrait E2E
-- secret scanning
-- client security-architecture checks
-- supply-chain provenance/integrity checks
-- registry signature and high-severity dependency audits
+- Vitest coverage gates
+- PostgreSQL integration
+- Playwright Chromium desktop + 412 × 915 Android portrait
+- secret/security checks
+- authentication boundary checks
+- supply-chain provenance/integrity
+- registry signatures and dependency audit
 - focused/skipped-test rejection
-- adversarial mutation tests
+- adversarial foundation/domain/authentication mutation tests
+- migration-contract checks
 - read-only GitHub Actions certification authority
-- the canonical Elara PR Review skill mirrored under `skills/`
 
-Product-domain implementation, Supabase wiring, authentication, scheduling, AI-provider routing, and production deployment belong to later passes.
+See [Build History](./documents/Build_History.md) for the time-stamped milestone ledger.
