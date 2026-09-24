@@ -46,6 +46,9 @@ const clientFiles = [
 
 const forbiddenClientSecrets = [
   'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_SECRET_KEY',
+  'SUPABASE_JWT_SECRET',
+  'ELARA_ALLOWED_USER_IDS',
   'OPENAI_API_KEY',
   'META_API_KEY',
   'XAI_API_KEY',

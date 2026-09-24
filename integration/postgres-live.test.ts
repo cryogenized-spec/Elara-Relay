@@ -1,5 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type {
+  AuthIdentity,
+  AuthVerifier,
+} from '../src/auth/auth-verifier';
 import {
   createPersistentApiFromResources,
   type PersistentApiRuntime,
@@ -9,6 +13,19 @@ import {
   type NodePostgresResources,
 } from '../src/runtime/node/postgres-pool';
 
+const ACCESS_TOKEN = 'integration.payload.signature';
+
+const identity: AuthIdentity = {
+  userId: '40000000-0000-4000-8000-000000000001',
+  sessionId: '40000000-0000-4000-8000-000000000002',
+  email: 'owner@example.com',
+  aal: 'aal1',
+};
+
+const authVerifier: AuthVerifier = {
+  verify: async () => identity,
+};
+
 let resources: NodePostgresResources;
 let runtime: PersistentApiRuntime;
 
@@ -17,9 +34,17 @@ async function jsonRequest(
   method: string,
   body?: unknown,
 ): Promise<Response> {
-  const init: RequestInit = { method };
+  const init: RequestInit = {
+    method,
+    headers: {
+      authorization: `Bearer ${ACCESS_TOKEN}`,
+    },
+  };
   if (body !== undefined) {
-    init.headers = { 'content-type': 'application/json' };
+    init.headers = {
+      authorization: `Bearer ${ACCESS_TOKEN}`,
+      'content-type': 'application/json',
+    };
     init.body = JSON.stringify(body);
   }
   return runtime.app.request(path, init);
@@ -40,7 +65,7 @@ beforeAll(async () => {
     const migration = await readFile(migrationFile, 'utf8');
     await resources.rawPool.query(migration);
   }
-  runtime = createPersistentApiFromResources(resources);
+  runtime = createPersistentApiFromResources(resources, authVerifier);
 });
 
 afterAll(async () => {
@@ -118,7 +143,6 @@ describe('live PostgreSQL runtime', () => {
     const partyBody = {
       mutation: {
         mutationId: 'MUT-live-party-0001',
-        actor: 'operator-ui',
       },
       input: {
         name: 'Live PostgreSQL Customer',
@@ -148,7 +172,6 @@ describe('live PostgreSQL runtime', () => {
     const jobResponse = await jsonRequest('/jobs', 'POST', {
       mutation: {
         mutationId: 'MUT-live-job-000001',
-        actor: 'operator-ui',
       },
       input: {
         title: 'Live database repair',
@@ -165,7 +188,6 @@ describe('live PostgreSQL runtime', () => {
     const taskResponse = await jsonRequest('/tasks', 'POST', {
       mutation: {
         mutationId: 'MUT-live-task-00001',
-        actor: 'chatgpt',
       },
       input: {
         jobId: job.id,
@@ -187,14 +209,12 @@ describe('live PostgreSQL runtime', () => {
       {
         mutation: {
           mutationId: 'MUT-live-complete-a1',
-          actor: 'operator-ui',
           expectedRevision: task.revision,
         },
       },
       {
         mutation: {
           mutationId: 'MUT-live-complete-b1',
-          actor: 'chatgpt',
           expectedRevision: task.revision,
         },
       },
@@ -214,7 +234,11 @@ describe('live PostgreSQL runtime', () => {
       409,
     ]);
 
-    const jobViewResponse = await runtime.app.request(`/jobs/${job.id}`);
+    const jobViewResponse = await runtime.app.request(`/jobs/${job.id}`, {
+      headers: {
+        authorization: `Bearer ${ACCESS_TOKEN}`,
+      },
+    });
     expect(jobViewResponse.status).toBe(200);
     const jobView = (await jobViewResponse.json()) as {
       tasks: Array<{ status: string; revision: number }>;

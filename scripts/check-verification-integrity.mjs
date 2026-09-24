@@ -34,6 +34,8 @@ const expectedScripts = {
   'adversarial:check': 'node scripts/adversarial-foundation-gate.mjs',
   'adversarial:domain': 'node scripts/adversarial-domain-gate.mjs',
   'schema:check': 'node scripts/migration-contract-gate.mjs',
+  'auth:check': 'node scripts/auth-boundary-gate.mjs',
+  'adversarial:auth': 'node scripts/adversarial-auth-gate.mjs',
   'test:postgres': 'vitest run --config vitest.postgres.config.mjs',
 };
 
@@ -81,7 +83,8 @@ for (const [flag, value] of Object.entries(hardFlags)) {
 const vitest = read('vitest.config.mjs');
 for (const marker of [
   "environment: 'jsdom'",
-  "include: ['src/{api,contracts,domain,db}/**/*.ts']",
+  "'src/{api,auth,contracts,domain,db}/**/*.ts'",
+  "'src/runtime/node/auth-config.ts'",
   "exclude: ['src/**/*.test.ts']",
   'lines: 80',
   'statements: 80',
@@ -163,6 +166,7 @@ for (const required of [
   'npm run verify:gates',
   'npm run secrets:check',
   'npm run security:check',
+  'npm run auth:check',
   'npm audit signatures',
   'npm audit --audit-level=high',
   'npm run supply-chain:check',
@@ -173,6 +177,7 @@ for (const required of [
   'npm run test:coverage',
   'npm run adversarial:check',
   'npm run adversarial:domain',
+  'npm run adversarial:auth',
   'npm run schema:check',
   'image: postgres:17.6-alpine',
   'npm run test:postgres',
