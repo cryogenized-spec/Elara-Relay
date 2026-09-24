@@ -116,7 +116,9 @@ for (const eventMarker of [
   "'REPAIR_TEST_RECORDED'",
 ]) {
   if (!repairsSql.includes(eventMarker)) {
-    findings.push(`repair migration must extend event vocabulary: ${eventMarker}`);
+    findings.push(
+      `repair migration must extend event vocabulary: ${eventMarker}`,
+    );
   }
 }
 
@@ -126,57 +128,7 @@ for (const marker of [
   "action_type in ('REMINDER', 'DIGEST', 'EMAIL')",
   "timezone = 'Africa/Johannesburg'",
   "status in ('ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED')",
-  "recurrence_rule ~ '^FREQ=(DAILY|WEEKLY);INTERVAL=([1-9][0-9]{0,2})
-  'parties',
-  'jobs',
-  'tasks',
-  'events',
-  'mutation_receipts',
-]) {
-  const rls = new RegExp(
-    `alter\\s+table\\s+public\\.${table}\\s+enable\\s+row\\s+level\\s+security`,
-    'i',
-  );
-  if (!rls.test(securitySql)) {
-    findings.push(`${table} must keep RLS enabled in security migration`);
-  }
-}
-
-for (const role of ['anon', 'authenticated']) {
-  const revoke = new RegExp(
-    `revoke[\\s\\S]*public\\.parties[\\s\\S]*public\\.jobs[\\s\\S]*public\\.tasks[\\s\\S]*public\\.events[\\s\\S]*public\\.mutation_receipts[\\s\\S]*from\\s+${role}`,
-    'i',
-  );
-  if (!revoke.test(securitySql)) {
-    findings.push(
-      `security migration must revoke direct table privileges from ${role}`,
-    );
-  }
-}
-
-if (
-  !/alter\s+function\s+public\.reject_event_mutation\(\)[\s\S]*set\s+search_path\s*=\s*pg_catalog\s*,\s*public/i.test(
-    securitySql,
-  )
-) {
-  findings.push(
-    'reject_event_mutation must retain a fixed pg_catalog, public search_path',
-  );
-}
-
-if (findings.length > 0) {
-  process.stderr.write(
-    `Migration contract gate failed (${findings.length}):\n${findings
-      .map((finding) => `- ${finding}`)
-      .join('\n')}\n`,
-  );
-  process.exit(1);
-}
-
-process.stdout.write(
-  'Migration contract gate passed: kernel tables, Repairs, Scheduler ledger, revisions, append-only events, RLS, browser-role revocations, owner-only email payloads, and fixed trigger search_path are intact.\n',
-);
-",
+  "recurrence_rule ~ '^FREQ=(DAILY|WEEKLY);INTERVAL=([1-9][0-9]{0,2})$'",
   'occurrence_key text not null unique',
   "status in ('CLAIMED', 'SUCCEEDED', 'FAILED')",
   'lease_token uuid not null unique',
@@ -191,7 +143,7 @@ process.stdout.write(
 }
 
 if (
-  !/scheduled_action_id uuid not null[\s\S]*references scheduled_actions\(id\) on delete restrict/i.test(
+  !/scheduled_action_id uuid not null\s+references scheduled_actions\(id\) on delete restrict/i.test(
     schedulerSql,
   )
 ) {
@@ -292,5 +244,5 @@ if (findings.length > 0) {
 }
 
 process.stdout.write(
-  'Migration contract gate passed: kernel tables, Repairs, revisions, append-only events, RLS, browser-role revocations, repair invariants, and fixed trigger search_path are intact.\n',
+  'Migration contract gate passed: kernel tables, Repairs, Scheduler ledger, revisions, append-only events, RLS, browser-role revocations, owner-only email payloads, and fixed trigger search_path are intact.\n',
 );
