@@ -5,6 +5,7 @@ import {
   type MutationReceipt,
 } from '../../contracts/mutation';
 import { partySchema, type Party } from '../../contracts/party';
+import { repairSchema, type Repair } from '../../contracts/repair';
 import { taskSchema, type Task } from '../../contracts/task';
 import { DomainNotFoundError } from '../../domain/errors';
 import type {
@@ -107,6 +108,38 @@ function mapTask(row: unknown): Task {
   });
 }
 
+function mapRepair(row: unknown): Repair {
+  const value = rowRecord(row);
+  return repairSchema.parse({
+    id: value['id'],
+    jobId: value['jobId'],
+    stage: value['stage'],
+    reportedFault: value['reportedFault'],
+    diagnosis: value['diagnosis'] ?? null,
+    currentFinding: value['currentFinding'] ?? null,
+    serialState: value['serialState'],
+    serialValue: value['serialValue'] ?? null,
+    storageLocation: value['storageLocation'] ?? null,
+    waitingOn: value['waitingOn'] ?? null,
+    followUpAt:
+      value['followUpAt'] === null ? null : timestamp(value['followUpAt']),
+    finalTestResult: value['finalTestResult'] ?? null,
+    finalTestDetail: value['finalTestDetail'] ?? null,
+    testedAt:
+      value['testedAt'] === null ? null : timestamp(value['testedAt']),
+    receivedAt: timestamp(value['receivedAt']),
+    readyAt:
+      value['readyAt'] === null ? null : timestamp(value['readyAt']),
+    collectedAt:
+      value['collectedAt'] === null ? null : timestamp(value['collectedAt']),
+    cancelledAt:
+      value['cancelledAt'] === null ? null : timestamp(value['cancelledAt']),
+    createdAt: timestamp(value['createdAt']),
+    updatedAt: timestamp(value['updatedAt']),
+    revision: integer(value['revision']),
+  });
+}
+
 function mapEvent(row: unknown): DomainEvent {
   const value = rowRecord(row);
   return eventSchema.parse({
@@ -175,6 +208,32 @@ const TASK_SELECT = `
   from tasks
 `;
 
+const REPAIR_SELECT = `
+  select
+    id::text as "id",
+    job_id::text as "jobId",
+    stage,
+    reported_fault as "reportedFault",
+    diagnosis,
+    current_finding as "currentFinding",
+    serial_state as "serialState",
+    serial_value as "serialValue",
+    storage_location as "storageLocation",
+    waiting_on as "waitingOn",
+    follow_up_at as "followUpAt",
+    final_test_result as "finalTestResult",
+    final_test_detail as "finalTestDetail",
+    tested_at as "testedAt",
+    received_at as "receivedAt",
+    ready_at as "readyAt",
+    collected_at as "collectedAt",
+    cancelled_at as "cancelledAt",
+    created_at as "createdAt",
+    updated_at as "updatedAt",
+    revision::text as "revision"
+  from repairs
+`;
+
 const EVENT_SELECT = `
   select
     id::text as "id",
@@ -230,6 +289,22 @@ class PostgresRead implements DomainRead {
     return result.rows[0] === undefined ? undefined : mapTask(result.rows[0]);
   }
 
+  public async getRepair(id: string): Promise<Repair | undefined> {
+    const result = await this.client.query(
+      `${REPAIR_SELECT} where id = $1${this.lockRows ? ' for update' : ''}`,
+      [id],
+    );
+    return result.rows[0] === undefined ? undefined : mapRepair(result.rows[0]);
+  }
+
+  public async getRepairByJobId(jobId: string): Promise<Repair | undefined> {
+    const result = await this.client.query(
+      `${REPAIR_SELECT} where job_id = $1${this.lockRows ? ' for update' : ''}`,
+      [jobId],
+    );
+    return result.rows[0] === undefined ? undefined : mapRepair(result.rows[0]);
+  }
+
   public async getMutationReceipt(
     mutationId: string,
   ): Promise<MutationReceipt | undefined> {
@@ -259,6 +334,13 @@ class PostgresRead implements DomainRead {
       `${TASK_SELECT} order by updated_at desc, id`,
     );
     return result.rows.map(mapTask);
+  }
+
+  public async listRepairs(): Promise<Repair[]> {
+    const result = await this.client.query(
+      `${REPAIR_SELECT} order by updated_at desc, id`,
+    );
+    return result.rows.map(mapRepair);
   }
 
   public async listEvents(): Promise<DomainEvent[]> {
@@ -395,6 +477,81 @@ class PostgresTransaction
       ],
     );
     this.requireUpdated(result, 'Task', task.id);
+  }
+
+  public async insertRepair(repair: Repair): Promise<void> {
+    await this.client.query(
+      `insert into repairs
+        (id, job_id, stage, reported_fault, diagnosis, current_finding,
+         serial_state, serial_value, storage_location, waiting_on,
+         follow_up_at, final_test_result, final_test_detail, tested_at,
+         received_at, ready_at, collected_at, cancelled_at,
+         created_at, updated_at, revision)
+       values (
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+         $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+       )`,
+      [
+        repair.id,
+        repair.jobId,
+        repair.stage,
+        repair.reportedFault,
+        repair.diagnosis,
+        repair.currentFinding,
+        repair.serialState,
+        repair.serialValue,
+        repair.storageLocation,
+        repair.waitingOn,
+        repair.followUpAt,
+        repair.finalTestResult,
+        repair.finalTestDetail,
+        repair.testedAt,
+        repair.receivedAt,
+        repair.readyAt,
+        repair.collectedAt,
+        repair.cancelledAt,
+        repair.createdAt,
+        repair.updatedAt,
+        repair.revision,
+      ],
+    );
+  }
+
+  public async updateRepair(repair: Repair): Promise<void> {
+    const result = await this.client.query(
+      `update repairs
+       set job_id = $2, stage = $3, reported_fault = $4,
+           diagnosis = $5, current_finding = $6, serial_state = $7,
+           serial_value = $8, storage_location = $9, waiting_on = $10,
+           follow_up_at = $11, final_test_result = $12,
+           final_test_detail = $13, tested_at = $14, received_at = $15,
+           ready_at = $16, collected_at = $17, cancelled_at = $18,
+           updated_at = $19, revision = $20
+       where id = $1`,
+      [
+        repair.id,
+        repair.jobId,
+        repair.stage,
+        repair.reportedFault,
+        repair.diagnosis,
+        repair.currentFinding,
+        repair.serialState,
+        repair.serialValue,
+        repair.storageLocation,
+        repair.waitingOn,
+        repair.followUpAt,
+        repair.finalTestResult,
+        repair.finalTestDetail,
+        repair.testedAt,
+        repair.receivedAt,
+        repair.readyAt,
+        repair.collectedAt,
+        repair.cancelledAt,
+        repair.updatedAt,
+        repair.revision,
+      ],
+    );
+    this.requireUpdated(result, 'Repair', repair.id);
   }
 
   public async appendEvent(event: DomainEvent): Promise<void> {
