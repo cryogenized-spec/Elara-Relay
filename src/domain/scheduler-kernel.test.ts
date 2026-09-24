@@ -432,9 +432,13 @@ describe('Scheduler domain', () => {
       action.id,
     );
     expect(paused.status).toBe('PAUSED');
-    expect(
-      (await kernel.getSchedule('2026-09-26T07:00:00.000Z')).due,
-    ).toEqual([]);
+    const pausedSchedule = await kernel.getSchedule(
+      '2026-09-26T07:00:00.000Z',
+    );
+    expect(pausedSchedule.due).toEqual([]);
+    expect(pausedSchedule.paused.map((value) => value.id)).toEqual([
+      action.id,
+    ]);
 
     const resumed = await kernel.resumeScheduledAction(
       {
