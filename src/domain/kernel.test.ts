@@ -212,6 +212,45 @@ describe('domain kernel', () => {
     expect(next.waitingSince).toBeNull();
   });
 
+  it('uses an explicit cancellation command and prevents terminal reopening', async () => {
+    const { kernel } = makeKernel();
+    const task = await kernel.createTask(
+      {
+        mutationId: 'MUT-cancel-create-001',
+        actor: 'operator-ui',
+      },
+      {
+        jobId: null,
+        title: 'Cancel me',
+        priority: 'LOW',
+        dueAt: null,
+        followUpAt: null,
+      },
+    );
+
+    const cancelled = await kernel.cancelTask(
+      {
+        mutationId: 'MUT-cancel-task-0001',
+        actor: 'operator-ui',
+        expectedRevision: task.revision,
+      },
+      task.id,
+    );
+    expect(cancelled.status).toBe('CANCELLED');
+
+    await expect(
+      kernel.updateTask(
+        {
+          mutationId: 'MUT-reopen-cancel-01',
+          actor: 'operator-ui',
+          expectedRevision: cancelled.revision,
+        },
+        task.id,
+        { status: 'NEXT' },
+      ),
+    ).rejects.toThrow('Cannot transition a cancelled task');
+  });
+
   it('surfaces due and follow-up work while excluding completed work', async () => {
     const { kernel } = makeKernel();
     const due = await kernel.createTask(
