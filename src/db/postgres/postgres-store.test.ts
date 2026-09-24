@@ -283,6 +283,29 @@ describe('PostgresDomainStore', () => {
     expect(client.released).toBe(true);
   });
 
+  it('returns undefined for missing point reads', async () => {
+    const client = new FakeClient((sql) => {
+      const normalized = sql.replaceAll(/\s+/g, ' ').trim().toLowerCase();
+      if (
+        normalized.includes(' where id = $1') ||
+        normalized.includes(' where mutation_id = $1')
+      ) {
+        return { rows: [], rowCount: 0 };
+      }
+      return defaultResponder(sql);
+    });
+    const store = new PostgresDomainStore(new FakePool(client));
+
+    await store.read(async (read) => {
+      expect(await read.getParty(party.id)).toBeUndefined();
+      expect(await read.getJob(job.id)).toBeUndefined();
+      expect(await read.getTask(task.id)).toBeUndefined();
+      expect(
+        await read.getMutationReceipt(receipt.mutationId),
+      ).toBeUndefined();
+    });
+  });
+
   it('rolls back failed transactions and always releases the connection', async () => {
     const client = new FakeClient((sql) => defaultResponder(sql));
     const store = new PostgresDomainStore(new FakePool(client));
