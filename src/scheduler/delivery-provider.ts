@@ -1,10 +1,10 @@
 import type {
-  ScheduledAction,
   ScheduledActionRun,
+  ScheduledDeliverySnapshot,
 } from '../contracts/scheduler';
 
 export interface DeliveryRequest {
-  action: ScheduledAction;
+  delivery: ScheduledDeliverySnapshot;
   run: ScheduledActionRun;
   idempotencyKey: string;
 }
