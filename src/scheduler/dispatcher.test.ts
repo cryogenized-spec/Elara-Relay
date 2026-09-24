@@ -103,6 +103,7 @@ describe('SchedulerDispatcher', () => {
     expect(requests[0]?.run.occurrenceKey).toBe(
       requests[1]?.run.occurrenceKey,
     );
+    expect(requests[0]?.delivery).toEqual(requests[1]?.delivery);
   });
 
   it('does not call delivery providers for leased occurrences', async () => {
