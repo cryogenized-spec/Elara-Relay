@@ -164,6 +164,39 @@ describe('API foundation', () => {
     );
     expect(completeResponse.status).toBe(200);
 
+    const cancellationTask = await jsonRequest(app, '/tasks', 'POST', {
+      mutation: {
+        mutationId: 'MUT-api-cancel-new-01',
+        actor: 'operator-ui',
+      },
+      input: {
+        jobId: job.id,
+        title: 'Temporary follow-up',
+        priority: 'LOW',
+        dueAt: null,
+        followUpAt: null,
+      },
+    });
+    expect(cancellationTask.status).toBe(201);
+    const cancellable = (await cancellationTask.json()) as {
+      id: string;
+      revision: number;
+    };
+
+    const cancellation = await jsonRequest(
+      app,
+      `/tasks/${cancellable.id}/cancel`,
+      'POST',
+      {
+        mutation: {
+          mutationId: 'MUT-api-cancel-run-01',
+          actor: 'operator-ui',
+          expectedRevision: cancellable.revision,
+        },
+      },
+    );
+    expect(cancellation.status).toBe(200);
+
     const noteResponse = await jsonRequest(
       app,
       `/jobs/${job.id}/events`,
@@ -182,7 +215,7 @@ describe('API foundation', () => {
     const jobView = await app.request(`/jobs/${job.id}`);
     expect(jobView.status).toBe(200);
     const view = (await jobView.json()) as { tasks: unknown[]; events: unknown[] };
-    expect(view.tasks).toHaveLength(1);
+    expect(view.tasks).toHaveLength(2);
     const eventTypes = (view as { events: Array<{ eventType: string }> }).events.map(
       (event) => event.eventType,
     );
@@ -192,6 +225,8 @@ describe('API foundation', () => {
       'TASK_UPDATED',
       'TASK_WAITING',
       'TASK_COMPLETED',
+      'TASK_CREATED',
+      'TASK_CANCELLED',
       'JOB_NOTE',
     ]);
 
