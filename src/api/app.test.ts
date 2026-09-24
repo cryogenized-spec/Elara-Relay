@@ -38,11 +38,12 @@ async function jsonRequest(
   method: string,
   body?: unknown,
 ) {
-  return app.request(path, {
-    method,
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.headers = { 'content-type': 'application/json' };
+    init.body = JSON.stringify(body);
+  }
+  return app.request(path, init);
 }
 
 describe('API foundation', () => {
