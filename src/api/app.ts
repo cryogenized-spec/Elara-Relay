@@ -12,6 +12,12 @@ import {
 import { createJobInputSchema } from '../contracts/job';
 import { mutationIdSchema } from '../contracts/mutation';
 import { createPartyInputSchema } from '../contracts/party';
+import {
+  createRepairInputSchema,
+  moveRepairStageInputSchema,
+  recordRepairTestInputSchema,
+  repairDetailsPatchSchema,
+} from '../contracts/repair';
 import { revisionSchema } from '../contracts/shared';
 import {
   createTaskInputSchema,
@@ -21,6 +27,7 @@ import {
 import {
   DomainNotFoundError,
   DomainValidationError,
+  DuplicateEntityError,
   MutationReplayMismatchError,
 } from '../domain/errors';
 import type { DomainKernel } from '../domain/kernel';
@@ -65,6 +72,34 @@ const createTaskRequestSchema = z
   .object({
     mutation: mutationRequestSchema,
     input: createTaskInputSchema,
+  })
+  .strict();
+
+const createRepairRequestSchema = z
+  .object({
+    mutation: mutationRequestSchema,
+    input: createRepairInputSchema,
+  })
+  .strict();
+
+const updateRepairDetailsRequestSchema = z
+  .object({
+    mutation: versionedMutationRequestSchema,
+    patch: repairDetailsPatchSchema,
+  })
+  .strict();
+
+const moveRepairStageRequestSchema = z
+  .object({
+    mutation: versionedMutationRequestSchema,
+    input: moveRepairStageInputSchema,
+  })
+  .strict();
+
+const recordRepairTestRequestSchema = z
+  .object({
+    mutation: versionedMutationRequestSchema,
+    input: recordRepairTestInputSchema,
   })
   .strict();
 
@@ -162,6 +197,60 @@ function registerDomainRoutes(
       201,
     );
   });
+
+  app.post('/repairs', async (context) => {
+    const request = createRepairRequestSchema.parse(await requestJson(context));
+    return context.json(
+      await kernel.createRepair(
+        operatorMutation(request.mutation),
+        request.input,
+      ),
+      201,
+    );
+  });
+
+  app.patch('/repairs/:repairId', async (context) => {
+    const request = updateRepairDetailsRequestSchema.parse(
+      await requestJson(context),
+    );
+    return context.json(
+      await kernel.updateRepairDetails(
+        operatorVersionedMutation(request.mutation),
+        context.req.param('repairId'),
+        request.patch,
+      ),
+    );
+  });
+
+  app.post('/repairs/:repairId/stage', async (context) => {
+    const request = moveRepairStageRequestSchema.parse(
+      await requestJson(context),
+    );
+    return context.json(
+      await kernel.moveRepairStage(
+        operatorVersionedMutation(request.mutation),
+        context.req.param('repairId'),
+        request.input,
+      ),
+    );
+  });
+
+  app.post('/repairs/:repairId/test', async (context) => {
+    const request = recordRepairTestRequestSchema.parse(
+      await requestJson(context),
+    );
+    return context.json(
+      await kernel.recordRepairTest(
+        operatorVersionedMutation(request.mutation),
+        context.req.param('repairId'),
+        request.input,
+      ),
+    );
+  });
+
+  app.get('/repairs/:repairId', async (context) =>
+    context.json(await kernel.getRepair(context.req.param('repairId'))),
+  );
 
   app.patch('/tasks/:taskId', async (context) => {
     const request = updateTaskRequestSchema.parse(await requestJson(context));
@@ -326,7 +415,8 @@ export function createApi(
 
     if (
       error instanceof RevisionConflictError ||
-      error instanceof MutationReplayMismatchError
+      error instanceof MutationReplayMismatchError ||
+      error instanceof DuplicateEntityError
     ) {
       return context.json(
         {
