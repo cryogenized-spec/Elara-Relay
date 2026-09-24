@@ -180,11 +180,22 @@ if (
 }
 
 if (
-  !/delivery_snapshot ->> 'actionType' <> 'EMAIL'[\s\S]*delivery_snapshot -> 'payload' ->> 'recipient' = 'OWNER'/i.test(
+  !/delivery_snapshot ->> 'actionType' <> 'EMAIL'[\s\S]*delivery_snapshot -> 'payload' \? 'recipient'[\s\S]*delivery_snapshot -> 'payload' ->> 'recipient' = 'OWNER'/i.test(
     schedulerSql,
   )
 ) {
   findings.push('scheduler delivery snapshots must preserve owner-only email');
+}
+
+if (
+  !/delivery_snapshot ->> 'actionType' <> 'REMINDER'[\s\S]*delivery_snapshot -> 'payload' \? 'message'/i.test(
+    schedulerSql,
+  ) ||
+  !/delivery_snapshot ->> 'actionType' <> 'DIGEST'[\s\S]*delivery_snapshot -> 'payload' \? 'scope'[\s\S]*= 'TODAY'/i.test(
+    schedulerSql,
+  )
+) {
+  findings.push('scheduler delivery snapshots must preserve typed payload fields');
 }
 
 for (const eventMarker of [
