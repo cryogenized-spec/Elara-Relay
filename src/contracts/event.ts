@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mutationActorSchema } from './foundation';
+import { mutationIdSchema } from './mutation';
 import { entityIdSchema, revisionSchema, timestampSchema } from './shared';
 
 export const eventEntityTypeSchema = z.enum(['PARTY', 'JOB', 'TASK']);
@@ -24,7 +25,7 @@ export const fieldChangeSchema = z
 export const eventSchema = z
   .object({
     id: entityIdSchema,
-    mutationId: z.string().min(16).max(128),
+    mutationId: mutationIdSchema,
     entityType: eventEntityTypeSchema,
     entityId: entityIdSchema,
     eventType: eventTypeSchema,
