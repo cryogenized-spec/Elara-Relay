@@ -28,6 +28,7 @@ const expectedScripts = {
   e2e: 'playwright test',
   'verify:gates': 'node scripts/check-verification-integrity.mjs',
   'secrets:check': 'node scripts/secret-scan.mjs',
+  'supply-chain:check': 'node scripts/supply-chain-gate.mjs',
   'adversarial:check': 'node scripts/adversarial-foundation-gate.mjs',
 };
 
@@ -87,6 +88,31 @@ for (const marker of [
   }
 }
 
+const npmPolicy = read('.npmrc');
+for (const marker of [
+  'ignore-scripts=true',
+  'save-exact=true',
+  'engine-strict=true',
+  'strict-ssl=true',
+]) {
+  if (!npmPolicy.includes(marker)) {
+    fail(`.npmrc lost required policy: ${marker}`);
+  }
+}
+
+const supplyChain = read('scripts/supply-chain-gate.mjs');
+for (const marker of [
+  'lockfileVersion',
+  'reviewed GitHub Action disappeared',
+  'cryptographic integrity digest',
+  'root lifecycle script is forbidden',
+  'exact direct dependencies',
+]) {
+  if (!supplyChain.includes(marker)) {
+    fail(`supply-chain gate lost required proof: ${marker}`);
+  }
+}
+
 const playwright = read('playwright.config.ts');
 for (const marker of [
   "name: 'chromium'",
@@ -128,6 +154,9 @@ for (const required of [
   'npm ci --ignore-scripts --no-audit --no-fund',
   'npm run verify:gates',
   'npm run secrets:check',
+  'npm audit signatures',
+  'npm audit --audit-level=high',
+  'npm run supply-chain:check',
   'npm run lint',
   'npm run typecheck:ts6',
   'npm run typecheck:ts7',
