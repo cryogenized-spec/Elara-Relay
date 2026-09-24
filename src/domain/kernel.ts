@@ -211,6 +211,14 @@ export class DomainKernel {
       async (transaction) => {
         const current = await this.requireTask(transaction, id);
         const revision = nextRevision(current.revision, context.expectedRevision);
+        if (
+          patch.status !== undefined &&
+          (current.status === 'DONE' || current.status === 'CANCELLED')
+        ) {
+          throw new DomainValidationError(
+            `Cannot transition a ${current.status.toLowerCase()} task through updateTask`,
+          );
+        }
         const now = this.now();
         const leavesWaiting =
           patch.status !== undefined && patch.status !== 'WAITING';
@@ -381,6 +389,63 @@ export class DomainKernel {
     );
   }
 
+  public async cancelTask(
+    rawContext: VersionedMutationContext,
+    taskId: string,
+  ): Promise<Task> {
+    const context = versionedMutationContextSchema.parse(rawContext);
+    const id = entityIdSchema.parse(taskId);
+
+    return this.executeOnce(
+      { mutationId: context.mutationId, actor: context.actor },
+      'cancelTask',
+      { expectedRevision: context.expectedRevision, taskId: id },
+      async (transaction) => {
+        const current = await this.requireTask(transaction, id);
+        const revision = nextRevision(
+          current.revision,
+          context.expectedRevision,
+        );
+        if (current.status === 'DONE') {
+          throw new DomainValidationError('Completed tasks cannot be cancelled');
+        }
+        if (current.status === 'CANCELLED') {
+          throw new DomainValidationError('Task is already cancelled');
+        }
+
+        const now = this.now();
+        const next = taskSchema.parse({
+          ...current,
+          status: 'CANCELLED',
+          waitingOn: null,
+          waitingSince: null,
+          updatedAt: now,
+          revision,
+        });
+
+        await transaction.updateTask(next);
+        await transaction.appendEvent(
+          this.makeEvent(context, {
+            entityType: 'TASK',
+            entityId: next.id,
+            eventType: 'TASK_CANCELLED',
+            detail: null,
+            changes: {
+              status: { before: current.status, after: next.status },
+              waitingOn: { before: current.waitingOn, after: next.waitingOn },
+              waitingSince: {
+                before: current.waitingSince,
+                after: next.waitingSince,
+              },
+            },
+            revisionAfter: next.revision,
+          }),
+        );
+        return next;
+      },
+    );
+  }
+
   public async addJobEvent(
     rawContext: VersionedMutationContext,
     jobId: string,
@@ -479,7 +544,7 @@ export class DomainKernel {
   }
 
   public async search(rawQuery: string): Promise<SearchResult> {
-    const query = rawQuery.trim().toLocaleLowerCase();
+    const query = rawQuery.trim().toLowerCase();
     if (query.length === 0 || query.length > 200) {
       throw new DomainValidationError('Search query must contain 1-200 characters');
     }
@@ -494,20 +559,20 @@ export class DomainKernel {
 
       return {
         parties: parties.filter((party) =>
-          party.name.toLocaleLowerCase().includes(query),
+          party.name.toLowerCase().includes(query),
         ),
         jobs: jobs.filter(
           (job) =>
-            job.key.toLocaleLowerCase().includes(query) ||
-            job.title.toLocaleLowerCase().includes(query),
+            job.key.toLowerCase().includes(query) ||
+            job.title.toLowerCase().includes(query),
         ),
         tasks: tasks.filter(
           (task) =>
-            task.title.toLocaleLowerCase().includes(query) ||
-            (task.waitingOn?.toLocaleLowerCase().includes(query) ?? false),
+            task.title.toLowerCase().includes(query) ||
+            (task.waitingOn?.toLowerCase().includes(query) ?? false),
         ),
         events: events.filter(
-          (event) => event.detail?.toLocaleLowerCase().includes(query) ?? false,
+          (event) => event.detail?.toLowerCase().includes(query) ?? false,
         ),
       };
     });
