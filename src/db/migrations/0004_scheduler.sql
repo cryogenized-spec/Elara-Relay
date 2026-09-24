@@ -92,18 +92,27 @@ create table scheduled_actions (
   check (
     action_type <> 'EMAIL'
     or (
-      payload ->> 'recipient' = 'OWNER'
+      payload ? 'recipient'
+      and payload ? 'subject'
+      and payload ? 'body'
+      and payload ->> 'recipient' = 'OWNER'
       and char_length(trim(payload ->> 'subject')) between 1 and 240
       and char_length(trim(payload ->> 'body')) between 1 and 12000
     )
   ),
   check (
     action_type <> 'REMINDER'
-    or char_length(trim(payload ->> 'message')) between 1 and 4000
+    or (
+      payload ? 'message'
+      and char_length(trim(payload ->> 'message')) between 1 and 4000
+    )
   ),
   check (
     action_type <> 'DIGEST'
-    or payload ->> 'scope' = 'TODAY'
+    or (
+      payload ? 'scope'
+      and payload ->> 'scope' = 'TODAY'
+    )
   )
 );
 
@@ -153,6 +162,7 @@ create table scheduled_action_runs (
   claimed_at timestamptz not null,
   completed_at timestamptz,
   check (lease_expires_at > claimed_at),
+  check (completed_at is null or completed_at >= claimed_at),
   check (
     (
       status = 'CLAIMED'
