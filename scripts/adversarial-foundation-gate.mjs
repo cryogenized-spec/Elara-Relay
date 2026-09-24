@@ -125,6 +125,30 @@ hostileMutation(
   }
 }
 
+{
+  const path = 'src/app/App.tsx';
+  const absolute = join(root, path);
+  const original = readFileSync(absolute, 'utf8');
+  const hostile = original.replace(
+    '<main className="shell">',
+    '<main className="shell" dangerouslySetInnerHTML={{ __html: "<p>hostile</p>" }}>',
+  );
+  if (hostile === original) {
+    throw new Error('Mutation target disappeared: direct HTML injection');
+  }
+  try {
+    writeFileSync(absolute, hostile);
+    const result = runNode('scripts/security-architecture-gate.mjs');
+    if (result.status === 0) {
+      throw new Error(
+        'Adversarial mutation survived: direct HTML injection was not rejected.',
+      );
+    }
+  } finally {
+    writeFileSync(absolute, original);
+  }
+}
+
 process.stdout.write(
-  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, and workflow-permission mutations were rejected.\n',
+  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, and client-injection mutations were rejected.\n',
 );
