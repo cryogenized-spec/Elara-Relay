@@ -58,6 +58,9 @@ jobs:
       - name: Security architecture gate
         run: npm run security:check
 
+      - name: Authentication boundary gate
+        run: npm run auth:check
+
       - name: Verify registry signatures
         run: npm audit signatures
 
@@ -87,6 +90,9 @@ jobs:
 
       - name: Adversarial domain gate
         run: npm run adversarial:domain
+
+      - name: Adversarial authentication gate
+        run: npm run adversarial:auth
 
       - name: Migration contract gate
         run: npm run schema:check
