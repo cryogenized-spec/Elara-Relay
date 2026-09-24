@@ -61,6 +61,9 @@ jobs:
       - name: Authentication boundary gate
         run: npm run auth:check
 
+      - name: Documentation contract gate
+        run: npm run docs:check
+
       - name: Verify registry signatures
         run: npm audit signatures
 
