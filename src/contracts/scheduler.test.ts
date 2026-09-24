@@ -126,6 +126,15 @@ describe('Scheduler contracts', () => {
         scheduledActionId: ACTION_ID,
         occurrenceKey: `OCC-${ACTION_ID}-2026-09-25T07:00:00.000Z`,
         scheduledFor: '2026-09-25T07:00:00.000Z',
+        deliverySnapshot: {
+          title: 'Do thing',
+          actionType: 'REMINDER',
+          payload: {
+            kind: 'REMINDER',
+            message: 'Do thing',
+          },
+          timezone: 'Africa/Johannesburg',
+        },
         status: 'CLAIMED',
         leaseToken: LEASE_ID,
         workerId: 'worker-a',
@@ -145,6 +154,15 @@ describe('Scheduler contracts', () => {
         scheduledActionId: ACTION_ID,
         occurrenceKey: `OCC-${ACTION_ID}-2026-09-25T07:00:00.000Z`,
         scheduledFor: '2026-09-25T07:00:00.000Z',
+        deliverySnapshot: {
+          title: 'Do thing',
+          actionType: 'REMINDER',
+          payload: {
+            kind: 'REMINDER',
+            message: 'Do thing',
+          },
+          timezone: 'Africa/Johannesburg',
+        },
         status: 'FAILED',
         leaseToken: LEASE_ID,
         workerId: 'worker-a',
