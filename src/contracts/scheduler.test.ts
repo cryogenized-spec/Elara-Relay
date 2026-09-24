@@ -125,6 +125,15 @@ describe('Scheduler contracts', () => {
       scheduledActionId: ACTION_ID,
       occurrenceKey: `OCC-${ACTION_ID}-2026-09-25T07:00:00.000Z`,
       scheduledFor: '2026-09-25T07:00:00.000Z',
+      deliverySnapshot: {
+        title: 'Lease-window fixture',
+        actionType: 'REMINDER' as const,
+        payload: {
+          kind: 'REMINDER' as const,
+          message: 'Lease-window fixture',
+        },
+        timezone: 'Africa/Johannesburg' as const,
+      },
       status: 'SUCCEEDED' as const,
       leaseToken: LEASE_ID,
       workerId: 'worker-a',
