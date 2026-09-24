@@ -138,9 +138,12 @@ First-class Repair workflow, waiting/follow-up semantics, serial health, final-t
 
 Scheduled Actions, recurring actions, occurrence ledger, leases, retry safety, immutable delivery snapshots, provider idempotency, owner-only automatic email payload contract.
 
-## 7. Remaining Phase 1 plan
+## 7. Phase 1 implementation sequence
 
 ### Pass 1F — Documentation and visual system
+
+This pass establishes the documentation baseline that the UI implementation
+must follow.
 
 Goals:
 
