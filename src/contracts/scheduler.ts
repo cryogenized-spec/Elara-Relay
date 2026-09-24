@@ -135,6 +135,24 @@ export const updateScheduledActionPatchSchema = z
     message: 'Scheduled action patch must contain at least one field',
   });
 
+export const scheduledDeliverySnapshotSchema = z
+  .object({
+    title: z.string().trim().min(1).max(240),
+    actionType: scheduledActionTypeSchema,
+    payload: scheduledActionPayloadSchema,
+    timezone: schedulerTimezoneSchema,
+  })
+  .strict()
+  .superRefine((snapshot, context) => {
+    if (snapshot.actionType !== snapshot.payload.kind) {
+      context.addIssue({
+        code: 'custom',
+        path: ['payload'],
+        message: 'Delivery snapshot payload kind must match actionType',
+      });
+    }
+  });
+
 export const scheduledActionRunStatusSchema = z.enum([
   'CLAIMED',
   'SUCCEEDED',
@@ -147,6 +165,7 @@ export const scheduledActionRunSchema = z
     scheduledActionId: entityIdSchema,
     occurrenceKey: z.string().min(1).max(220),
     scheduledFor: timestampSchema,
+    deliverySnapshot: scheduledDeliverySnapshotSchema,
     status: scheduledActionRunStatusSchema,
     leaseToken: entityIdSchema,
     workerId: z.string().trim().min(1).max(160),
@@ -242,6 +261,9 @@ export type CreateScheduledActionInput = z.infer<
 >;
 export type UpdateScheduledActionPatch = z.infer<
   typeof updateScheduledActionPatchSchema
+>;
+export type ScheduledDeliverySnapshot = z.infer<
+  typeof scheduledDeliverySnapshotSchema
 >;
 export type ScheduledActionRun = z.infer<typeof scheduledActionRunSchema>;
 export type ClaimScheduledActionInput = z.infer<
