@@ -86,7 +86,7 @@ export class DomainKernel {
     const context = mutationContextSchema.parse(rawContext);
     const input = createPartyInputSchema.parse(rawInput);
 
-    return this.executeOnce(context, 'createParty', input, (transaction) => {
+    return this.executeOnce(context, 'createParty', input, async (transaction) => {
       const now = this.now();
       const party: Party = {
         id: this.newId(),
@@ -97,8 +97,8 @@ export class DomainKernel {
         revision: 1,
       };
 
-      transaction.insertParty(party);
-      transaction.appendEvent(
+      await transaction.insertParty(party);
+      await transaction.appendEvent(
         this.makeEvent(context, {
           entityType: 'PARTY',
           entityId: party.id,
@@ -119,8 +119,8 @@ export class DomainKernel {
     const context = mutationContextSchema.parse(rawContext);
     const input = createJobInputSchema.parse(rawInput);
 
-    return this.executeOnce(context, 'createJob', input, (transaction) => {
-      if (input.partyId !== null && transaction.getParty(input.partyId) === undefined) {
+    return this.executeOnce(context, 'createJob', input, async (transaction) => {
+      if (input.partyId !== null && (await transaction.getParty(input.partyId)) === undefined) {
         throw new DomainNotFoundError('Party', input.partyId);
       }
 
@@ -137,8 +137,8 @@ export class DomainKernel {
         revision: 1,
       };
 
-      transaction.insertJob(job);
-      transaction.appendEvent(
+      await transaction.insertJob(job);
+      await transaction.appendEvent(
         this.makeEvent(context, {
           entityType: 'JOB',
           entityId: job.id,
@@ -159,8 +159,8 @@ export class DomainKernel {
     const context = mutationContextSchema.parse(rawContext);
     const input = createTaskInputSchema.parse(rawInput);
 
-    return this.executeOnce(context, 'createTask', input, (transaction) => {
-      if (input.jobId !== null && transaction.getJob(input.jobId) === undefined) {
+    return this.executeOnce(context, 'createTask', input, async (transaction) => {
+      if (input.jobId !== null && (await transaction.getJob(input.jobId)) === undefined) {
         throw new DomainNotFoundError('Job', input.jobId);
       }
 
@@ -180,8 +180,8 @@ export class DomainKernel {
         revision: 1,
       };
 
-      transaction.insertTask(task);
-      transaction.appendEvent(
+      await transaction.insertTask(task);
+      await transaction.appendEvent(
         this.makeEvent(context, {
           entityType: 'TASK',
           entityId: task.id,
@@ -208,8 +208,8 @@ export class DomainKernel {
       { mutationId: context.mutationId, actor: context.actor },
       'updateTask',
       { expectedRevision: context.expectedRevision, taskId: id, patch },
-      (transaction) => {
-        const current = this.requireTask(transaction, id);
+      async (transaction) => {
+        const current = await this.requireTask(transaction, id);
         const revision = nextRevision(current.revision, context.expectedRevision);
         const now = this.now();
         const next = taskSchema.parse({
@@ -236,8 +236,8 @@ export class DomainKernel {
           throw new DomainValidationError('Task update did not change any values');
         }
 
-        transaction.updateTask(next);
-        transaction.appendEvent(
+        await transaction.updateTask(next);
+        await transaction.appendEvent(
           this.makeEvent(context, {
             entityType: 'TASK',
             entityId: next.id,
@@ -265,8 +265,8 @@ export class DomainKernel {
       { mutationId: context.mutationId, actor: context.actor },
       'markTaskWaiting',
       { expectedRevision: context.expectedRevision, taskId: id, input },
-      (transaction) => {
-        const current = this.requireTask(transaction, id);
+      async (transaction) => {
+        const current = await this.requireTask(transaction, id);
         const revision = nextRevision(
           current.revision,
           context.expectedRevision,
@@ -288,8 +288,8 @@ export class DomainKernel {
           revision,
         });
 
-        transaction.updateTask(next);
-        transaction.appendEvent(
+        await transaction.updateTask(next);
+        await transaction.appendEvent(
           this.makeEvent(context, {
             entityType: 'TASK',
             entityId: next.id,
@@ -326,8 +326,8 @@ export class DomainKernel {
       { mutationId: context.mutationId, actor: context.actor },
       'completeTask',
       { expectedRevision: context.expectedRevision, taskId: id },
-      (transaction) => {
-        const current = this.requireTask(transaction, id);
+      async (transaction) => {
+        const current = await this.requireTask(transaction, id);
         const revision = nextRevision(
           current.revision,
           context.expectedRevision,
@@ -349,8 +349,8 @@ export class DomainKernel {
           revision,
         });
 
-        transaction.updateTask(next);
-        transaction.appendEvent(
+        await transaction.updateTask(next);
+        await transaction.appendEvent(
           this.makeEvent(context, {
             entityType: 'TASK',
             entityId: next.id,
@@ -392,8 +392,8 @@ export class DomainKernel {
         jobId: id,
         detail: normalizedDetail,
       },
-      (transaction) => {
-        const current = this.requireJob(transaction, id);
+      async (transaction) => {
+        const current = await this.requireJob(transaction, id);
         const now = this.now();
         const next: Job = {
           ...current,
@@ -401,8 +401,8 @@ export class DomainKernel {
           revision: nextRevision(current.revision, context.expectedRevision),
         };
 
-        transaction.updateJob(next);
-        transaction.appendEvent(
+        await transaction.updateJob(next);
+        await transaction.appendEvent(
           this.makeEvent(context, {
             entityType: 'JOB',
             entityId: next.id,
@@ -419,26 +419,36 @@ export class DomainKernel {
 
   public async getJob(jobId: string): Promise<JobView> {
     const id = entityIdSchema.parse(jobId);
-    return this.store.read((read) => {
-      const job = read.getJob(id);
+    return this.store.read(async (read) => {
+      const job = await read.getJob(id);
       if (job === undefined) {
         throw new DomainNotFoundError('Job', id);
       }
+
+      const [tasks, allEvents] = await Promise.all([
+        read.listTasks(),
+        read.listEvents(),
+      ]);
+      const jobTasks = tasks.filter((task) => task.jobId === id);
+      const taskIds = new Set(jobTasks.map((task) => task.id));
+      const events = allEvents.filter(
+        (event) =>
+          (event.entityType === 'JOB' && event.entityId === id) ||
+          (event.entityType === 'TASK' && taskIds.has(event.entityId)),
+      );
+
       return {
         job,
-        tasks: read.listTasks().filter((task) => task.jobId === id),
-        events: read
-          .listEvents()
-          .filter((event) => event.entityType === 'JOB' && event.entityId === id),
+        tasks: jobTasks,
+        events,
       };
     });
   }
 
   public async getToday(rawAsOf: string): Promise<TodayResult> {
     const asOf = timestampSchema.parse(rawAsOf);
-    return this.store.read((read) => {
-      const tasks = read
-        .listTasks()
+    return this.store.read(async (read) => {
+      const tasks = (await read.listTasks())
         .filter((task) => task.status !== 'DONE' && task.status !== 'CANCELLED')
         .filter((task) => {
           const candidates = [task.dueAt, task.followUpAt].filter(
@@ -465,40 +475,51 @@ export class DomainKernel {
       throw new DomainValidationError('Search query must contain 1-200 characters');
     }
 
-    return this.store.read((read) => ({
-      parties: read
-        .listParties()
-        .filter((party) => party.name.toLocaleLowerCase().includes(query)),
-      jobs: read
-        .listJobs()
-        .filter(
+    return this.store.read(async (read) => {
+      const [parties, jobs, tasks, events] = await Promise.all([
+        read.listParties(),
+        read.listJobs(),
+        read.listTasks(),
+        read.listEvents(),
+      ]);
+
+      return {
+        parties: parties.filter((party) =>
+          party.name.toLocaleLowerCase().includes(query),
+        ),
+        jobs: jobs.filter(
           (job) =>
             job.key.toLocaleLowerCase().includes(query) ||
             job.title.toLocaleLowerCase().includes(query),
         ),
-      tasks: read
-        .listTasks()
-        .filter(
+        tasks: tasks.filter(
           (task) =>
             task.title.toLocaleLowerCase().includes(query) ||
             (task.waitingOn?.toLocaleLowerCase().includes(query) ?? false),
         ),
-      events: read
-        .listEvents()
-        .filter((event) => event.detail?.toLocaleLowerCase().includes(query) ?? false),
-    }));
+        events: events.filter(
+          (event) => event.detail?.toLocaleLowerCase().includes(query) ?? false,
+        ),
+      };
+    });
   }
 
-  private requireTask(transaction: DomainTransaction, id: string): Task {
-    const task = transaction.getTask(id);
+  private async requireTask(
+    transaction: DomainTransaction,
+    id: string,
+  ): Promise<Task> {
+    const task = await transaction.getTask(id);
     if (task === undefined) {
       throw new DomainNotFoundError('Task', id);
     }
     return task;
   }
 
-  private requireJob(transaction: DomainTransaction, id: string): Job {
-    const job = transaction.getJob(id);
+  private async requireJob(
+    transaction: DomainTransaction,
+    id: string,
+  ): Promise<Job> {
+    const job = await transaction.getJob(id);
     if (job === undefined) {
       throw new DomainNotFoundError('Job', id);
     }
@@ -539,7 +560,7 @@ export class DomainKernel {
     });
 
     return this.store.transact(async (transaction) => {
-      const existing = transaction.getMutationReceipt(context.mutationId);
+      const existing = await transaction.getMutationReceipt(context.mutationId);
       if (existing !== undefined) {
         if (
           existing.command !== command ||
@@ -551,7 +572,7 @@ export class DomainKernel {
       }
 
       const result = await work(transaction);
-      transaction.saveMutationReceipt(
+      await transaction.saveMutationReceipt(
         mutationReceiptSchema.parse({
           mutationId: context.mutationId,
           command,
