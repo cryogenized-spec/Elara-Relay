@@ -28,8 +28,10 @@ if (!/mutation_id\s+text\s+primary key/i.test(sql)) {
 if (!/create table events[\s\S]*mutation_id\s+text\s+not null\s+unique/i.test(sql)) {
   findings.push('events.mutation_id must remain unique so one mutation cannot append multiple events');
 }
-if (!/revision\s+bigint\s+not null\s+check\s*\(revision > 0\)/i.test(sql)) {
-  findings.push('mutable records must retain positive revision constraints');
+const safeRevisionConstraint =
+  /revision\s+bigint\s+not null\s+check\s*\(revision between 1 and 9007199254740991\)/gi;
+if ([...sql.matchAll(safeRevisionConstraint)].length < 3) {
+  findings.push('all mutable records must retain JavaScript-safe positive revision constraints');
 }
 if (!/before update or delete on events/i.test(sql)) {
   findings.push('events must remain database-level append-only');
