@@ -53,6 +53,7 @@ create table events (
       'TASK_UPDATED',
       'TASK_WAITING',
       'TASK_COMPLETED',
+      'TASK_CANCELLED',
       'JOB_NOTE'
     )
   ),
