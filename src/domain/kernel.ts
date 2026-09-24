@@ -1230,10 +1230,11 @@ export class DomainKernel {
       'recordScheduledActionSuccess',
       input,
       async (transaction) => {
-        const run = await this.requireScheduledActionRun(
-          transaction,
-          input.runId,
-        );
+        const { run, action: current } =
+          await this.requireScheduledActionRunWithAction(
+            transaction,
+            input.runId,
+          );
         if (run.status !== 'CLAIMED') {
           throw new DomainValidationError(
             'Only a claimed scheduler run can succeed',
@@ -1245,10 +1246,6 @@ export class DomainKernel {
           );
         }
 
-        const current = await this.requireScheduledAction(
-          transaction,
-          run.scheduledActionId,
-        );
         const succeeded = scheduledActionRunSchema.parse({
           ...run,
           status: 'SUCCEEDED',
@@ -1331,10 +1328,11 @@ export class DomainKernel {
       'recordScheduledActionFailure',
       input,
       async (transaction) => {
-        const run = await this.requireScheduledActionRun(
-          transaction,
-          input.runId,
-        );
+        const { run, action } =
+          await this.requireScheduledActionRunWithAction(
+            transaction,
+            input.runId,
+          );
         if (run.status !== 'CLAIMED') {
           throw new DomainValidationError(
             'Only a claimed scheduler run can fail',
@@ -1346,10 +1344,6 @@ export class DomainKernel {
           );
         }
 
-        const action = await this.requireScheduledAction(
-          transaction,
-          run.scheduledActionId,
-        );
         const failed = scheduledActionRunSchema.parse({
           ...run,
           status: 'FAILED',
@@ -1593,6 +1587,25 @@ export class DomainKernel {
       throw new DomainNotFoundError('ScheduledActionRun', id);
     }
     return run;
+  }
+
+  private async requireScheduledActionRunWithAction(
+    transaction: DomainTransaction,
+    id: string,
+  ): Promise<{ run: ScheduledActionRun; action: ScheduledAction }> {
+    const actionId = await transaction.getScheduledActionRunActionId(id);
+    if (actionId === undefined) {
+      throw new DomainNotFoundError('ScheduledActionRun', id);
+    }
+
+    const action = await this.requireScheduledAction(transaction, actionId);
+    const run = await this.requireScheduledActionRun(transaction, id);
+    if (run.scheduledActionId !== action.id) {
+      throw new DomainValidationError(
+        'Scheduled action run changed ownership during transaction',
+      );
+    }
+    return { run, action };
   }
 
   private requireSystemActor(context: MutationContext): void {
