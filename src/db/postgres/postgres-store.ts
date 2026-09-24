@@ -119,7 +119,7 @@ function mapEvent(row: unknown): DomainEvent {
     occurredAt: timestamp(value['occurredAt']),
     detail: value['detail'] ?? null,
     changes: jsonValue(value['changes']),
-    revisionAfter: integer(value['revision']After),
+    revisionAfter: integer(value['revisionAfter']),
   });
 }
 
