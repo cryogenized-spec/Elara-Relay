@@ -404,6 +404,16 @@ describe('Scheduler domain', () => {
       1,
     );
 
+    const jobView = await kernel.getJob(job.id);
+    expect(jobView.scheduledActions.map((value) => value.id)).toEqual([
+      action.id,
+    ]);
+    expect(
+      jobView.events.some(
+        (event) => event.eventType === 'SCHEDULED_ACTION_CREATED',
+      ),
+    ).toBe(true);
+
     await expect(
       kernel.createScheduledAction(
         {
