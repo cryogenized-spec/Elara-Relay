@@ -63,6 +63,14 @@ mutate(
 );
 
 mutate(
+  'src/domain/kernel.ts',
+  "if (current.status === 'CANCELLED') {",
+  "if (false) {",
+  () => runVitest('src/domain/kernel.test.ts'),
+  'terminal task reopening protection removal',
+);
+
+mutate(
   'src/db/migrations/0001_domain_kernel.sql',
   'before update or delete on events',
   'before insert on events',
