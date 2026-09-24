@@ -212,19 +212,28 @@ export class DomainKernel {
         const current = await this.requireTask(transaction, id);
         const revision = nextRevision(current.revision, context.expectedRevision);
         const now = this.now();
+        const leavesWaiting =
+          patch.status !== undefined && patch.status !== 'WAITING';
         const next = taskSchema.parse({
           ...current,
           ...patch,
+          waitingOn: leavesWaiting ? null : current.waitingOn,
+          waitingSince: leavesWaiting ? null : current.waitingSince,
           updatedAt: now,
           revision,
         });
 
         const changes: Record<string, FieldChange> = {};
-        for (const key of ['title', 'priority', 'dueAt', 'followUpAt'] as const) {
-          if (
-            Object.hasOwn(patch, key) &&
-            comparable(current[key]) !== comparable(next[key])
-          ) {
+        for (const key of [
+          'title',
+          'status',
+          'priority',
+          'dueAt',
+          'followUpAt',
+          'waitingOn',
+          'waitingSince',
+        ] as const) {
+          if (comparable(current[key]) !== comparable(next[key])) {
             changes[key] = {
               before: current[key],
               after: next[key],
