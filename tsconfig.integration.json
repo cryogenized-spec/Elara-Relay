@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "types": ["node", "vitest/importMeta"]
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "integration/**/*.ts"],
   "exclude": ["src/main.tsx", "src/**/*.tsx", "e2e"]
