@@ -50,6 +50,9 @@ jobs:
       - name: Supply-chain gate
         run: npm run supply-chain:check
 
+      - name: Test-quality gate
+        run: npm run test:quality
+
       - name: Lint
         run: npm run lint
 
