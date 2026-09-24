@@ -80,6 +80,30 @@ hostileMutation(
   }
 }
 
+{
+  const path = 'e2e/foundation.spec.ts';
+  const absolute = join(root, path);
+  const original = readFileSync(absolute, 'utf8');
+  const hostile = original.replace(
+    "test('foundation shell renders without browser errors'",
+    "test.only('foundation shell renders without browser errors'",
+  );
+  if (hostile === original) {
+    throw new Error('Mutation target disappeared: focused Playwright test');
+  }
+  try {
+    writeFileSync(absolute, hostile);
+    const result = runNode('scripts/test-quality-gate.mjs');
+    if (result.status === 0) {
+      throw new Error(
+        'Adversarial mutation survived: focused Playwright test was not rejected.',
+      );
+    }
+  } finally {
+    writeFileSync(absolute, original);
+  }
+}
+
 process.stdout.write(
-  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, and dependency-pin mutations were rejected.\n',
+  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, and focused-test mutations were rejected.\n',
 );
