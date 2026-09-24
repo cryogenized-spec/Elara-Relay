@@ -22,7 +22,7 @@ function walk(directory) {
   return output;
 }
 
-for (const file of [...walk('src'), ...walk('e2e')]) {
+for (const file of [...walk('src'), ...walk('e2e'), ...walk('integration')]) {
   if (!/\.(?:ts|tsx)$/.test(file)) continue;
   const rel = relative(root, file);
   const source = readFileSync(file, 'utf8');
