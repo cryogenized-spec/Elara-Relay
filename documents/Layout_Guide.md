@@ -36,6 +36,8 @@ Authoritative references used for this guide:
 - WCAG 2.2: https://www.w3.org/TR/WCAG22/
 - WCAG non-text contrast: https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html
 - WCAG target size: https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum
+- Android compact navigation guidance: https://developer.android.com/develop/ui/compose/components/navigation-bar
+- Android layout/navigation patterns: https://developer.android.com/design/ui/mobile/guides/layout-and-content/layout-and-nav-patterns
 
 These are design inputs, not dependencies. Elara keeps its own tokens and components.
 
@@ -226,7 +228,11 @@ Primary destinations:
 4. **Schedule**
 5. **Search**
 
-Use a sticky bottom navigation on mobile. Keep labels visible; do not rely on icon memory alone.
+Use a sticky bottom navigation on mobile. Android's current Material guidance
+recommends a navigation bar for three to five destinations on compact screens,
+which fits Elara's five primary destinations cleanly. Keep labels visible where
+space permits and always on the active destination; do not rely on icon memory
+alone.
 
 Global Capture remains persistently reachable without becoming a sixth crowded tab. Recommended treatment:
 
@@ -235,7 +241,10 @@ Global Capture remains persistently reachable without becoming a sixth crowded t
 
 The final placement should be decided with 412 × 915 screenshots and one-handed-use testing.
 
-Desktop may promote the same destinations into a narrow left rail.
+Desktop/tablet may promote the same destinations into a narrow left rail.
+This follows the same adaptive pattern Android recommends when moving from
+compact to larger windows rather than stretching a bottom bar across wide
+screens.
 
 ## 11. Top bar
 
