@@ -189,11 +189,16 @@ export const scheduledActionRunSchema = z
     }
 
     if (run.status === 'FAILED') {
-      if (run.completedAt === null || run.errorCode === null) {
+      if (
+        run.completedAt === null ||
+        run.errorCode === null ||
+        run.providerMessageId !== null
+      ) {
         context.addIssue({
           code: 'custom',
           path: ['status'],
-          message: 'Failed runs require completedAt and errorCode',
+          message:
+          'Failed runs require completedAt/errorCode and cannot retain providerMessageId',
         });
       }
     }
