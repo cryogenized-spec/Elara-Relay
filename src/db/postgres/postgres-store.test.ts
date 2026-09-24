@@ -163,13 +163,13 @@ class FakeClient implements SqlClient {
 class FakePool implements SqlPool {
   public constructor(private readonly client: SqlClient) {}
 
-  public async connect(): Promise<SqlClient> {
-    return this.client;
+  public connect(): Promise<SqlClient> {
+    return Promise.resolve(this.client);
   }
 }
 
 function defaultResponder(sql: string): SqlQueryResult {
-  const normalized = sql.replaceAll(/s+/g, ' ').trim().toLowerCase();
+  const normalized = sql.replaceAll(/\\s+/g, ' ').trim().toLowerCase();
 
   if (normalized.includes(' from parties')) {
     return { rows: [partyRow()], rowCount: 1 };
@@ -272,7 +272,7 @@ describe('PostgresDomainStore', () => {
     });
 
     const sql = client.queries.map((query) =>
-      query.sql.replaceAll(/s+/g, ' ').trim().toLowerCase(),
+      query.sql.replaceAll(/\\s+/g, ' ').trim().toLowerCase(),
     );
     expect(sql[0]).toBe('begin');
     expect(sql.some((query) => query.includes('pg_advisory_xact_lock'))).toBe(
