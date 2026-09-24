@@ -24,6 +24,38 @@ describe('core domain contracts', () => {
     expect(task.followUpAt).not.toBeNull();
   });
 
+  it('rejects inconsistent waiting metadata', () => {
+    const base = {
+      id: '00000000-0000-4000-8000-000000000001',
+      jobId: null,
+      title: 'Invalid waiting state',
+      priority: 'NORMAL',
+      dueAt: null,
+      followUpAt: null,
+      createdAt: '2026-09-24T08:00:00.000Z',
+      updatedAt: '2026-09-24T08:00:00.000Z',
+      revision: 1,
+    };
+
+    expect(
+      taskSchema.safeParse({
+        ...base,
+        status: 'WAITING',
+        waitingOn: null,
+        waitingSince: null,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      taskSchema.safeParse({
+        ...base,
+        status: 'NEXT',
+        waitingOn: 'Supplier',
+        waitingSince: '2026-09-24T08:00:00.000Z',
+      }).success,
+    ).toBe(false);
+  });
+
   it('rejects unknown job categories and mutation revisions outside safe range', () => {
     expect(
       createJobInputSchema.safeParse({
