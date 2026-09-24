@@ -217,9 +217,30 @@ export const scheduledActionRunSchema = z
           code: 'custom',
           path: ['status'],
           message:
-          'Failed runs require completedAt/errorCode and cannot retain providerMessageId',
+            'Failed runs require completedAt/errorCode and cannot retain providerMessageId',
         });
       }
+    }
+
+    if (run.leaseExpiresAt <= run.claimedAt) {
+      context.addIssue({
+        code: 'custom',
+        path: ['leaseExpiresAt'],
+        message: 'Scheduler lease must expire after it is claimed',
+      });
+    }
+
+    if (
+      run.completedAt !== null &&
+      (run.completedAt < run.claimedAt ||
+        run.completedAt > run.leaseExpiresAt)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['completedAt'],
+        message:
+          'Scheduler completion must occur within the current lease window',
+      });
     }
   });
 
