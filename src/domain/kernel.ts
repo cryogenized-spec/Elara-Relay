@@ -457,7 +457,7 @@ export class DomainKernel {
       throw new DomainValidationError('Search query must contain 1-200 characters');
     }
 
-    return this.store.read(async (read) => ({
+    return this.store.read((read) => ({
       parties: read
         .listParties()
         .filter((party) => party.name.toLocaleLowerCase().includes(query)),
