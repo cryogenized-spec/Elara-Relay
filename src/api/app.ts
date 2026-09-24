@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z, ZodError } from 'zod';
 import { createJobInputSchema } from '../contracts/job';
 import {
@@ -67,9 +67,20 @@ const addJobEventRequestSchema = z
   })
   .strict();
 
+async function requestJson(context: Context): Promise<unknown> {
+  try {
+    return await requestJson(context);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new DomainValidationError('Request body must be valid JSON');
+    }
+    throw error;
+  }
+}
+
 function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
   app.post('/parties', async (context) => {
-    const request = createPartyRequestSchema.parse(await context.req.json<unknown>());
+    const request = createPartyRequestSchema.parse(await requestJson(context));
     return context.json(
       await kernel.createParty(request.mutation, request.input),
       201,
@@ -77,12 +88,12 @@ function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
   });
 
   app.post('/jobs', async (context) => {
-    const request = createJobRequestSchema.parse(await context.req.json<unknown>());
+    const request = createJobRequestSchema.parse(await requestJson(context));
     return context.json(await kernel.createJob(request.mutation, request.input), 201);
   });
 
   app.post('/tasks', async (context) => {
-    const request = createTaskRequestSchema.parse(await context.req.json<unknown>());
+    const request = createTaskRequestSchema.parse(await requestJson(context));
     return context.json(
       await kernel.createTask(request.mutation, request.input),
       201,
@@ -90,7 +101,7 @@ function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
   });
 
   app.patch('/tasks/:taskId', async (context) => {
-    const request = updateTaskRequestSchema.parse(await context.req.json<unknown>());
+    const request = updateTaskRequestSchema.parse(await requestJson(context));
     return context.json(
       await kernel.updateTask(
         request.mutation,
@@ -101,7 +112,7 @@ function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
   });
 
   app.post('/tasks/:taskId/wait', async (context) => {
-    const request = waitTaskRequestSchema.parse(await context.req.json<unknown>());
+    const request = waitTaskRequestSchema.parse(await requestJson(context));
     return context.json(
       await kernel.markTaskWaiting(
         request.mutation,
@@ -112,14 +123,21 @@ function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
   });
 
   app.post('/tasks/:taskId/complete', async (context) => {
-    const request = versionedRequestSchema.parse(await context.req.json<unknown>());
+    const request = versionedRequestSchema.parse(await requestJson(context));
     return context.json(
       await kernel.completeTask(request.mutation, context.req.param('taskId')),
     );
   });
 
+  app.post('/tasks/:taskId/cancel', async (context) => {
+    const request = versionedRequestSchema.parse(await requestJson(context));
+    return context.json(
+      await kernel.cancelTask(request.mutation, context.req.param('taskId')),
+    );
+  });
+
   app.post('/jobs/:jobId/events', async (context) => {
-    const request = addJobEventRequestSchema.parse(await context.req.json<unknown>());
+    const request = addJobEventRequestSchema.parse(await requestJson(context));
     return context.json(
       await kernel.addJobEvent(
         request.mutation,
@@ -161,11 +179,7 @@ export function createApi(kernel?: DomainKernel): Hono {
   }
 
   app.onError((error, context) => {
-    if (
-      error instanceof SyntaxError ||
-      error instanceof ZodError ||
-      error instanceof DomainValidationError
-    ) {
+    if (error instanceof ZodError || error instanceof DomainValidationError) {
       return context.json(
         {
           error: {
