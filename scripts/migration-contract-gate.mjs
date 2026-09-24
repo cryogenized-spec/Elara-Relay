@@ -130,6 +130,7 @@ for (const marker of [
   "status in ('ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED')",
   "recurrence_rule ~ '^FREQ=(DAILY|WEEKLY);INTERVAL=([1-9][0-9]{0,2})$'",
   'occurrence_key text not null unique',
+  'delivery_snapshot jsonb not null',
   "status in ('CLAIMED', 'SUCCEEDED', 'FAILED')",
   'lease_token uuid not null unique',
   'alter table public.scheduled_actions enable row level security',
@@ -176,6 +177,14 @@ if (
   )
 ) {
   findings.push('scheduler EMAIL actions must remain owner-only');
+}
+
+if (
+  !/delivery_snapshot ->> 'actionType' <> 'EMAIL'[\s\S]*delivery_snapshot -> 'payload' ->> 'recipient' = 'OWNER'/i.test(
+    schedulerSql,
+  )
+) {
+  findings.push('scheduler delivery snapshots must preserve owner-only email');
 }
 
 for (const eventMarker of [
