@@ -56,10 +56,10 @@ describe('domain kernel', () => {
     });
 
     expect(replay).toEqual(first);
-    const snapshot = await store.read((read) => ({
-      parties: read.listParties(),
-      events: read.listEvents(),
-      receipts: read.getMutationReceipt(context.mutationId),
+    const snapshot = await store.read(async (read) => ({
+      parties: await read.listParties(),
+      events: await read.listEvents(),
+      receipts: await read.getMutationReceipt(context.mutationId),
     }));
     expect(snapshot.parties).toHaveLength(1);
     expect(snapshot.events).toHaveLength(1);
@@ -105,10 +105,10 @@ describe('domain kernel', () => {
       ),
     ).rejects.toThrow('Job not found');
 
-    const snapshot = await store.read((read) => ({
-      tasks: read.listTasks(),
-      events: read.listEvents(),
-      receipt: read.getMutationReceipt('MUT-orphan-task-0001'),
+    const snapshot = await store.read(async (read) => ({
+      tasks: await read.listTasks(),
+      events: await read.listEvents(),
+      receipt: await read.getMutationReceipt('MUT-orphan-task-0001'),
     }));
     expect(snapshot.tasks).toEqual([]);
     expect(snapshot.events).toEqual([]);
@@ -157,9 +157,9 @@ describe('domain kernel', () => {
       expect(rejected.reason).toBeInstanceOf(RevisionConflictError);
     }
 
-    const snapshot = await store.read((read) => ({
-      task: read.getTask(task.id),
-      events: read.listEvents(),
+    const snapshot = await store.read(async (read) => ({
+      task: await read.getTask(task.id),
+      events: await read.listEvents(),
     }));
     expect(snapshot.task?.revision).toBe(2);
     expect(snapshot.task?.status).toBe('DONE');
