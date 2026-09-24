@@ -18,6 +18,10 @@ import {
   recordRepairTestInputSchema,
   repairDetailsPatchSchema,
 } from '../contracts/repair';
+import {
+  createScheduledActionInputSchema,
+  updateScheduledActionPatchSchema,
+} from '../contracts/scheduler';
 import { revisionSchema } from '../contracts/shared';
 import {
   createTaskInputSchema,
@@ -100,6 +104,20 @@ const recordRepairTestRequestSchema = z
   .object({
     mutation: versionedMutationRequestSchema,
     input: recordRepairTestInputSchema,
+  })
+  .strict();
+
+const createScheduledActionRequestSchema = z
+  .object({
+    mutation: mutationRequestSchema,
+    input: createScheduledActionInputSchema,
+  })
+  .strict();
+
+const updateScheduledActionRequestSchema = z
+  .object({
+    mutation: versionedMutationRequestSchema,
+    patch: updateScheduledActionPatchSchema,
   })
   .strict();
 
@@ -251,6 +269,67 @@ function registerDomainRoutes(
   app.get('/repairs/:repairId', async (context) =>
     context.json(await kernel.getRepair(context.req.param('repairId'))),
   );
+
+  app.post('/schedule', async (context) => {
+    const request = createScheduledActionRequestSchema.parse(
+      await requestJson(context),
+    );
+    return context.json(
+      await kernel.createScheduledAction(
+        operatorMutation(request.mutation),
+        request.input,
+      ),
+      201,
+    );
+  });
+
+  app.patch('/schedule/:actionId', async (context) => {
+    const request = updateScheduledActionRequestSchema.parse(
+      await requestJson(context),
+    );
+    return context.json(
+      await kernel.updateScheduledAction(
+        operatorVersionedMutation(request.mutation),
+        context.req.param('actionId'),
+        request.patch,
+      ),
+    );
+  });
+
+  app.post('/schedule/:actionId/pause', async (context) => {
+    const request = versionedRequestSchema.parse(await requestJson(context));
+    return context.json(
+      await kernel.pauseScheduledAction(
+        operatorVersionedMutation(request.mutation),
+        context.req.param('actionId'),
+      ),
+    );
+  });
+
+  app.post('/schedule/:actionId/resume', async (context) => {
+    const request = versionedRequestSchema.parse(await requestJson(context));
+    return context.json(
+      await kernel.resumeScheduledAction(
+        operatorVersionedMutation(request.mutation),
+        context.req.param('actionId'),
+      ),
+    );
+  });
+
+  app.post('/schedule/:actionId/cancel', async (context) => {
+    const request = versionedRequestSchema.parse(await requestJson(context));
+    return context.json(
+      await kernel.cancelScheduledAction(
+        operatorVersionedMutation(request.mutation),
+        context.req.param('actionId'),
+      ),
+    );
+  });
+
+  app.get('/schedule', async (context) => {
+    const asOf = z.string().parse(context.req.query('asOf'));
+    return context.json(await kernel.getSchedule(asOf));
+  });
 
   app.patch('/tasks/:taskId', async (context) => {
     const request = updateTaskRequestSchema.parse(await requestJson(context));
