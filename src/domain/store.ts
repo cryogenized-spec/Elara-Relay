@@ -26,9 +26,11 @@ export interface DomainTransaction extends DomainRead {
   saveMutationReceipt(receipt: MutationReceipt): void;
 }
 
+export type MaybePromise<T> = T | Promise<T>;
+
 export interface DomainStore {
   transact<T>(
-    work: (transaction: DomainTransaction) => Promise<T>,
+    work: (transaction: DomainTransaction) => MaybePromise<T>,
   ): Promise<T>;
-  read<T>(work: (read: DomainRead) => Promise<T>): Promise<T>;
+  read<T>(work: (read: DomainRead) => MaybePromise<T>): Promise<T>;
 }
