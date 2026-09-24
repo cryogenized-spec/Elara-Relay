@@ -13,7 +13,7 @@ its merged pull request and immutable merge commit.
 | 2026-09-24 15:42:57 | Pass 1C — Authentication Boundary | #4 | `5d7ff854d155ca26eb3d1f6afb2753f83933a726` | Merged |
 | 2026-09-24 16:26:01 | Pass 1D — Repairs Domain | #5 | `4badbf3d47be501c67ea3e7c18612e713f6c98c9` | Merged |
 | 2026-09-24 17:28:40 | Pass 1E — Scheduler & Delivery Kernel | #6 | `3cc6ab90cfec2657cc18d6f0155a0c064ef1d2fb` | Merged |
-| 2026-09-24 19:54 | Pass 1F — Documentation Baseline | — | branch `pass-1f/documentation-foundation` | In progress |
+| 2026-09-24 19:54 | Pass 1F — Documentation Baseline | #9 | branch `pass-1f/documentation-foundation` | Draft / in progress |
 
 ## Milestone documents
 
