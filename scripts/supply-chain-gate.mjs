@@ -103,6 +103,17 @@ if (/uses:\s*[^\n]+@(?![0-9a-f]{40}\b)/i.test(ci)) {
 }
 if (!ci.includes('permissions: {}')) fail('workflow-wide token permissions must default to none');
 if (ci.includes('persist-credentials: true')) fail('checkout credentials may not persist');
+for (const forbiddenPermission of [
+  'contents: write',
+  'pull-requests: write',
+  'actions: write',
+  'issues: write',
+  'id-token: write',
+]) {
+  if (ci.includes(forbiddenPermission)) {
+    fail(`certification workflow may not grant ${forbiddenPermission}`);
+  }
+}
 if (!ci.includes('npm ci --ignore-scripts --no-audit --no-fund')) {
   fail('CI must install the exact lockfile with lifecycle scripts disabled');
 }
