@@ -18,11 +18,11 @@ const identity: AuthIdentity = {
 };
 
 class TestAuthVerifier implements AuthVerifier {
-  public async verify(accessToken: string): Promise<AuthIdentity> {
+  public verify(accessToken: string): Promise<AuthIdentity> {
     if (accessToken !== ACCESS_TOKEN) {
       throw new AuthenticationError();
     }
-    return identity;
+    return Promise.resolve(identity);
   }
 }
 
