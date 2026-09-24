@@ -264,6 +264,56 @@ describe('Scheduler domain', () => {
     expect(next.nextRunAt).toBe('2026-09-28T07:00:00.000Z');
   });
 
+  it('preserves an operator reschedule while an older occurrence is in flight', async () => {
+    const { kernel } = makeKernel();
+    const action = await createReminder(
+      kernel,
+      'MUT-schedule-create-resched',
+    );
+    const run = await kernel.claimScheduledAction(
+      {
+        mutationId: 'MUT-schedule-resched-claim',
+        actor: 'system',
+      },
+      action.id,
+      {
+        asOf: '2026-09-24T07:00:00.000Z',
+        workerId: 'worker-a',
+        leaseSeconds: 300,
+      },
+    );
+
+    const rescheduled = await kernel.updateScheduledAction(
+      {
+        mutationId: 'MUT-schedule-resched-edit1',
+        actor: 'operator-ui',
+        expectedRevision: action.revision,
+      },
+      action.id,
+      {
+        runAt: '2026-09-25T07:00:00.000Z',
+      },
+    );
+    expect(rescheduled.nextRunAt).toBe('2026-09-25T07:00:00.000Z');
+
+    const afterSuccess = await kernel.recordScheduledActionSuccess(
+      {
+        mutationId: 'MUT-schedule-resched-success',
+        actor: 'system',
+      },
+      {
+        runId: run.id,
+        leaseToken: run.leaseToken,
+        completedAt: '2026-09-24T07:01:00.000Z',
+        providerMessageId: 'old-occurrence-delivery',
+      },
+    );
+
+    expect(afterSuccess.status).toBe('ACTIVE');
+    expect(afterSuccess.nextRunAt).toBe('2026-09-25T07:00:00.000Z');
+    expect(afterSuccess.lastRunAt).toBe('2026-09-24T07:00:00.000Z');
+  });
+
   it('preserves cancellation when an in-flight delivery finishes', async () => {
     const { kernel, store } = makeKernel();
     const action = await createReminder(kernel, 'MUT-schedule-create-003');
