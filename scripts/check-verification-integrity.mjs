@@ -32,6 +32,8 @@ const expectedScripts = {
   'supply-chain:check': 'node scripts/supply-chain-gate.mjs',
   'test:quality': 'node scripts/test-quality-gate.mjs',
   'adversarial:check': 'node scripts/adversarial-foundation-gate.mjs',
+  'adversarial:domain': 'node scripts/adversarial-domain-gate.mjs',
+  'schema:check': 'node scripts/migration-contract-gate.mjs',
 };
 
 for (const [name, expected] of Object.entries(expectedScripts)) {
@@ -78,7 +80,7 @@ for (const [flag, value] of Object.entries(hardFlags)) {
 const vitest = read('vitest.config.mjs');
 for (const marker of [
   "environment: 'jsdom'",
-  "include: ['src/{api,contracts,domain}/**/*.ts']",
+  "include: ['src/{api,contracts,domain,db}/**/*.ts']",
   "exclude: ['src/**/*.test.ts']",
   'lines: 80',
   'statements: 80',
@@ -169,6 +171,8 @@ for (const required of [
   'npm run typecheck:ts7',
   'npm run test:coverage',
   'npm run adversarial:check',
+  'npm run adversarial:domain',
+  'npm run schema:check',
   'npm run build',
   'npm run e2e -- --project=chromium --project=android-portrait',
 ]) {

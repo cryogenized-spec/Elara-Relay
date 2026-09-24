@@ -14,7 +14,11 @@ export const mutationEnvelopeSchema = z
       .min(16)
       .max(128)
       .regex(/^MUT-[A-Za-z0-9-]+$/),
-    expectedRevision: z.number().int().nonnegative(),
+    expectedRevision: z
+      .number()
+      .int()
+      .positive()
+      .max(Number.MAX_SAFE_INTEGER),
     actor: mutationActorSchema,
   })
   .strict();

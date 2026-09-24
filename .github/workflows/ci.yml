@@ -68,8 +68,14 @@ jobs:
       - name: Unit and coverage gates
         run: npm run test:coverage
 
-      - name: Adversarial mutation gate
+      - name: Adversarial foundation gate
         run: npm run adversarial:check
+
+      - name: Adversarial domain gate
+        run: npm run adversarial:domain
+
+      - name: Migration contract gate
+        run: npm run schema:check
 
       - name: Production build
         run: npm run build

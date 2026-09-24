@@ -9,7 +9,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary'],
       reportsDirectory: 'coverage',
-      include: ['src/{api,contracts,domain}/**/*.ts'],
+      include: ['src/{api,contracts,domain,db}/**/*.ts'],
       exclude: ['src/**/*.test.ts'],
       thresholds: {
         lines: 80,
