@@ -25,7 +25,9 @@ Completed foundation:
 - Pass 1D — Repairs Domain
 - Pass 1E — Scheduler & Delivery Kernel
 
-Current work: **Pass 1F — documentation and visual system**.
+Documentation baseline: **Pass 1F — documentation and visual system**.
+
+Next implementation milestone: **mobile application shell and product UI**.
 
 ## Canonical documentation
 
