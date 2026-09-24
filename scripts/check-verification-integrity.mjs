@@ -29,6 +29,7 @@ const expectedScripts = {
   'verify:gates': 'node scripts/check-verification-integrity.mjs',
   'secrets:check': 'node scripts/secret-scan.mjs',
   'supply-chain:check': 'node scripts/supply-chain-gate.mjs',
+  'test:quality': 'node scripts/test-quality-gate.mjs',
   'adversarial:check': 'node scripts/adversarial-foundation-gate.mjs',
 };
 
@@ -82,6 +83,7 @@ for (const marker of [
   'statements: 80',
   'functions: 80',
   'branches: 75',
+  'passWithNoTests: false',
 ]) {
   if (!vitest.includes(marker)) {
     fail(`Vitest coverage authority changed: ${marker}`);
@@ -157,6 +159,7 @@ for (const required of [
   'npm audit signatures',
   'npm audit --audit-level=high',
   'npm run supply-chain:check',
+  'npm run test:quality',
   'npm run lint',
   'npm run typecheck:ts6',
   'npm run typecheck:ts7',
