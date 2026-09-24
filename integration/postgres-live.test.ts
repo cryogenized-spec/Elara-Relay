@@ -27,11 +27,19 @@ async function jsonRequest(
 
 beforeAll(async () => {
   resources = createNodePostgresResourcesFromEnv(process.env);
-  const migration = await readFile(
-    'src/db/migrations/0001_domain_kernel.sql',
-    'utf8',
+  await resources.rawPool.query(
+    'create role anon nologin; create role authenticated nologin;',
   );
-  await resources.rawPool.query(migration);
+
+  const migrationFiles = [
+    'src/db/migrations/0001_domain_kernel.sql',
+    'src/db/migrations/0002_security_hardening.sql',
+  ] as const;
+
+  for (const migrationFile of migrationFiles) {
+    const migration = await readFile(migrationFile, 'utf8');
+    await resources.rawPool.query(migration);
+  }
   runtime = createPersistentApiFromResources(resources);
 });
 
@@ -40,6 +48,72 @@ afterAll(async () => {
 });
 
 describe('live PostgreSQL runtime', () => {
+  it('enforces server-only table access before exercising the API', async () => {
+    const rls = await resources.rawPool.query<{
+      relname: string;
+      relrowsecurity: boolean;
+    }>(`
+      select relname, relrowsecurity
+      from pg_class
+      where relnamespace = 'public'::regnamespace
+        and relname in (
+          'parties',
+          'jobs',
+          'tasks',
+          'events',
+          'mutation_receipts'
+        )
+      order by relname
+    `);
+
+    expect(rls.rows).toHaveLength(5);
+    expect(rls.rows.every((row) => row.relrowsecurity)).toBe(true);
+
+    const privileges = await resources.rawPool.query<{
+      role_name: string;
+      table_name: string;
+      can_select: boolean;
+      can_insert: boolean;
+      can_update: boolean;
+      can_delete: boolean;
+    }>(`
+      select
+        role_name,
+        table_name,
+        has_table_privilege(role_name, format('public.%I', table_name), 'select') as can_select,
+        has_table_privilege(role_name, format('public.%I', table_name), 'insert') as can_insert,
+        has_table_privilege(role_name, format('public.%I', table_name), 'update') as can_update,
+        has_table_privilege(role_name, format('public.%I', table_name), 'delete') as can_delete
+      from unnest(array['anon', 'authenticated']) as role_name
+      cross join unnest(
+        array['parties','jobs','tasks','events','mutation_receipts']
+      ) as table_name
+      order by role_name, table_name
+    `);
+
+    expect(privileges.rows).toHaveLength(10);
+    expect(
+      privileges.rows.every(
+        (row) =>
+          !row.can_select &&
+          !row.can_insert &&
+          !row.can_update &&
+          !row.can_delete,
+      ),
+    ).toBe(true);
+
+    const functionConfig = await resources.rawPool.query<{
+      proconfig: string[] | null;
+    }>(`
+      select proconfig
+      from pg_proc
+      where oid = 'public.reject_event_mutation()'::regprocedure
+    `);
+    expect(functionConfig.rows[0]?.proconfig).toContain(
+      'search_path=pg_catalog, public',
+    );
+  });
+
   it('persists the API workflow and enforces replay + concurrency invariants', async () => {
     const partyBody = {
       mutation: {
