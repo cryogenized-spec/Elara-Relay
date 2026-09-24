@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import { AddressInfo } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import {
   SignJWT,
   exportJWK,
@@ -94,10 +94,10 @@ beforeAll(async () => {
   });
 
   const address = server.address();
-  if (!(address instanceof AddressInfo)) {
+  if (address === null || typeof address === 'string') {
     throw new Error('Test JWKS server did not expose an address');
   }
-  origin = `http://127.0.0.1:${address.port}`;
+  origin = `http://127.0.0.1:${(address as AddressInfo).port}`;
 });
 
 afterAll(async () => {
