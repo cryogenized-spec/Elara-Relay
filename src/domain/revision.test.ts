@@ -16,5 +16,6 @@ describe('optimistic revision gate', () => {
     expect(() => nextRevision(Number.MAX_SAFE_INTEGER + 1, 0)).toThrow(
       RangeError,
     );
+    expect(() => nextRevision(0, -1)).toThrow(RangeError);
   });
 });
