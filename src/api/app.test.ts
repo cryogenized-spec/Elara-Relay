@@ -183,7 +183,17 @@ describe('API foundation', () => {
     expect(jobView.status).toBe(200);
     const view = (await jobView.json()) as { tasks: unknown[]; events: unknown[] };
     expect(view.tasks).toHaveLength(1);
-    expect(view.events).toHaveLength(2);
+    const eventTypes = (view as { events: Array<{ eventType: string }> }).events.map(
+      (event) => event.eventType,
+    );
+    expect(eventTypes).toEqual([
+      'JOB_CREATED',
+      'TASK_CREATED',
+      'TASK_UPDATED',
+      'TASK_WAITING',
+      'TASK_COMPLETED',
+      'JOB_NOTE',
+    ]);
 
     const search = await app.request('/search?q=transfer');
     expect(search.status).toBe(200);
@@ -193,6 +203,13 @@ describe('API foundation', () => {
 
   it('maps domain conflicts, missing entities, and malformed requests safely', async () => {
     const app = makeApi();
+
+    const malformedJson = await app.request('/parties', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"mutation":',
+    });
+    expect(malformedJson.status).toBe(400);
 
     const malformed = await jsonRequest(app, '/parties', 'POST', {
       mutation: {
