@@ -20,9 +20,9 @@ const pkg = JSON.parse(read('package.json'));
 const expectedScripts = {
   lint: 'eslint . --max-warnings 0',
   'typecheck:ts6':
-    'tsc6 -p tsconfig.json --noEmit && tsc6 -p tsconfig.e2e.json --noEmit',
+    'tsc6 -p tsconfig.json --noEmit && tsc6 -p tsconfig.e2e.json --noEmit && tsc6 -p tsconfig.integration.json --noEmit',
   'typecheck:ts7':
-    'node node_modules/@typescript/native/bin/tsc -p tsconfig.json --noEmit && node node_modules/@typescript/native/bin/tsc -p tsconfig.e2e.json --noEmit',
+    'node node_modules/@typescript/native/bin/tsc -p tsconfig.json --noEmit && node node_modules/@typescript/native/bin/tsc -p tsconfig.e2e.json --noEmit && node node_modules/@typescript/native/bin/tsc -p tsconfig.integration.json --noEmit',
   test: 'vitest run',
   'test:coverage': 'vitest run --coverage',
   e2e: 'playwright test',
@@ -34,6 +34,7 @@ const expectedScripts = {
   'adversarial:check': 'node scripts/adversarial-foundation-gate.mjs',
   'adversarial:domain': 'node scripts/adversarial-domain-gate.mjs',
   'schema:check': 'node scripts/migration-contract-gate.mjs',
+  'test:postgres': 'vitest run --config vitest.postgres.config.mjs',
 };
 
 for (const [name, expected] of Object.entries(expectedScripts)) {
@@ -173,6 +174,8 @@ for (const required of [
   'npm run adversarial:check',
   'npm run adversarial:domain',
   'npm run schema:check',
+  'image: postgres:17.6-alpine',
+  'npm run test:postgres',
   'npm run build',
   'npm run e2e -- --project=chromium --project=android-portrait',
 ]) {
