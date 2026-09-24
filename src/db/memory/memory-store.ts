@@ -2,6 +2,7 @@ import type { DomainEvent } from '../../contracts/event';
 import type { Job } from '../../contracts/job';
 import type { MutationReceipt } from '../../contracts/mutation';
 import type { Party } from '../../contracts/party';
+import type { Repair } from '../../contracts/repair';
 import type { Task } from '../../contracts/task';
 import {
   DomainNotFoundError,
@@ -18,6 +19,7 @@ interface MemoryState {
   parties: Map<string, Party>;
   jobs: Map<string, Job>;
   tasks: Map<string, Task>;
+  repairs: Map<string, Repair>;
   events: DomainEvent[];
   receipts: Map<string, MutationReceipt>;
 }
@@ -33,6 +35,7 @@ function cloneState(state: MemoryState): MemoryState {
     parties: cloneMap(state.parties),
     jobs: cloneMap(state.jobs),
     tasks: cloneMap(state.tasks),
+    repairs: cloneMap(state.repairs),
     events: structuredClone(state.events),
     receipts: cloneMap(state.receipts),
   };
@@ -56,6 +59,18 @@ class MemoryView implements DomainTransaction {
     return value === undefined ? undefined : structuredClone(value);
   }
 
+  public getRepair(id: string): Repair | undefined {
+    const value = this.state.repairs.get(id);
+    return value === undefined ? undefined : structuredClone(value);
+  }
+
+  public getRepairByJobId(jobId: string): Repair | undefined {
+    const value = [...this.state.repairs.values()].find(
+      (repair) => repair.jobId === jobId,
+    );
+    return value === undefined ? undefined : structuredClone(value);
+  }
+
   public getMutationReceipt(mutationId: string): MutationReceipt | undefined {
     const value = this.state.receipts.get(mutationId);
     return value === undefined ? undefined : structuredClone(value);
@@ -71,6 +86,12 @@ class MemoryView implements DomainTransaction {
 
   public listTasks(): Task[] {
     return [...this.state.tasks.values()].map((value) => structuredClone(value));
+  }
+
+  public listRepairs(): Repair[] {
+    return [...this.state.repairs.values()].map((value) =>
+      structuredClone(value),
+    );
   }
 
   public listEvents(): DomainEvent[] {
@@ -122,6 +143,27 @@ class MemoryView implements DomainTransaction {
     this.state.tasks.set(task.id, structuredClone(task));
   }
 
+  public insertRepair(repair: Repair): void {
+    if (this.state.repairs.has(repair.id)) {
+      throw new DuplicateEntityError('Repair', repair.id);
+    }
+    if (
+      [...this.state.repairs.values()].some(
+        (value) => value.jobId === repair.jobId,
+      )
+    ) {
+      throw new DuplicateEntityError('RepairJob', repair.jobId);
+    }
+    this.state.repairs.set(repair.id, structuredClone(repair));
+  }
+
+  public updateRepair(repair: Repair): void {
+    if (!this.state.repairs.has(repair.id)) {
+      throw new DomainNotFoundError('Repair', repair.id);
+    }
+    this.state.repairs.set(repair.id, structuredClone(repair));
+  }
+
   public appendEvent(event: DomainEvent): void {
     if (this.state.events.some((value) => value.id === event.id)) {
       throw new DuplicateEntityError('Event', event.id);
@@ -149,6 +191,7 @@ export class MemoryDomainStore implements DomainStore {
     parties: new Map(),
     jobs: new Map(),
     tasks: new Map(),
+    repairs: new Map(),
     events: [],
     receipts: new Map(),
   };
