@@ -3,6 +3,10 @@ import type { Job } from '../contracts/job';
 import type { MutationReceipt } from '../contracts/mutation';
 import type { Party } from '../contracts/party';
 import type { Repair } from '../contracts/repair';
+import type {
+  ScheduledAction,
+  ScheduledActionRun,
+} from '../contracts/scheduler';
 import type { Task } from '../contracts/task';
 
 export type MaybePromise<T> = T | Promise<T>;
@@ -13,6 +17,14 @@ export interface DomainRead {
   getTask(id: string): MaybePromise<Task | undefined>;
   getRepair(id: string): MaybePromise<Repair | undefined>;
   getRepairByJobId(jobId: string): MaybePromise<Repair | undefined>;
+  getScheduledAction(id: string): MaybePromise<ScheduledAction | undefined>;
+  getScheduledActionRun(
+    id: string,
+  ): MaybePromise<ScheduledActionRun | undefined>;
+  getScheduledActionRunActionId(id: string): MaybePromise<string | undefined>;
+  getScheduledActionRunByOccurrenceKey(
+    occurrenceKey: string,
+  ): MaybePromise<ScheduledActionRun | undefined>;
   getMutationReceipt(
     mutationId: string,
   ): MaybePromise<MutationReceipt | undefined>;
@@ -20,6 +32,8 @@ export interface DomainRead {
   listJobs(): MaybePromise<Job[]>;
   listTasks(): MaybePromise<Task[]>;
   listRepairs(): MaybePromise<Repair[]>;
+  listScheduledActions(): MaybePromise<ScheduledAction[]>;
+  listScheduledActionRuns(): MaybePromise<ScheduledActionRun[]>;
   listEvents(): MaybePromise<DomainEvent[]>;
 }
 
@@ -32,6 +46,10 @@ export interface DomainTransaction extends DomainRead {
   updateTask(task: Task): MaybePromise<void>;
   insertRepair(repair: Repair): MaybePromise<void>;
   updateRepair(repair: Repair): MaybePromise<void>;
+  insertScheduledAction(action: ScheduledAction): MaybePromise<void>;
+  updateScheduledAction(action: ScheduledAction): MaybePromise<void>;
+  insertScheduledActionRun(run: ScheduledActionRun): MaybePromise<void>;
+  updateScheduledActionRun(run: ScheduledActionRun): MaybePromise<void>;
   appendEvent(event: DomainEvent): MaybePromise<void>;
   saveMutationReceipt(receipt: MutationReceipt): MaybePromise<void>;
 }

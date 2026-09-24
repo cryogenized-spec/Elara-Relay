@@ -13,6 +13,10 @@ const repairsSql = readFileSync(
   'src/db/migrations/0003_repairs_domain.sql',
   'utf8',
 );
+const schedulerSql = readFileSync(
+  'src/db/migrations/0004_scheduler.sql',
+  'utf8',
+);
 const findings = [];
 
 for (const marker of [
@@ -112,7 +116,111 @@ for (const eventMarker of [
   "'REPAIR_TEST_RECORDED'",
 ]) {
   if (!repairsSql.includes(eventMarker)) {
-    findings.push(`repair migration must extend event vocabulary: ${eventMarker}`);
+    findings.push(
+      `repair migration must extend event vocabulary: ${eventMarker}`,
+    );
+  }
+}
+
+for (const marker of [
+  'create table scheduled_actions',
+  'create table scheduled_action_runs',
+  "action_type in ('REMINDER', 'DIGEST', 'EMAIL')",
+  "timezone = 'Africa/Johannesburg'",
+  "status in ('ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED')",
+  "recurrence_rule ~ '^FREQ=(DAILY|WEEKLY);INTERVAL=([1-9][0-9]{0,2})$'",
+  'occurrence_key text not null unique',
+  'delivery_snapshot jsonb not null',
+  "status in ('CLAIMED', 'SUCCEEDED', 'FAILED')",
+  'lease_token uuid not null unique',
+  'alter table public.scheduled_actions enable row level security',
+  'alter table public.scheduled_action_runs enable row level security',
+  'public.scheduled_actions',
+  'public.scheduled_action_runs',
+]) {
+  if (!schedulerSql.toLowerCase().includes(marker.toLowerCase())) {
+    findings.push(`scheduler migration lost required contract: ${marker}`);
+  }
+}
+
+if (
+  !/scheduled_action_id uuid not null\s+references scheduled_actions\(id\) on delete restrict/i.test(
+    schedulerSql,
+  )
+) {
+  findings.push(
+    'scheduler runs must retain a restrictive ScheduledAction foreign key',
+  );
+}
+
+if (
+  !/revision\s+bigint\s+not null\s+check\s*\(\s*revision between 1 and 9007199254740991\s*\)/i.test(
+    schedulerSql,
+  )
+) {
+  findings.push(
+    'scheduled actions must retain JavaScript-safe positive revisions',
+  );
+}
+
+if (
+  !/status = 'CLAIMED'[\s\S]*completed_at is null[\s\S]*status = 'SUCCEEDED'[\s\S]*completed_at is not null[\s\S]*status = 'FAILED'[\s\S]*error_code is not null/i.test(
+    schedulerSql,
+  )
+) {
+  findings.push('scheduler execution ledger status constraints are incomplete');
+}
+
+if (
+  !/completed_at is null or completed_at <= lease_expires_at/i.test(
+    schedulerSql,
+  )
+) {
+  findings.push('scheduler completion must remain bounded by lease ownership');
+}
+
+if (
+  !/action_type <> 'EMAIL'[\s\S]*payload ->> 'recipient' = 'OWNER'/i.test(
+    schedulerSql,
+  )
+) {
+  findings.push('scheduler EMAIL actions must remain owner-only');
+}
+
+if (
+  !/delivery_snapshot ->> 'actionType' <> 'EMAIL'[\s\S]*delivery_snapshot -> 'payload' \? 'recipient'[\s\S]*delivery_snapshot -> 'payload' ->> 'recipient' = 'OWNER'/i.test(
+    schedulerSql,
+  )
+) {
+  findings.push('scheduler delivery snapshots must preserve owner-only email');
+}
+
+if (
+  !/delivery_snapshot ->> 'actionType' <> 'REMINDER'[\s\S]*delivery_snapshot -> 'payload' \? 'message'/i.test(
+    schedulerSql,
+  ) ||
+  !/delivery_snapshot ->> 'actionType' <> 'DIGEST'[\s\S]*delivery_snapshot -> 'payload' \? 'scope'[\s\S]*= 'TODAY'/i.test(
+    schedulerSql,
+  )
+) {
+  findings.push('scheduler delivery snapshots must preserve typed payload fields');
+}
+
+for (const eventMarker of [
+  "'SCHEDULED_ACTION'",
+  "'SCHEDULED_ACTION_CREATED'",
+  "'SCHEDULED_ACTION_UPDATED'",
+  "'SCHEDULED_ACTION_PAUSED'",
+  "'SCHEDULED_ACTION_RESUMED'",
+  "'SCHEDULED_ACTION_CANCELLED'",
+  "'SCHEDULED_ACTION_RUN_CLAIMED'",
+  "'SCHEDULED_ACTION_RUN_SUCCEEDED'",
+  "'SCHEDULED_ACTION_RUN_FAILED'",
+]) {
+  if (!schedulerSql.includes(eventMarker)) {
+    findings.push(
+      `scheduler migration must extend event vocabulary: ${eventMarker}`,
+    );
   }
 }
 
@@ -164,5 +272,5 @@ if (findings.length > 0) {
 }
 
 process.stdout.write(
-  'Migration contract gate passed: kernel tables, Repairs, revisions, append-only events, RLS, browser-role revocations, repair invariants, and fixed trigger search_path are intact.\n',
+  'Migration contract gate passed: kernel tables, Repairs, Scheduler ledger, revisions, append-only events, RLS, browser-role revocations, owner-only email payloads, and fixed trigger search_path are intact.\n',
 );

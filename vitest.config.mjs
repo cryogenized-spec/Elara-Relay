@@ -10,7 +10,7 @@ export default defineConfig({
       reporter: ['text', 'json-summary'],
       reportsDirectory: 'coverage',
       include: [
-        'src/{api,auth,contracts,domain,db}/**/*.ts',
+        'src/{api,auth,contracts,domain,db,scheduler}/**/*.ts',
         'src/runtime/node/auth-config.ts',
       ],
       exclude: ['src/**/*.test.ts'],

@@ -30,6 +30,22 @@ import {
   type RepairStage,
   type RepairWarning,
 } from '../contracts/repair';
+import {
+  claimScheduledActionInputSchema,
+  createScheduledActionInputSchema,
+  recordScheduledActionFailureInputSchema,
+  recordScheduledActionSuccessInputSchema,
+  scheduledActionRunSchema,
+  scheduledActionSchema,
+  updateScheduledActionPatchSchema,
+  type ClaimScheduledActionInput,
+  type CreateScheduledActionInput,
+  type RecordScheduledActionFailureInput,
+  type RecordScheduledActionSuccessInput,
+  type ScheduledAction,
+  type ScheduledActionRun,
+  type UpdateScheduledActionPatch,
+} from '../contracts/scheduler';
 import { entityIdSchema, timestampSchema } from '../contracts/shared';
 import {
   createTaskInputSchema,
@@ -48,6 +64,11 @@ import {
   MutationReplayMismatchError,
 } from './errors';
 import { nextRevision } from './revision';
+import {
+  leaseExpiry,
+  nextOccurrenceAfter,
+  occurrenceKeyFor,
+} from './scheduler-recurrence';
 import type { DomainStore, DomainTransaction, MaybePromise } from './store';
 
 export interface RepairView {
@@ -60,6 +81,7 @@ export interface JobView {
   tasks: Task[];
   repair: Repair | null;
   repairWarnings: RepairWarning[];
+  scheduledActions: ScheduledAction[];
   events: DomainEvent[];
 }
 
@@ -67,6 +89,14 @@ export interface TodayResult {
   asOf: string;
   tasks: Task[];
   repairs: Repair[];
+  scheduledActions: ScheduledAction[];
+}
+
+export interface ScheduleResult {
+  asOf: string;
+  due: ScheduledAction[];
+  upcoming: ScheduledAction[];
+  paused: ScheduledAction[];
 }
 
 export interface SearchResult {
@@ -74,6 +104,7 @@ export interface SearchResult {
   jobs: Job[];
   tasks: Task[];
   repairs: Repair[];
+  scheduledActions: ScheduledAction[];
   events: DomainEvent[];
 }
 
@@ -812,6 +843,542 @@ export class DomainKernel {
     });
   }
 
+  public async createScheduledAction(
+    rawContext: MutationContext,
+    rawInput: CreateScheduledActionInput,
+  ): Promise<ScheduledAction> {
+    const context = mutationContextSchema.parse(rawContext);
+    const input = createScheduledActionInputSchema.parse(rawInput);
+
+    return this.executeOnce(
+      context,
+      'createScheduledAction',
+      input,
+      async (transaction) => {
+        await this.validateScheduledReferences(
+          transaction,
+          input.jobId,
+          input.taskId,
+        );
+
+        const now = this.now();
+        const action = scheduledActionSchema.parse({
+          id: this.newId(),
+          jobId: input.jobId,
+          taskId: input.taskId,
+          title: input.title,
+          actionType: input.actionType,
+          payload: input.payload,
+          timezone: input.timezone,
+          recurrenceRule: input.recurrenceRule,
+          status: 'ACTIVE',
+          runAt: input.runAt,
+          nextRunAt: input.runAt,
+          lastRunAt: null,
+          createdAt: now,
+          updatedAt: now,
+          revision: 1,
+        });
+
+        await transaction.insertScheduledAction(action);
+        await transaction.appendEvent(
+          this.makeEvent(context, {
+            entityType: 'SCHEDULED_ACTION',
+            entityId: action.id,
+            eventType: 'SCHEDULED_ACTION_CREATED',
+            detail: action.title,
+            changes: {},
+            revisionAfter: action.revision,
+          }),
+        );
+        return action;
+      },
+    );
+  }
+
+  public async updateScheduledAction(
+    rawContext: VersionedMutationContext,
+    actionId: string,
+    rawPatch: UpdateScheduledActionPatch,
+  ): Promise<ScheduledAction> {
+    const context = versionedMutationContextSchema.parse(rawContext);
+    const id = entityIdSchema.parse(actionId);
+    const patch = updateScheduledActionPatchSchema.parse(rawPatch);
+
+    return this.executeOnce(
+      { mutationId: context.mutationId, actor: context.actor },
+      'updateScheduledAction',
+      { expectedRevision: context.expectedRevision, actionId: id, patch },
+      async (transaction) => {
+        const current = await this.requireScheduledAction(transaction, id);
+        if (
+          current.status === 'COMPLETED' ||
+          current.status === 'CANCELLED'
+        ) {
+          throw new DomainValidationError(
+            'Terminal scheduled actions cannot be edited',
+          );
+        }
+
+        const nextJobId =
+          patch.jobId === undefined ? current.jobId : patch.jobId;
+        const nextTaskId =
+          patch.taskId === undefined ? current.taskId : patch.taskId;
+        await this.validateScheduledReferences(
+          transaction,
+          nextJobId,
+          nextTaskId,
+        );
+
+        const runAt = patch.runAt ?? current.runAt;
+        const next = scheduledActionSchema.parse({
+          ...current,
+          ...patch,
+          runAt,
+          nextRunAt:
+            patch.runAt === undefined ? current.nextRunAt : runAt,
+          updatedAt: this.now(),
+          revision: nextRevision(
+            current.revision,
+            context.expectedRevision,
+          ),
+        });
+
+        const changes: Record<string, FieldChange> = {};
+        for (const key of [
+          'jobId',
+          'taskId',
+          'title',
+          'actionType',
+          'payload',
+          'recurrenceRule',
+          'runAt',
+          'nextRunAt',
+        ] as const) {
+          if (comparable(current[key]) !== comparable(next[key])) {
+            changes[key] = {
+              before: current[key],
+              after: next[key],
+            };
+          }
+        }
+        if (Object.keys(changes).length === 0) {
+          throw new DomainValidationError(
+            'Scheduled action update did not change any values',
+          );
+        }
+
+        await transaction.updateScheduledAction(next);
+        await transaction.appendEvent(
+          this.makeEvent(context, {
+            entityType: 'SCHEDULED_ACTION',
+            entityId: next.id,
+            eventType: 'SCHEDULED_ACTION_UPDATED',
+            detail: next.title,
+            changes,
+            revisionAfter: next.revision,
+          }),
+        );
+        return next;
+      },
+    );
+  }
+
+  public async pauseScheduledAction(
+    rawContext: VersionedMutationContext,
+    actionId: string,
+  ): Promise<ScheduledAction> {
+    return this.changeScheduledActionStatus(
+      rawContext,
+      actionId,
+      'PAUSED',
+      'SCHEDULED_ACTION_PAUSED',
+      'pauseScheduledAction',
+    );
+  }
+
+  public async resumeScheduledAction(
+    rawContext: VersionedMutationContext,
+    actionId: string,
+  ): Promise<ScheduledAction> {
+    return this.changeScheduledActionStatus(
+      rawContext,
+      actionId,
+      'ACTIVE',
+      'SCHEDULED_ACTION_RESUMED',
+      'resumeScheduledAction',
+    );
+  }
+
+  public async cancelScheduledAction(
+    rawContext: VersionedMutationContext,
+    actionId: string,
+  ): Promise<ScheduledAction> {
+    const context = versionedMutationContextSchema.parse(rawContext);
+    const id = entityIdSchema.parse(actionId);
+
+    return this.executeOnce(
+      { mutationId: context.mutationId, actor: context.actor },
+      'cancelScheduledAction',
+      { expectedRevision: context.expectedRevision, actionId: id },
+      async (transaction) => {
+        const current = await this.requireScheduledAction(transaction, id);
+        if (current.status === 'COMPLETED') {
+          throw new DomainValidationError(
+            'Completed scheduled actions cannot be cancelled',
+          );
+        }
+        if (current.status === 'CANCELLED') {
+          throw new DomainValidationError(
+            'Scheduled action is already cancelled',
+          );
+        }
+
+        const next = scheduledActionSchema.parse({
+          ...current,
+          status: 'CANCELLED',
+          nextRunAt: null,
+          updatedAt: this.now(),
+          revision: nextRevision(
+            current.revision,
+            context.expectedRevision,
+          ),
+        });
+
+        await transaction.updateScheduledAction(next);
+        await transaction.appendEvent(
+          this.makeEvent(context, {
+            entityType: 'SCHEDULED_ACTION',
+            entityId: next.id,
+            eventType: 'SCHEDULED_ACTION_CANCELLED',
+            detail: next.title,
+            changes: {
+              status: {
+                before: current.status,
+                after: next.status,
+              },
+              nextRunAt: {
+                before: current.nextRunAt,
+                after: next.nextRunAt,
+              },
+            },
+            revisionAfter: next.revision,
+          }),
+        );
+        return next;
+      },
+    );
+  }
+
+  public async getSchedule(rawAsOf: string): Promise<ScheduleResult> {
+    const asOf = timestampSchema.parse(rawAsOf);
+    return this.store.read(async (read) => {
+      const actions = await read.listScheduledActions();
+      const due = actions
+        .filter(
+          (action) =>
+            action.status === 'ACTIVE' &&
+            action.nextRunAt !== null &&
+            action.nextRunAt <= asOf,
+        )
+        .sort((left, right) =>
+          (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
+        );
+      const upcoming = actions
+        .filter(
+          (action) =>
+            action.status === 'ACTIVE' &&
+            action.nextRunAt !== null &&
+            action.nextRunAt > asOf,
+        )
+        .sort((left, right) =>
+          (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
+        );
+      const paused = actions
+        .filter((action) => action.status === 'PAUSED')
+        .sort((left, right) =>
+          (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
+        );
+
+      return { asOf, due, upcoming, paused };
+    });
+  }
+
+  public async claimScheduledAction(
+    rawContext: MutationContext,
+    actionId: string,
+    rawInput: ClaimScheduledActionInput,
+  ): Promise<ScheduledActionRun> {
+    const context = mutationContextSchema.parse(rawContext);
+    this.requireSystemActor(context);
+    const id = entityIdSchema.parse(actionId);
+    const input = claimScheduledActionInputSchema.parse(rawInput);
+
+    return this.executeOnce(
+      context,
+      'claimScheduledAction',
+      { actionId: id, input },
+      async (transaction) => {
+        const action = await this.requireScheduledAction(transaction, id);
+        if (
+          action.status !== 'ACTIVE' ||
+          action.nextRunAt === null ||
+          action.nextRunAt > input.asOf
+        ) {
+          throw new DomainValidationError(
+            'Scheduled action is not due and active',
+          );
+        }
+
+        const occurrenceKey = occurrenceKeyFor(action, action.nextRunAt);
+        const existing =
+          await transaction.getScheduledActionRunByOccurrenceKey(
+            occurrenceKey,
+          );
+
+        if (existing?.status === 'SUCCEEDED') {
+          throw new DomainValidationError(
+            'Scheduled occurrence already succeeded',
+          );
+        }
+        if (
+          existing?.status === 'CLAIMED' &&
+          existing.leaseExpiresAt > input.asOf
+        ) {
+          throw new DomainValidationError(
+            'Scheduled occurrence is already leased',
+          );
+        }
+
+        const leaseToken = this.newId();
+        const run = scheduledActionRunSchema.parse(
+          existing === undefined
+            ? {
+                id: this.newId(),
+                scheduledActionId: action.id,
+                occurrenceKey,
+                scheduledFor: action.nextRunAt,
+                deliverySnapshot: {
+                  title: action.title,
+                  actionType: action.actionType,
+                  payload: action.payload,
+                  timezone: action.timezone,
+                },
+                status: 'CLAIMED',
+                leaseToken,
+                workerId: input.workerId,
+                leaseExpiresAt: leaseExpiry(
+                  input.asOf,
+                  input.leaseSeconds,
+                ),
+                attempt: 1,
+                providerMessageId: null,
+                errorCode: null,
+                errorDetail: null,
+                claimedAt: input.asOf,
+                completedAt: null,
+              }
+            : {
+                ...existing,
+                status: 'CLAIMED',
+                leaseToken,
+                workerId: input.workerId,
+                leaseExpiresAt: leaseExpiry(
+                  input.asOf,
+                  input.leaseSeconds,
+                ),
+                attempt: existing.attempt + 1,
+                providerMessageId: null,
+                errorCode: null,
+                errorDetail: null,
+                claimedAt: input.asOf,
+                completedAt: null,
+              },
+        );
+
+        if (existing === undefined) {
+          await transaction.insertScheduledActionRun(run);
+        } else {
+          await transaction.updateScheduledActionRun(run);
+        }
+
+        await transaction.appendEvent(
+          this.makeEvent(context, {
+            entityType: 'SCHEDULED_ACTION',
+            entityId: action.id,
+            eventType: 'SCHEDULED_ACTION_RUN_CLAIMED',
+            detail: run.occurrenceKey,
+            changes: {},
+            revisionAfter: action.revision,
+          }),
+        );
+        return run;
+      },
+    );
+  }
+
+  public async recordScheduledActionSuccess(
+    rawContext: MutationContext,
+    rawInput: RecordScheduledActionSuccessInput,
+  ): Promise<ScheduledAction> {
+    const context = mutationContextSchema.parse(rawContext);
+    this.requireSystemActor(context);
+    const input = recordScheduledActionSuccessInputSchema.parse(rawInput);
+
+    return this.executeOnce(
+      context,
+      'recordScheduledActionSuccess',
+      input,
+      async (transaction) => {
+        const { run, action: current } =
+          await this.requireScheduledActionRunWithAction(
+            transaction,
+            input.runId,
+          );
+        if (run.status !== 'CLAIMED') {
+          throw new DomainValidationError(
+            'Only a claimed scheduler run can succeed',
+          );
+        }
+        if (run.leaseToken !== input.leaseToken) {
+          throw new DomainValidationError(
+            'Scheduler lease token no longer owns this run',
+          );
+        }
+        if (input.completedAt > run.leaseExpiresAt) {
+          throw new DomainValidationError(
+            'Scheduler lease expired before completion',
+          );
+        }
+
+        const succeeded = scheduledActionRunSchema.parse({
+          ...run,
+          status: 'SUCCEEDED',
+          providerMessageId: input.providerMessageId,
+          errorCode: null,
+          errorDetail: null,
+          completedAt: input.completedAt,
+        });
+        await transaction.updateScheduledActionRun(succeeded);
+
+        let next = current;
+        if (current.status !== 'CANCELLED') {
+          const scheduleStillPointsToRun =
+            current.nextRunAt === run.scheduledFor;
+          const nextRunAt = scheduleStillPointsToRun
+            ? nextOccurrenceAfter(
+                current.recurrenceRule,
+                run.scheduledFor,
+                input.completedAt,
+              )
+            : current.nextRunAt;
+          next = scheduledActionSchema.parse({
+            ...current,
+            status:
+              scheduleStillPointsToRun && nextRunAt === null
+                ? 'COMPLETED'
+                : current.status,
+            nextRunAt,
+            lastRunAt: run.scheduledFor,
+            updatedAt: input.completedAt,
+            revision: nextRevision(
+              current.revision,
+              current.revision,
+            ),
+          });
+          await transaction.updateScheduledAction(next);
+        }
+
+        await transaction.appendEvent(
+          this.makeEvent(context, {
+            entityType: 'SCHEDULED_ACTION',
+            entityId: current.id,
+            eventType: 'SCHEDULED_ACTION_RUN_SUCCEEDED',
+            detail: run.occurrenceKey,
+            changes: {
+              lastRunAt: {
+                before: current.lastRunAt,
+                after:
+                  current.status === 'CANCELLED'
+                    ? current.lastRunAt
+                    : next.lastRunAt,
+              },
+              nextRunAt: {
+                before: current.nextRunAt,
+                after: next.nextRunAt,
+              },
+              status: {
+                before: current.status,
+                after: next.status,
+              },
+            },
+            revisionAfter: next.revision,
+          }),
+        );
+        return next;
+      },
+    );
+  }
+
+  public async recordScheduledActionFailure(
+    rawContext: MutationContext,
+    rawInput: RecordScheduledActionFailureInput,
+  ): Promise<ScheduledActionRun> {
+    const context = mutationContextSchema.parse(rawContext);
+    this.requireSystemActor(context);
+    const input = recordScheduledActionFailureInputSchema.parse(rawInput);
+
+    return this.executeOnce(
+      context,
+      'recordScheduledActionFailure',
+      input,
+      async (transaction) => {
+        const { run, action } =
+          await this.requireScheduledActionRunWithAction(
+            transaction,
+            input.runId,
+          );
+        if (run.status !== 'CLAIMED') {
+          throw new DomainValidationError(
+            'Only a claimed scheduler run can fail',
+          );
+        }
+        if (run.leaseToken !== input.leaseToken) {
+          throw new DomainValidationError(
+            'Scheduler lease token no longer owns this run',
+          );
+        }
+        if (input.completedAt > run.leaseExpiresAt) {
+          throw new DomainValidationError(
+            'Scheduler lease expired before completion',
+          );
+        }
+
+        const failed = scheduledActionRunSchema.parse({
+          ...run,
+          status: 'FAILED',
+          providerMessageId: null,
+          errorCode: input.errorCode,
+          errorDetail: input.errorDetail,
+          completedAt: input.completedAt,
+        });
+        await transaction.updateScheduledActionRun(failed);
+
+        await transaction.appendEvent(
+          this.makeEvent(context, {
+            entityType: 'SCHEDULED_ACTION',
+            entityId: action.id,
+            eventType: 'SCHEDULED_ACTION_RUN_FAILED',
+            detail: input.errorCode,
+            changes: {},
+            revisionAfter: action.revision,
+          }),
+        );
+        return failed;
+      },
+    );
+  }
+
   public async addJobEvent(
     rawContext: VersionedMutationContext,
     jobId: string,
@@ -865,20 +1432,32 @@ export class DomainKernel {
         throw new DomainNotFoundError('Job', id);
       }
 
-      const [tasks, repair, allEvents] = await Promise.all([
-        read.listTasks(),
-        read.getRepairByJobId(id),
-        read.listEvents(),
-      ]);
+      const [tasks, repair, allScheduledActions, allEvents] =
+        await Promise.all([
+          read.listTasks(),
+          read.getRepairByJobId(id),
+          read.listScheduledActions(),
+          read.listEvents(),
+        ]);
       const jobTasks = tasks.filter((task) => task.jobId === id);
       const taskIds = new Set(jobTasks.map((task) => task.id));
+      const scheduledActions = allScheduledActions.filter(
+        (action) =>
+          action.jobId === id ||
+          (action.taskId !== null && taskIds.has(action.taskId)),
+      );
+      const scheduledActionIds = new Set(
+        scheduledActions.map((action) => action.id),
+      );
       const events = allEvents.filter(
         (event) =>
           (event.entityType === 'JOB' && event.entityId === id) ||
           (event.entityType === 'TASK' && taskIds.has(event.entityId)) ||
           (event.entityType === 'REPAIR' &&
             repair !== undefined &&
-            event.entityId === repair.id),
+            event.entityId === repair.id) ||
+          (event.entityType === 'SCHEDULED_ACTION' &&
+            scheduledActionIds.has(event.entityId)),
       );
 
       return {
@@ -887,6 +1466,7 @@ export class DomainKernel {
         repair: repair ?? null,
         repairWarnings:
           repair === undefined ? [] : repairWarnings(repair),
+        scheduledActions,
         events,
       };
     });
@@ -895,9 +1475,10 @@ export class DomainKernel {
   public async getToday(rawAsOf: string): Promise<TodayResult> {
     const asOf = timestampSchema.parse(rawAsOf);
     return this.store.read(async (read) => {
-      const [allTasks, allRepairs] = await Promise.all([
+      const [allTasks, allRepairs, allScheduledActions] = await Promise.all([
         read.listTasks(),
         read.listRepairs(),
+        read.listScheduledActions(),
       ]);
       const tasks = allTasks
         .filter((task) => task.status !== 'DONE' && task.status !== 'CANCELLED')
@@ -929,7 +1510,17 @@ export class DomainKernel {
             (left.followUpAt ?? '').localeCompare(right.followUpAt ?? '') ||
             left.reportedFault.localeCompare(right.reportedFault),
         );
-      return { asOf, tasks, repairs };
+      const scheduledActions = allScheduledActions
+        .filter(
+          (action) =>
+            action.status === 'ACTIVE' &&
+            action.nextRunAt !== null &&
+            action.nextRunAt <= asOf,
+        )
+        .sort((left, right) =>
+          (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
+        );
+      return { asOf, tasks, repairs, scheduledActions };
     });
   }
 
@@ -940,13 +1531,15 @@ export class DomainKernel {
     }
 
     return this.store.read(async (read) => {
-      const [parties, jobs, tasks, repairs, events] = await Promise.all([
-        read.listParties(),
-        read.listJobs(),
-        read.listTasks(),
-        read.listRepairs(),
-        read.listEvents(),
-      ]);
+      const [parties, jobs, tasks, repairs, scheduledActions, events] =
+        await Promise.all([
+          read.listParties(),
+          read.listJobs(),
+          read.listTasks(),
+          read.listRepairs(),
+          read.listScheduledActions(),
+          read.listEvents(),
+        ]);
 
       return {
         parties: parties.filter((party) =>
@@ -972,11 +1565,149 @@ export class DomainKernel {
             repair.waitingOn,
           ].some((value) => value?.toLowerCase().includes(query) ?? false),
         ),
+        scheduledActions: scheduledActions.filter((action) =>
+          [action.title, canonicalJson(action.payload)].some((value) =>
+            value.toLowerCase().includes(query),
+          ),
+        ),
         events: events.filter(
           (event) => event.detail?.toLowerCase().includes(query) ?? false,
         ),
       };
     });
+  }
+
+  private async requireScheduledAction(
+    transaction: DomainTransaction,
+    id: string,
+  ): Promise<ScheduledAction> {
+    const action = await transaction.getScheduledAction(id);
+    if (action === undefined) {
+      throw new DomainNotFoundError('ScheduledAction', id);
+    }
+    return action;
+  }
+
+  private async requireScheduledActionRun(
+    transaction: DomainTransaction,
+    id: string,
+  ): Promise<ScheduledActionRun> {
+    const run = await transaction.getScheduledActionRun(id);
+    if (run === undefined) {
+      throw new DomainNotFoundError('ScheduledActionRun', id);
+    }
+    return run;
+  }
+
+  private async requireScheduledActionRunWithAction(
+    transaction: DomainTransaction,
+    id: string,
+  ): Promise<{ run: ScheduledActionRun; action: ScheduledAction }> {
+    const actionId = await transaction.getScheduledActionRunActionId(id);
+    if (actionId === undefined) {
+      throw new DomainNotFoundError('ScheduledActionRun', id);
+    }
+
+    const action = await this.requireScheduledAction(transaction, actionId);
+    const run = await this.requireScheduledActionRun(transaction, id);
+    if (run.scheduledActionId !== action.id) {
+      throw new DomainValidationError(
+        'Scheduled action run changed ownership during transaction',
+      );
+    }
+    return { run, action };
+  }
+
+  private requireSystemActor(context: MutationContext): void {
+    if (context.actor !== 'system') {
+      throw new DomainValidationError(
+        'Scheduler execution commands require the system actor',
+      );
+    }
+  }
+
+  private async validateScheduledReferences(
+    transaction: DomainTransaction,
+    jobId: string | null,
+    taskId: string | null,
+  ): Promise<void> {
+    const job =
+      jobId === null ? undefined : await transaction.getJob(jobId);
+    if (jobId !== null && job === undefined) {
+      throw new DomainNotFoundError('Job', jobId);
+    }
+
+    const task =
+      taskId === null ? undefined : await transaction.getTask(taskId);
+    if (taskId !== null && task === undefined) {
+      throw new DomainNotFoundError('Task', taskId);
+    }
+
+    if (
+      jobId !== null &&
+      task !== undefined &&
+      task.jobId !== jobId
+    ) {
+      throw new DomainValidationError(
+        'Scheduled action Job and Task references must agree',
+      );
+    }
+  }
+
+  private async changeScheduledActionStatus(
+    rawContext: VersionedMutationContext,
+    actionId: string,
+    targetStatus: 'ACTIVE' | 'PAUSED',
+    eventType:
+      | 'SCHEDULED_ACTION_PAUSED'
+      | 'SCHEDULED_ACTION_RESUMED',
+    command: 'pauseScheduledAction' | 'resumeScheduledAction',
+  ): Promise<ScheduledAction> {
+    const context = versionedMutationContextSchema.parse(rawContext);
+    const id = entityIdSchema.parse(actionId);
+
+    return this.executeOnce(
+      { mutationId: context.mutationId, actor: context.actor },
+      command,
+      { expectedRevision: context.expectedRevision, actionId: id },
+      async (transaction) => {
+        const current = await this.requireScheduledAction(transaction, id);
+        const requiredStatus =
+          targetStatus === 'PAUSED' ? 'ACTIVE' : 'PAUSED';
+        if (current.status !== requiredStatus) {
+          throw new DomainValidationError(
+            `Scheduled action must be ${requiredStatus.toLowerCase()} to become ${targetStatus.toLowerCase()}`,
+          );
+        }
+
+        const next = scheduledActionSchema.parse({
+          ...current,
+          status: targetStatus,
+          updatedAt: this.now(),
+          revision: nextRevision(
+            current.revision,
+            context.expectedRevision,
+          ),
+        });
+        await transaction.updateScheduledAction(next);
+        await transaction.appendEvent(
+          this.makeEvent(context, {
+            entityType: 'SCHEDULED_ACTION',
+            entityId: next.id,
+            eventType,
+            detail: next.title,
+            changes: {
+              status: {
+                before: current.status,
+                after: next.status,
+              },
+            },
+            revisionAfter: next.revision,
+          }),
+        );
+        return next;
+      },
+    );
   }
 
   private async requireTask(

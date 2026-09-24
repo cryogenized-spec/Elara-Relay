@@ -6,6 +6,12 @@ import {
 } from '../../contracts/mutation';
 import { partySchema, type Party } from '../../contracts/party';
 import { repairSchema, type Repair } from '../../contracts/repair';
+import {
+  scheduledActionRunSchema,
+  scheduledActionSchema,
+  type ScheduledAction,
+  type ScheduledActionRun,
+} from '../../contracts/scheduler';
 import { taskSchema, type Task } from '../../contracts/task';
 import { DomainNotFoundError } from '../../domain/errors';
 import type {
@@ -140,6 +146,51 @@ function mapRepair(row: unknown): Repair {
   });
 }
 
+function mapScheduledAction(row: unknown): ScheduledAction {
+  const value = rowRecord(row);
+  return scheduledActionSchema.parse({
+    id: value['id'],
+    jobId: value['jobId'] ?? null,
+    taskId: value['taskId'] ?? null,
+    title: value['title'],
+    actionType: value['actionType'],
+    payload: jsonValue(value['payload']),
+    timezone: value['timezone'],
+    recurrenceRule: value['recurrenceRule'] ?? null,
+    status: value['status'],
+    runAt: timestamp(value['runAt']),
+    nextRunAt:
+      value['nextRunAt'] === null ? null : timestamp(value['nextRunAt']),
+    lastRunAt:
+      value['lastRunAt'] === null ? null : timestamp(value['lastRunAt']),
+    createdAt: timestamp(value['createdAt']),
+    updatedAt: timestamp(value['updatedAt']),
+    revision: integer(value['revision']),
+  });
+}
+
+function mapScheduledActionRun(row: unknown): ScheduledActionRun {
+  const value = rowRecord(row);
+  return scheduledActionRunSchema.parse({
+    id: value['id'],
+    scheduledActionId: value['scheduledActionId'],
+    occurrenceKey: value['occurrenceKey'],
+    scheduledFor: timestamp(value['scheduledFor']),
+    deliverySnapshot: jsonValue(value['deliverySnapshot']),
+    status: value['status'],
+    leaseToken: value['leaseToken'],
+    workerId: value['workerId'],
+    leaseExpiresAt: timestamp(value['leaseExpiresAt']),
+    attempt: integer(value['attempt']),
+    providerMessageId: value['providerMessageId'] ?? null,
+    errorCode: value['errorCode'] ?? null,
+    errorDetail: value['errorDetail'] ?? null,
+    claimedAt: timestamp(value['claimedAt']),
+    completedAt:
+      value['completedAt'] === null ? null : timestamp(value['completedAt']),
+  });
+}
+
 function mapEvent(row: unknown): DomainEvent {
   const value = rowRecord(row);
   return eventSchema.parse({
@@ -234,6 +285,46 @@ const REPAIR_SELECT = `
   from repairs
 `;
 
+const SCHEDULED_ACTION_SELECT = `
+  select
+    id::text as "id",
+    job_id::text as "jobId",
+    task_id::text as "taskId",
+    title,
+    action_type as "actionType",
+    payload,
+    timezone,
+    recurrence_rule as "recurrenceRule",
+    status,
+    run_at as "runAt",
+    next_run_at as "nextRunAt",
+    last_run_at as "lastRunAt",
+    created_at as "createdAt",
+    updated_at as "updatedAt",
+    revision::text as "revision"
+  from scheduled_actions
+`;
+
+const SCHEDULED_ACTION_RUN_SELECT = `
+  select
+    id::text as "id",
+    scheduled_action_id::text as "scheduledActionId",
+    occurrence_key as "occurrenceKey",
+    scheduled_for as "scheduledFor",
+    delivery_snapshot as "deliverySnapshot",
+    status,
+    lease_token::text as "leaseToken",
+    worker_id as "workerId",
+    lease_expires_at as "leaseExpiresAt",
+    attempt::text as "attempt",
+    provider_message_id as "providerMessageId",
+    error_code as "errorCode",
+    error_detail as "errorDetail",
+    claimed_at as "claimedAt",
+    completed_at as "completedAt"
+  from scheduled_action_runs
+`;
+
 const EVENT_SELECT = `
   select
     id::text as "id",
@@ -305,6 +396,58 @@ class PostgresRead implements DomainRead {
     return result.rows[0] === undefined ? undefined : mapRepair(result.rows[0]);
   }
 
+  public async getScheduledAction(
+    id: string,
+  ): Promise<ScheduledAction | undefined> {
+    const result = await this.client.query(
+      `${SCHEDULED_ACTION_SELECT} where id = $1${this.lockRows ? ' for update' : ''}`,
+      [id],
+    );
+    return result.rows[0] === undefined
+      ? undefined
+      : mapScheduledAction(result.rows[0]);
+  }
+
+  public async getScheduledActionRun(
+    id: string,
+  ): Promise<ScheduledActionRun | undefined> {
+    const result = await this.client.query(
+      `${SCHEDULED_ACTION_RUN_SELECT} where id = $1${this.lockRows ? ' for update' : ''}`,
+      [id],
+    );
+    return result.rows[0] === undefined
+      ? undefined
+      : mapScheduledActionRun(result.rows[0]);
+  }
+
+  public async getScheduledActionRunActionId(
+    id: string,
+  ): Promise<string | undefined> {
+    const result = await this.client.query(
+      'select scheduled_action_id::text as "scheduledActionId" from scheduled_action_runs where id = $1',
+      [id],
+    );
+    const row = result.rows[0];
+    if (row === undefined) return undefined;
+    const value = rowRecord(row)['scheduledActionId'];
+    if (typeof value !== 'string') {
+      throw new TypeError('Scheduled action run owner id is invalid');
+    }
+    return value;
+  }
+
+  public async getScheduledActionRunByOccurrenceKey(
+    occurrenceKey: string,
+  ): Promise<ScheduledActionRun | undefined> {
+    const result = await this.client.query(
+      `${SCHEDULED_ACTION_RUN_SELECT} where occurrence_key = $1${this.lockRows ? ' for update' : ''}`,
+      [occurrenceKey],
+    );
+    return result.rows[0] === undefined
+      ? undefined
+      : mapScheduledActionRun(result.rows[0]);
+  }
+
   public async getMutationReceipt(
     mutationId: string,
   ): Promise<MutationReceipt | undefined> {
@@ -341,6 +484,20 @@ class PostgresRead implements DomainRead {
       `${REPAIR_SELECT} order by updated_at desc, id`,
     );
     return result.rows.map(mapRepair);
+  }
+
+  public async listScheduledActions(): Promise<ScheduledAction[]> {
+    const result = await this.client.query(
+      `${SCHEDULED_ACTION_SELECT} order by coalesce(next_run_at, run_at), id`,
+    );
+    return result.rows.map(mapScheduledAction);
+  }
+
+  public async listScheduledActionRuns(): Promise<ScheduledActionRun[]> {
+    const result = await this.client.query(
+      `${SCHEDULED_ACTION_RUN_SELECT} order by scheduled_for desc, id`,
+    );
+    return result.rows.map(mapScheduledActionRun);
   }
 
   public async listEvents(): Promise<DomainEvent[]> {
@@ -552,6 +709,128 @@ class PostgresTransaction
       ],
     );
     this.requireUpdated(result, 'Repair', repair.id);
+  }
+
+  public async insertScheduledAction(
+    action: ScheduledAction,
+  ): Promise<void> {
+    await this.client.query(
+      `insert into scheduled_actions
+        (id, job_id, task_id, title, action_type, payload, timezone,
+         recurrence_rule, status, run_at, next_run_at, last_run_at,
+         created_at, updated_at, revision)
+       values (
+         $1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11,
+         $12, $13, $14, $15
+       )`,
+      [
+        action.id,
+        action.jobId,
+        action.taskId,
+        action.title,
+        action.actionType,
+        JSON.stringify(action.payload),
+        action.timezone,
+        action.recurrenceRule,
+        action.status,
+        action.runAt,
+        action.nextRunAt,
+        action.lastRunAt,
+        action.createdAt,
+        action.updatedAt,
+        action.revision,
+      ],
+    );
+  }
+
+  public async updateScheduledAction(
+    action: ScheduledAction,
+  ): Promise<void> {
+    const result = await this.client.query(
+      `update scheduled_actions
+       set job_id = $2, task_id = $3, title = $4, action_type = $5,
+           payload = $6::jsonb, timezone = $7, recurrence_rule = $8,
+           status = $9, run_at = $10, next_run_at = $11,
+           last_run_at = $12, updated_at = $13, revision = $14
+       where id = $1`,
+      [
+        action.id,
+        action.jobId,
+        action.taskId,
+        action.title,
+        action.actionType,
+        JSON.stringify(action.payload),
+        action.timezone,
+        action.recurrenceRule,
+        action.status,
+        action.runAt,
+        action.nextRunAt,
+        action.lastRunAt,
+        action.updatedAt,
+        action.revision,
+      ],
+    );
+    this.requireUpdated(result, 'ScheduledAction', action.id);
+  }
+
+  public async insertScheduledActionRun(
+    run: ScheduledActionRun,
+  ): Promise<void> {
+    await this.client.query(
+      `insert into scheduled_action_runs
+        (id, scheduled_action_id, occurrence_key, scheduled_for,
+         delivery_snapshot, status, lease_token, worker_id,
+         lease_expires_at, attempt, provider_message_id, error_code,
+         error_detail, claimed_at, completed_at)
+       values (
+         $1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12,
+         $13, $14, $15
+       )`,
+      [
+        run.id,
+        run.scheduledActionId,
+        run.occurrenceKey,
+        run.scheduledFor,
+        JSON.stringify(run.deliverySnapshot),
+        run.status,
+        run.leaseToken,
+        run.workerId,
+        run.leaseExpiresAt,
+        run.attempt,
+        run.providerMessageId,
+        run.errorCode,
+        run.errorDetail,
+        run.claimedAt,
+        run.completedAt,
+      ],
+    );
+  }
+
+  public async updateScheduledActionRun(
+    run: ScheduledActionRun,
+  ): Promise<void> {
+    const result = await this.client.query(
+      `update scheduled_action_runs
+       set status = $2, lease_token = $3, worker_id = $4,
+           lease_expires_at = $5, attempt = $6,
+           provider_message_id = $7, error_code = $8,
+           error_detail = $9, claimed_at = $10, completed_at = $11
+       where id = $1`,
+      [
+        run.id,
+        run.status,
+        run.leaseToken,
+        run.workerId,
+        run.leaseExpiresAt,
+        run.attempt,
+        run.providerMessageId,
+        run.errorCode,
+        run.errorDetail,
+        run.claimedAt,
+        run.completedAt,
+      ],
+    );
+    this.requireUpdated(result, 'ScheduledActionRun', run.id);
   }
 
   public async appendEvent(event: DomainEvent): Promise<void> {

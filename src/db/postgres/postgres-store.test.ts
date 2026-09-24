@@ -4,6 +4,10 @@ import type { Job } from '../../contracts/job';
 import type { MutationReceipt } from '../../contracts/mutation';
 import type { Party } from '../../contracts/party';
 import type { Repair } from '../../contracts/repair';
+import type {
+  ScheduledAction,
+  ScheduledActionRun,
+} from '../../contracts/scheduler';
 import type { Task } from '../../contracts/task';
 import { DomainNotFoundError } from '../../domain/errors';
 import {
@@ -70,6 +74,51 @@ const repair: Repair = {
   createdAt: '2026-09-24T09:00:00.000Z',
   updatedAt: '2026-09-24T09:00:00.000Z',
   revision: 1,
+};
+
+const scheduledAction: ScheduledAction = {
+  id: '20000000-0000-4000-8000-000000000006',
+  jobId: job.id,
+  taskId: task.id,
+  title: 'Pressure-test reminder',
+  actionType: 'REMINDER',
+  payload: {
+    kind: 'REMINDER',
+    message: 'Check overnight pressure',
+  },
+  timezone: 'Africa/Johannesburg',
+  recurrenceRule: null,
+  status: 'ACTIVE',
+  runAt: '2026-09-24T10:00:00.000Z',
+  nextRunAt: '2026-09-24T10:00:00.000Z',
+  lastRunAt: null,
+  createdAt: '2026-09-24T09:00:00.000Z',
+  updatedAt: '2026-09-24T09:00:00.000Z',
+  revision: 1,
+};
+
+const scheduledActionRun: ScheduledActionRun = {
+  id: '20000000-0000-4000-8000-000000000007',
+  scheduledActionId: scheduledAction.id,
+  occurrenceKey:
+    'OCC-20000000-0000-4000-8000-000000000006-2026-09-24T10:00:00.000Z',
+  scheduledFor: '2026-09-24T10:00:00.000Z',
+  deliverySnapshot: {
+    title: scheduledAction.title,
+    actionType: scheduledAction.actionType,
+    payload: scheduledAction.payload,
+    timezone: scheduledAction.timezone,
+  },
+  status: 'CLAIMED',
+  leaseToken: '20000000-0000-4000-8000-000000000008',
+  workerId: 'worker-a',
+  leaseExpiresAt: '2026-09-24T10:05:00.000Z',
+  attempt: 1,
+  providerMessageId: null,
+  errorCode: null,
+  errorDetail: null,
+  claimedAt: '2026-09-24T10:00:00.000Z',
+  completedAt: null,
 };
 
 const event: DomainEvent = {
@@ -165,6 +214,48 @@ function repairRow() {
   };
 }
 
+function scheduledActionRow() {
+  return {
+    id: scheduledAction.id,
+    jobId: scheduledAction.jobId,
+    taskId: scheduledAction.taskId,
+    title: scheduledAction.title,
+    actionType: scheduledAction.actionType,
+    payload: JSON.stringify(scheduledAction.payload),
+    timezone: scheduledAction.timezone,
+    recurrenceRule: scheduledAction.recurrenceRule,
+    status: scheduledAction.status,
+    runAt: scheduledAction.runAt,
+    nextRunAt: scheduledAction.nextRunAt,
+    lastRunAt: scheduledAction.lastRunAt,
+    createdAt: scheduledAction.createdAt,
+    updatedAt: scheduledAction.updatedAt,
+    revision: String(scheduledAction.revision),
+  };
+}
+
+function scheduledActionRunRow() {
+  return {
+    id: scheduledActionRun.id,
+    scheduledActionId: scheduledActionRun.scheduledActionId,
+    occurrenceKey: scheduledActionRun.occurrenceKey,
+    scheduledFor: scheduledActionRun.scheduledFor,
+    deliverySnapshot: JSON.stringify(
+      scheduledActionRun.deliverySnapshot,
+    ),
+    status: scheduledActionRun.status,
+    leaseToken: scheduledActionRun.leaseToken,
+    workerId: scheduledActionRun.workerId,
+    leaseExpiresAt: scheduledActionRun.leaseExpiresAt,
+    attempt: String(scheduledActionRun.attempt),
+    providerMessageId: scheduledActionRun.providerMessageId,
+    errorCode: scheduledActionRun.errorCode,
+    errorDetail: scheduledActionRun.errorDetail,
+    claimedAt: scheduledActionRun.claimedAt,
+    completedAt: scheduledActionRun.completedAt,
+  };
+}
+
 function eventRow() {
   return {
     id: event.id,
@@ -234,6 +325,12 @@ function defaultResponder(sql: string): SqlQueryResult {
   if (normalized.includes(' from repairs')) {
     return { rows: [repairRow()], rowCount: 1 };
   }
+  if (normalized.includes(' from scheduled_action_runs')) {
+    return { rows: [scheduledActionRunRow()], rowCount: 1 };
+  }
+  if (normalized.includes(' from scheduled_actions')) {
+    return { rows: [scheduledActionRow()], rowCount: 1 };
+  }
   if (normalized.includes(' from events')) {
     return { rows: [eventRow()], rowCount: 1 };
   }
@@ -256,11 +353,16 @@ describe('PostgresDomainStore', () => {
         oneTask,
         oneRepair,
         oneRepairByJob,
+        oneScheduledAction,
+        oneScheduledRun,
+        oneScheduledRunByOccurrence,
         oneReceipt,
         parties,
         jobs,
         tasks,
         repairs,
+        scheduledActions,
+        scheduledRuns,
         events,
       ] = await Promise.all([
         read.getParty(party.id),
@@ -268,11 +370,18 @@ describe('PostgresDomainStore', () => {
         read.getTask(task.id),
         read.getRepair(repair.id),
         read.getRepairByJobId(job.id),
+        read.getScheduledAction(scheduledAction.id),
+        read.getScheduledActionRun(scheduledActionRun.id),
+        read.getScheduledActionRunByOccurrenceKey(
+          scheduledActionRun.occurrenceKey,
+        ),
         read.getMutationReceipt(receipt.mutationId),
         read.listParties(),
         read.listJobs(),
         read.listTasks(),
         read.listRepairs(),
+        read.listScheduledActions(),
+        read.listScheduledActionRuns(),
         read.listEvents(),
       ]);
 
@@ -282,11 +391,16 @@ describe('PostgresDomainStore', () => {
         oneTask,
         oneRepair,
         oneRepairByJob,
+        oneScheduledAction,
+        oneScheduledRun,
+        oneScheduledRunByOccurrence,
         oneReceipt,
         parties,
         jobs,
         tasks,
         repairs,
+        scheduledActions,
+        scheduledRuns,
         events,
       };
     });
@@ -296,11 +410,16 @@ describe('PostgresDomainStore', () => {
     expect(result.oneTask).toEqual(task);
     expect(result.oneRepair).toEqual(repair);
     expect(result.oneRepairByJob).toEqual(repair);
+    expect(result.oneScheduledAction).toEqual(scheduledAction);
+    expect(result.oneScheduledRun).toEqual(scheduledActionRun);
+    expect(result.oneScheduledRunByOccurrence).toEqual(scheduledActionRun);
     expect(result.oneReceipt).toEqual(receipt);
     expect(result.parties).toEqual([party]);
     expect(result.jobs).toEqual([job]);
     expect(result.tasks).toEqual([task]);
     expect(result.repairs).toEqual([repair]);
+    expect(result.scheduledActions).toEqual([scheduledAction]);
+    expect(result.scheduledRuns).toEqual([scheduledActionRun]);
     expect(result.events).toEqual([event]);
 
     expect(client.queries[0]?.sql.toLowerCase()).toContain(
@@ -328,6 +447,17 @@ describe('PostgresDomainStore', () => {
       expect(await transaction.getTask(task.id)).toEqual(task);
       expect(await transaction.getRepair(repair.id)).toEqual(repair);
       expect(await transaction.getRepairByJobId(job.id)).toEqual(repair);
+      expect(
+        await transaction.getScheduledAction(scheduledAction.id),
+      ).toEqual(scheduledAction);
+      expect(
+        await transaction.getScheduledActionRun(scheduledActionRun.id),
+      ).toEqual(scheduledActionRun);
+      expect(
+        await transaction.getScheduledActionRunByOccurrenceKey(
+          scheduledActionRun.occurrenceKey,
+        ),
+      ).toEqual(scheduledActionRun);
 
       await transaction.insertParty(party);
       await transaction.updateParty({ ...party, revision: 2 });
@@ -337,6 +467,16 @@ describe('PostgresDomainStore', () => {
       await transaction.updateTask({ ...task, revision: 2 });
       await transaction.insertRepair(repair);
       await transaction.updateRepair({ ...repair, revision: 2 });
+      await transaction.insertScheduledAction(scheduledAction);
+      await transaction.updateScheduledAction({
+        ...scheduledAction,
+        revision: 2,
+      });
+      await transaction.insertScheduledActionRun(scheduledActionRun);
+      await transaction.updateScheduledActionRun({
+        ...scheduledActionRun,
+        workerId: 'worker-b',
+      });
       await transaction.appendEvent(event);
       await transaction.saveMutationReceipt(receipt);
     });
@@ -348,7 +488,7 @@ describe('PostgresDomainStore', () => {
     expect(sql.some((query) => query.includes('pg_advisory_xact_lock'))).toBe(
       true,
     );
-    expect(sql.filter((query) => query.includes('for update')).length).toBe(5);
+    expect(sql.filter((query) => query.includes('for update')).length).toBe(8);
     expect(sql.at(-1)).toBe('commit');
     expect(client.released).toBe(true);
   });
@@ -359,6 +499,7 @@ describe('PostgresDomainStore', () => {
       if (
         normalized.includes(' where id = $1') ||
         normalized.includes(' where job_id = $1') ||
+        normalized.includes(' where occurrence_key = $1') ||
         normalized.includes(' where mutation_id = $1')
       ) {
         return { rows: [], rowCount: 0 };
@@ -373,6 +514,17 @@ describe('PostgresDomainStore', () => {
       expect(await read.getTask(task.id)).toBeUndefined();
       expect(await read.getRepair(repair.id)).toBeUndefined();
       expect(await read.getRepairByJobId(job.id)).toBeUndefined();
+      expect(
+        await read.getScheduledAction(scheduledAction.id),
+      ).toBeUndefined();
+      expect(
+        await read.getScheduledActionRun(scheduledActionRun.id),
+      ).toBeUndefined();
+      expect(
+        await read.getScheduledActionRunByOccurrenceKey(
+          scheduledActionRun.occurrenceKey,
+        ),
+      ).toBeUndefined();
       expect(
         await read.getMutationReceipt(receipt.mutationId),
       ).toBeUndefined();

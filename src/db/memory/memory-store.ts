@@ -3,6 +3,10 @@ import type { Job } from '../../contracts/job';
 import type { MutationReceipt } from '../../contracts/mutation';
 import type { Party } from '../../contracts/party';
 import type { Repair } from '../../contracts/repair';
+import type {
+  ScheduledAction,
+  ScheduledActionRun,
+} from '../../contracts/scheduler';
 import type { Task } from '../../contracts/task';
 import {
   DomainNotFoundError,
@@ -20,6 +24,8 @@ interface MemoryState {
   jobs: Map<string, Job>;
   tasks: Map<string, Task>;
   repairs: Map<string, Repair>;
+  scheduledActions: Map<string, ScheduledAction>;
+  scheduledActionRuns: Map<string, ScheduledActionRun>;
   events: DomainEvent[];
   receipts: Map<string, MutationReceipt>;
 }
@@ -36,6 +42,8 @@ function cloneState(state: MemoryState): MemoryState {
     jobs: cloneMap(state.jobs),
     tasks: cloneMap(state.tasks),
     repairs: cloneMap(state.repairs),
+    scheduledActions: cloneMap(state.scheduledActions),
+    scheduledActionRuns: cloneMap(state.scheduledActionRuns),
     events: structuredClone(state.events),
     receipts: cloneMap(state.receipts),
   };
@@ -71,6 +79,29 @@ class MemoryView implements DomainTransaction {
     return value === undefined ? undefined : structuredClone(value);
   }
 
+  public getScheduledAction(id: string): ScheduledAction | undefined {
+    const value = this.state.scheduledActions.get(id);
+    return value === undefined ? undefined : structuredClone(value);
+  }
+
+  public getScheduledActionRun(id: string): ScheduledActionRun | undefined {
+    const value = this.state.scheduledActionRuns.get(id);
+    return value === undefined ? undefined : structuredClone(value);
+  }
+
+  public getScheduledActionRunActionId(id: string): string | undefined {
+    return this.state.scheduledActionRuns.get(id)?.scheduledActionId;
+  }
+
+  public getScheduledActionRunByOccurrenceKey(
+    occurrenceKey: string,
+  ): ScheduledActionRun | undefined {
+    const value = [...this.state.scheduledActionRuns.values()].find(
+      (run) => run.occurrenceKey === occurrenceKey,
+    );
+    return value === undefined ? undefined : structuredClone(value);
+  }
+
   public getMutationReceipt(mutationId: string): MutationReceipt | undefined {
     const value = this.state.receipts.get(mutationId);
     return value === undefined ? undefined : structuredClone(value);
@@ -90,6 +121,18 @@ class MemoryView implements DomainTransaction {
 
   public listRepairs(): Repair[] {
     return [...this.state.repairs.values()].map((value) =>
+      structuredClone(value),
+    );
+  }
+
+  public listScheduledActions(): ScheduledAction[] {
+    return [...this.state.scheduledActions.values()].map((value) =>
+      structuredClone(value),
+    );
+  }
+
+  public listScheduledActionRuns(): ScheduledActionRun[] {
+    return [...this.state.scheduledActionRuns.values()].map((value) =>
       structuredClone(value),
     );
   }
@@ -164,6 +207,44 @@ class MemoryView implements DomainTransaction {
     this.state.repairs.set(repair.id, structuredClone(repair));
   }
 
+  public insertScheduledAction(action: ScheduledAction): void {
+    if (this.state.scheduledActions.has(action.id)) {
+      throw new DuplicateEntityError('ScheduledAction', action.id);
+    }
+    this.state.scheduledActions.set(action.id, structuredClone(action));
+  }
+
+  public updateScheduledAction(action: ScheduledAction): void {
+    if (!this.state.scheduledActions.has(action.id)) {
+      throw new DomainNotFoundError('ScheduledAction', action.id);
+    }
+    this.state.scheduledActions.set(action.id, structuredClone(action));
+  }
+
+  public insertScheduledActionRun(run: ScheduledActionRun): void {
+    if (this.state.scheduledActionRuns.has(run.id)) {
+      throw new DuplicateEntityError('ScheduledActionRun', run.id);
+    }
+    if (
+      [...this.state.scheduledActionRuns.values()].some(
+        (value) => value.occurrenceKey === run.occurrenceKey,
+      )
+    ) {
+      throw new DuplicateEntityError(
+        'ScheduledActionOccurrence',
+        run.occurrenceKey,
+      );
+    }
+    this.state.scheduledActionRuns.set(run.id, structuredClone(run));
+  }
+
+  public updateScheduledActionRun(run: ScheduledActionRun): void {
+    if (!this.state.scheduledActionRuns.has(run.id)) {
+      throw new DomainNotFoundError('ScheduledActionRun', run.id);
+    }
+    this.state.scheduledActionRuns.set(run.id, structuredClone(run));
+  }
+
   public appendEvent(event: DomainEvent): void {
     if (this.state.events.some((value) => value.id === event.id)) {
       throw new DuplicateEntityError('Event', event.id);
@@ -192,6 +273,8 @@ export class MemoryDomainStore implements DomainStore {
     jobs: new Map(),
     tasks: new Map(),
     repairs: new Map(),
+    scheduledActions: new Map(),
+    scheduledActionRuns: new Map(),
     events: [],
     receipts: new Map(),
   };
