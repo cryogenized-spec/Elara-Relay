@@ -24,6 +24,26 @@ describe('core domain contracts', () => {
     expect(task.followUpAt).not.toBeNull();
   });
 
+  it('normalizes offset timestamps to one UTC representation', () => {
+    const task = taskSchema.parse({
+      id: '00000000-0000-4000-8000-000000000001',
+      jobId: null,
+      title: 'Offset normalization',
+      status: 'NEXT',
+      priority: 'NORMAL',
+      dueAt: '2026-09-24T10:00:00+02:00',
+      followUpAt: null,
+      waitingOn: null,
+      waitingSince: null,
+      createdAt: '2026-09-24T10:00:00+02:00',
+      updatedAt: '2026-09-24T10:00:00+02:00',
+      revision: 1,
+    });
+
+    expect(task.dueAt).toBe('2026-09-24T08:00:00.000Z');
+    expect(task.createdAt).toBe('2026-09-24T08:00:00.000Z');
+  });
+
   it('rejects inconsistent waiting metadata', () => {
     const base = {
       id: '00000000-0000-4000-8000-000000000001',
