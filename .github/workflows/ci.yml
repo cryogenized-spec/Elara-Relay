@@ -41,6 +41,15 @@ jobs:
       - name: Secret scan
         run: npm run secrets:check
 
+      - name: Verify registry signatures
+        run: npm audit signatures
+
+      - name: Reject high-severity dependency advisories
+        run: npm audit --audit-level=high
+
+      - name: Supply-chain gate
+        run: npm run supply-chain:check
+
       - name: Lint
         run: npm run lint
 
