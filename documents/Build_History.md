@@ -159,11 +159,12 @@ Completed:
 - Pass 1D
 - Pass 1E
 
-Current focus:
+Documentation checkpoint:
 
-- **Pass 1F — documentation + visual system**
+- **Pass 1F — documentation + visual system** establishes the canonical
+  `/documents/` set and the research-grounded UI contract.
 
-Next:
+Next implementation milestone:
 
 - application shell / mobile UI;
 - production runtime/deployment;
