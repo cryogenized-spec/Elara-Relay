@@ -1,11 +1,18 @@
 import { Hono, type Context } from 'hono';
 import { z, ZodError } from 'zod';
-import { createJobInputSchema } from '../contracts/job';
+import type {
+  AuthIdentity,
+  AuthVerifier,
+} from '../auth/auth-verifier';
+import { extractBearerToken } from '../auth/bearer';
 import {
-  mutationContextSchema,
-  versionedMutationContextSchema,
-} from '../contracts/mutation';
+  AuthenticationError,
+  AuthorizationError,
+} from '../auth/errors';
+import { createJobInputSchema } from '../contracts/job';
+import { mutationIdSchema } from '../contracts/mutation';
 import { createPartyInputSchema } from '../contracts/party';
+import { revisionSchema } from '../contracts/shared';
 import {
   createTaskInputSchema,
   markTaskWaitingInputSchema,
@@ -19,55 +26,76 @@ import {
 import type { DomainKernel } from '../domain/kernel';
 import { RevisionConflictError } from '../domain/revision';
 
+type ApiEnv = {
+  Variables: {
+    authIdentity: AuthIdentity;
+  };
+};
+
+type ApiContext = Context<ApiEnv>;
+
+const mutationRequestSchema = z
+  .object({
+    mutationId: mutationIdSchema,
+  })
+  .strict();
+
+const versionedMutationRequestSchema = z
+  .object({
+    mutationId: mutationIdSchema,
+    expectedRevision: revisionSchema,
+  })
+  .strict();
+
 const createPartyRequestSchema = z
   .object({
-    mutation: mutationContextSchema,
+    mutation: mutationRequestSchema,
     input: createPartyInputSchema,
   })
   .strict();
 
 const createJobRequestSchema = z
   .object({
-    mutation: mutationContextSchema,
+    mutation: mutationRequestSchema,
     input: createJobInputSchema,
   })
   .strict();
 
 const createTaskRequestSchema = z
   .object({
-    mutation: mutationContextSchema,
+    mutation: mutationRequestSchema,
     input: createTaskInputSchema,
   })
   .strict();
 
 const updateTaskRequestSchema = z
   .object({
-    mutation: versionedMutationContextSchema,
+    mutation: versionedMutationRequestSchema,
     patch: updateTaskPatchSchema,
   })
   .strict();
 
 const waitTaskRequestSchema = z
   .object({
-    mutation: versionedMutationContextSchema,
+    mutation: versionedMutationRequestSchema,
     input: markTaskWaitingInputSchema,
   })
   .strict();
 
 const versionedRequestSchema = z
   .object({
-    mutation: versionedMutationContextSchema,
+    mutation: versionedMutationRequestSchema,
   })
   .strict();
 
 const addJobEventRequestSchema = z
   .object({
-    mutation: versionedMutationContextSchema,
+    mutation: versionedMutationRequestSchema,
     detail: z.string(),
   })
   .strict();
 
-async function requestJson(context: Context): Promise<unknown> {
+async function requestJson(context: ApiContext): Promise<unknown> {
   try {
     return await context.req.json<unknown>();
   } catch (error) {
@@ -78,24 +106,59 @@ async function requestJson(context: Context): Promise<unknown> {
   }
 }
 
-function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
+function operatorMutation(mutation: z.infer<typeof mutationRequestSchema>) {
+  return {
+    ...mutation,
+    actor: 'operator-ui' as const,
+  };
+}
+
+function operatorVersionedMutation(
+  mutation: z.infer<typeof versionedMutationRequestSchema>,
+) {
+  return {
+    ...mutation,
+    actor: 'operator-ui' as const,
+  };
+}
+
+function registerDomainRoutes(
+  app: Hono<ApiEnv>,
+  kernel: DomainKernel,
+): void {
+  app.get('/auth/whoami', (context) =>
+    context.json(context.get('authIdentity')),
+  );
+
   app.post('/parties', async (context) => {
     const request = createPartyRequestSchema.parse(await requestJson(context));
     return context.json(
-      await kernel.createParty(request.mutation, request.input),
+      await kernel.createParty(
+        operatorMutation(request.mutation),
+        request.input,
+      ),
       201,
     );
   });
 
   app.post('/jobs', async (context) => {
     const request = createJobRequestSchema.parse(await requestJson(context));
-    return context.json(await kernel.createJob(request.mutation, request.input), 201);
+    return context.json(
+      await kernel.createJob(
+        operatorMutation(request.mutation),
+        request.input,
+      ),
+      201,
+    );
   });
 
   app.post('/tasks', async (context) => {
     const request = createTaskRequestSchema.parse(await requestJson(context));
     return context.json(
-      await kernel.createTask(request.mutation, request.input),
+      await kernel.createTask(
+        operatorMutation(request.mutation),
+        request.input,
+      ),
       201,
     );
   });
@@ -104,7 +167,7 @@ function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
     const request = updateTaskRequestSchema.parse(await requestJson(context));
     return context.json(
       await kernel.updateTask(
-        request.mutation,
+        operatorVersionedMutation(request.mutation),
         context.req.param('taskId'),
         request.patch,
       ),
@@ -115,7 +178,7 @@ function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
     const request = waitTaskRequestSchema.parse(await requestJson(context));
     return context.json(
       await kernel.markTaskWaiting(
-        request.mutation,
+        operatorVersionedMutation(request.mutation),
         context.req.param('taskId'),
         request.input,
       ),
@@ -125,14 +188,20 @@ function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
   app.post('/tasks/:taskId/complete', async (context) => {
     const request = versionedRequestSchema.parse(await requestJson(context));
     return context.json(
-      await kernel.completeTask(request.mutation, context.req.param('taskId')),
+      await kernel.completeTask(
+        operatorVersionedMutation(request.mutation),
+        context.req.param('taskId'),
+      ),
     );
   });
 
   app.post('/tasks/:taskId/cancel', async (context) => {
     const request = versionedRequestSchema.parse(await requestJson(context));
     return context.json(
-      await kernel.cancelTask(request.mutation, context.req.param('taskId')),
+      await kernel.cancelTask(
+        operatorVersionedMutation(request.mutation),
+        context.req.param('taskId'),
+      ),
     );
   });
 
@@ -140,7 +209,7 @@ function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
     const request = addJobEventRequestSchema.parse(await requestJson(context));
     return context.json(
       await kernel.addJobEvent(
-        request.mutation,
+        operatorVersionedMutation(request.mutation),
         context.req.param('jobId'),
         request.detail,
       ),
@@ -163,8 +232,30 @@ function registerDomainRoutes(app: Hono, kernel: DomainKernel): void {
   });
 }
 
-export function createApi(kernel?: DomainKernel): Hono {
-  const app = new Hono();
+function registerProtectedDomainApi(
+  app: Hono<ApiEnv>,
+  kernel: DomainKernel,
+  verifier: AuthVerifier,
+): void {
+  const protectedApp = new Hono<ApiEnv>();
+
+  protectedApp.use('*', async (context, next) => {
+    const token = extractBearerToken(
+      context.req.header('authorization'),
+    );
+    context.set('authIdentity', await verifier.verify(token));
+    await next();
+  });
+
+  registerDomainRoutes(protectedApp, kernel);
+  app.route('/', protectedApp);
+}
+
+export function createApi(
+  kernel?: DomainKernel,
+  authVerifier?: AuthVerifier,
+): Hono<ApiEnv> {
+  const app = new Hono<ApiEnv>();
 
   app.get('/health', (context) =>
     context.json({
@@ -175,10 +266,40 @@ export function createApi(kernel?: DomainKernel): Hono {
   );
 
   if (kernel !== undefined) {
-    registerDomainRoutes(app, kernel);
+    if (authVerifier === undefined) {
+      throw new Error(
+        'AuthVerifier is required whenever domain routes are enabled',
+      );
+    }
+    registerProtectedDomainApi(app, kernel, authVerifier);
   }
 
   app.onError((error, context) => {
+    if (error instanceof AuthenticationError) {
+      context.header('WWW-Authenticate', 'Bearer');
+      return context.json(
+        {
+          error: {
+            code: 'UNAUTHENTICATED',
+            message: 'Authentication required',
+          },
+        },
+        401,
+      );
+    }
+
+    if (error instanceof AuthorizationError) {
+      return context.json(
+        {
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Access denied',
+          },
+        },
+        403,
+      );
+    }
+
     if (error instanceof ZodError || error instanceof DomainValidationError) {
       return context.json(
         {
