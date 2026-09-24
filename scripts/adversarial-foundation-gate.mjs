@@ -16,6 +16,13 @@ function runVitest(paths) {
   );
 }
 
+function runNode(script) {
+  return spawnSync(process.execPath, [join(root, script)], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+}
+
 function hostileMutation(path, search, replacement, tests, label) {
   const absolute = join(root, path);
   const original = readFileSync(absolute, 'utf8');
@@ -52,6 +59,27 @@ hostileMutation(
   'mutation boundary widened to accept unknown fields',
 );
 
+{
+  const path = 'package.json';
+  const absolute = join(root, path);
+  const original = readFileSync(absolute, 'utf8');
+  const hostile = original.replace('"hono": "4.13.8"', '"hono": "^4.13.8"');
+  if (hostile === original) {
+    throw new Error('Mutation target disappeared: exact direct dependency pin');
+  }
+  try {
+    writeFileSync(absolute, hostile);
+    const result = runNode('scripts/supply-chain-gate.mjs');
+    if (result.status === 0) {
+      throw new Error(
+        'Adversarial mutation survived: direct dependency range accepted by supply-chain gate.',
+      );
+    }
+  } finally {
+    writeFileSync(absolute, original);
+  }
+}
+
 process.stdout.write(
-  'Adversarial foundation gate passed: hostile concurrency and schema-boundary mutations were rejected by the test suite.\n',
+  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, and dependency-pin mutations were rejected.\n',
 );
