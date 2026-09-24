@@ -161,7 +161,11 @@ export function createApi(kernel?: DomainKernel): Hono {
   }
 
   app.onError((error, context) => {
-    if (error instanceof ZodError || error instanceof DomainValidationError) {
+    if (
+      error instanceof SyntaxError ||
+      error instanceof ZodError ||
+      error instanceof DomainValidationError
+    ) {
       return context.json(
         {
           error: {
