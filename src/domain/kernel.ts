@@ -81,6 +81,7 @@ export interface JobView {
   tasks: Task[];
   repair: Repair | null;
   repairWarnings: RepairWarning[];
+  scheduledActions: ScheduledAction[];
   events: DomainEvent[];
 }
 
@@ -1408,20 +1409,32 @@ export class DomainKernel {
         throw new DomainNotFoundError('Job', id);
       }
 
-      const [tasks, repair, allEvents] = await Promise.all([
-        read.listTasks(),
-        read.getRepairByJobId(id),
-        read.listEvents(),
-      ]);
+      const [tasks, repair, allScheduledActions, allEvents] =
+        await Promise.all([
+          read.listTasks(),
+          read.getRepairByJobId(id),
+          read.listScheduledActions(),
+          read.listEvents(),
+        ]);
       const jobTasks = tasks.filter((task) => task.jobId === id);
       const taskIds = new Set(jobTasks.map((task) => task.id));
+      const scheduledActions = allScheduledActions.filter(
+        (action) =>
+          action.jobId === id ||
+          (action.taskId !== null && taskIds.has(action.taskId)),
+      );
+      const scheduledActionIds = new Set(
+        scheduledActions.map((action) => action.id),
+      );
       const events = allEvents.filter(
         (event) =>
           (event.entityType === 'JOB' && event.entityId === id) ||
           (event.entityType === 'TASK' && taskIds.has(event.entityId)) ||
           (event.entityType === 'REPAIR' &&
             repair !== undefined &&
-            event.entityId === repair.id),
+            event.entityId === repair.id) ||
+          (event.entityType === 'SCHEDULED_ACTION' &&
+            scheduledActionIds.has(event.entityId)),
       );
 
       return {
@@ -1430,6 +1443,7 @@ export class DomainKernel {
         repair: repair ?? null,
         repairWarnings:
           repair === undefined ? [] : repairWarnings(repair),
+        scheduledActions,
         events,
       };
     });
