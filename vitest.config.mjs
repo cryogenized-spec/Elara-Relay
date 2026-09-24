@@ -9,7 +9,10 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary'],
       reportsDirectory: 'coverage',
-      include: ['src/{api,contracts,domain,db}/**/*.ts'],
+      include: [
+        'src/{api,auth,contracts,domain,db}/**/*.ts',
+        'src/runtime/node/auth-config.ts',
+      ],
       exclude: ['src/**/*.test.ts'],
       thresholds: {
         lines: 80,
