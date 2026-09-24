@@ -358,6 +358,7 @@ describe('PostgresDomainStore', () => {
       const normalized = sql.replaceAll(/\s+/g, ' ').trim().toLowerCase();
       if (
         normalized.includes(' where id = $1') ||
+        normalized.includes(' where job_id = $1') ||
         normalized.includes(' where mutation_id = $1')
       ) {
         return { rows: [], rowCount: 0 };
