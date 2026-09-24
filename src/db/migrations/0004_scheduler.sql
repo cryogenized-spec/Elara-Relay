@@ -136,6 +136,18 @@ create table scheduled_action_runs (
     char_length(occurrence_key) between 1 and 220
   ),
   scheduled_for timestamptz not null,
+  delivery_snapshot jsonb not null check (
+    jsonb_typeof(delivery_snapshot) = 'object'
+    and delivery_snapshot ? 'title'
+    and delivery_snapshot ? 'actionType'
+    and delivery_snapshot ? 'payload'
+    and delivery_snapshot ? 'timezone'
+    and delivery_snapshot ->> 'timezone' = 'Africa/Johannesburg'
+    and delivery_snapshot ->> 'actionType' in ('REMINDER', 'DIGEST', 'EMAIL')
+    and jsonb_typeof(delivery_snapshot -> 'payload') = 'object'
+    and delivery_snapshot -> 'payload' ->> 'kind'
+      = delivery_snapshot ->> 'actionType'
+  ),
   status text not null check (
     status in ('CLAIMED', 'SUCCEEDED', 'FAILED')
   ),
@@ -161,6 +173,10 @@ create table scheduled_action_runs (
   ),
   claimed_at timestamptz not null,
   completed_at timestamptz,
+  check (
+    delivery_snapshot ->> 'actionType' <> 'EMAIL'
+    or delivery_snapshot -> 'payload' ->> 'recipient' = 'OWNER'
+  ),
   check (lease_expires_at > claimed_at),
   check (completed_at is null or completed_at >= claimed_at),
   check (
