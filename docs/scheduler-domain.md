@@ -27,6 +27,11 @@ supplier outbound mail remains draft-and-approve work.
 Every intended occurrence receives one deterministic `occurrenceKey`.
 `scheduled_action_runs.occurrence_key` is unique at the database layer.
 
+The first claim also freezes a delivery snapshot containing the title, action
+type, typed payload, and timezone. Retries reuse that snapshot even if an
+operator later edits the Scheduled Action, so one occurrence never changes
+meaning halfway through its retry lifecycle.
+
 Workers claim an occurrence with a lease token and expiry. Another worker
 cannot claim a live lease. A stale claim or failed delivery reuses the same run
 row and occurrence key, increments the attempt counter, and rotates the lease
