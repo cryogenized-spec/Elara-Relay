@@ -65,72 +65,72 @@ function jsonValue(value: unknown): unknown {
 function mapParty(row: unknown): Party {
   const value = rowRecord(row);
   return partySchema.parse({
-    id: value.id,
-    name: value.name,
-    kind: value.kind,
-    createdAt: timestamp(value.createdAt),
-    updatedAt: timestamp(value.updatedAt),
-    revision: integer(value.revision),
+    id: value['id'],
+    name: value['name'],
+    kind: value['kind'],
+    createdAt: timestamp(value['createdAt']),
+    updatedAt: timestamp(value['updatedAt']),
+    revision: integer(value['revision']),
   });
 }
 
 function mapJob(row: unknown): Job {
   const value = rowRecord(row);
   return jobSchema.parse({
-    id: value.id,
-    key: value.key,
-    title: value.title,
-    category: value.category,
-    partyId: value.partyId ?? null,
-    createdAt: timestamp(value.createdAt),
-    updatedAt: timestamp(value.updatedAt),
-    revision: integer(value.revision),
+    id: value['id'],
+    key: value['key'],
+    title: value['title'],
+    category: value['category'],
+    partyId: value['partyId'] ?? null,
+    createdAt: timestamp(value['createdAt']),
+    updatedAt: timestamp(value['updatedAt']),
+    revision: integer(value['revision']),
   });
 }
 
 function mapTask(row: unknown): Task {
   const value = rowRecord(row);
   return taskSchema.parse({
-    id: value.id,
-    jobId: value.jobId ?? null,
-    title: value.title,
-    status: value.status,
-    priority: value.priority,
-    dueAt: value.dueAt === null ? null : timestamp(value.dueAt),
-    followUpAt: value.followUpAt === null ? null : timestamp(value.followUpAt),
-    waitingOn: value.waitingOn ?? null,
+    id: value['id'],
+    jobId: value['jobId'] ?? null,
+    title: value['title'],
+    status: value['status'],
+    priority: value['priority'],
+    dueAt: value['dueAt'] === null ? null : timestamp(value['dueAt']),
+    followUpAt: value['followUpAt'] === null ? null : timestamp(value['followUpAt']),
+    waitingOn: value['waitingOn'] ?? null,
     waitingSince:
-      value.waitingSince === null ? null : timestamp(value.waitingSince),
-    createdAt: timestamp(value.createdAt),
-    updatedAt: timestamp(value.updatedAt),
-    revision: integer(value.revision),
+      value['waitingSince'] === null ? null : timestamp(value['waitingSince']),
+    createdAt: timestamp(value['createdAt']),
+    updatedAt: timestamp(value['updatedAt']),
+    revision: integer(value['revision']),
   });
 }
 
 function mapEvent(row: unknown): DomainEvent {
   const value = rowRecord(row);
   return eventSchema.parse({
-    id: value.id,
-    mutationId: value.mutationId,
-    entityType: value.entityType,
-    entityId: value.entityId,
-    eventType: value.eventType,
-    actor: value.actor,
-    occurredAt: timestamp(value.occurredAt),
-    detail: value.detail ?? null,
-    changes: jsonValue(value.changes),
-    revisionAfter: integer(value.revisionAfter),
+    id: value['id'],
+    mutationId: value['mutationId'],
+    entityType: value['entityType'],
+    entityId: value['entityId'],
+    eventType: value['eventType'],
+    actor: value['actor'],
+    occurredAt: timestamp(value['occurredAt']),
+    detail: value['detail'] ?? null,
+    changes: jsonValue(value['changes']),
+    revisionAfter: integer(value['revision']After),
   });
 }
 
 function mapReceipt(row: unknown): MutationReceipt {
   const value = rowRecord(row);
   return mutationReceiptSchema.parse({
-    mutationId: value.mutationId,
-    command: value.command,
-    fingerprint: value.fingerprint,
-    result: jsonValue(value.result),
-    committedAt: timestamp(value.committedAt),
+    mutationId: value['mutationId'],
+    command: value['command'],
+    fingerprint: value['fingerprint'],
+    result: jsonValue(value['result']),
+    committedAt: timestamp(value['committedAt']),
   });
 }
 
