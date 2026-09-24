@@ -14,7 +14,6 @@ export const taskDirectStatusSchema = z.enum([
   'INBOX',
   'NEXT',
   'DOING',
-  'CANCELLED',
 ]);
 
 export const taskPrioritySchema = z.enum([
