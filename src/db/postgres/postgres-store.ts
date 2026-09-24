@@ -454,6 +454,7 @@ async function rollback(
     throw new AggregateError(
       [originalError, rollbackError],
       'Database transaction and rollback both failed',
+      { cause: originalError },
     );
   }
   throw originalError;
