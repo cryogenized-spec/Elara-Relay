@@ -1158,6 +1158,12 @@ export class DomainKernel {
                 scheduledActionId: action.id,
                 occurrenceKey,
                 scheduledFor: action.nextRunAt,
+                deliverySnapshot: {
+                  title: action.title,
+                  actionType: action.actionType,
+                  payload: action.payload,
+                  timezone: action.timezone,
+                },
                 status: 'CLAIMED',
                 leaseToken,
                 workerId: input.workerId,
