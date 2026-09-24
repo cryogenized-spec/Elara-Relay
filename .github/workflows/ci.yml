@@ -29,8 +29,8 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
-      - name: Pin npm
-        run: npm install --global npm@11.19.0 --ignore-scripts --no-audit --no-fund
+      - name: Verify pinned npm
+        run: test "$(npm --version)" = "11.19.0"
 
       - name: Install exact dependency graph
         run: npm ci --ignore-scripts --no-audit --no-fund
