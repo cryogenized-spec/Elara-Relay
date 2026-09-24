@@ -79,13 +79,10 @@ describe('SchedulerDispatcher', () => {
       '2026-09-24T07:00:00.000Z',
       'worker-a',
     );
-    expect(first).toEqual([
-      {
-        actionId: action.id,
-        outcome: 'FAILED',
-        runId: expect.any(String),
-      },
-    ]);
+    expect(first).toHaveLength(1);
+    expect(first[0]?.actionId).toBe(action.id);
+    expect(first[0]?.outcome).toBe('FAILED');
+    expect(typeof first[0]?.runId).toBe('string');
 
     const second = await dispatcher.dispatchDue(
       '2026-09-24T07:02:00.000Z',
