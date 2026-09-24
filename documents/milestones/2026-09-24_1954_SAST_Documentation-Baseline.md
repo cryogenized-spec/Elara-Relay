@@ -1,8 +1,9 @@
 # Milestone — Documentation Baseline
 
 **Started:** 2026-09-24 19:54 SAST  
+**Pull request:** #9  
 **Branch:** `pass-1f/documentation-foundation`  
-**State:** In progress until reviewed and merged
+**State:** Draft / in progress until reviewed and merged
 
 ## Purpose
 
