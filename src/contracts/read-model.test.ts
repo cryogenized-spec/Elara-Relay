@@ -521,7 +521,7 @@ describe('read-model aggregate invariants', () => {
         party,
         tasks: [task],
         repair,
-        repairWarnings: [],
+        repairWarnings: ['SERIAL_UNKNOWN'],
         scheduledActions: [action({ jobId: null, taskId: TASK_ID })],
         events: [],
       }),
@@ -533,7 +533,7 @@ describe('read-model aggregate invariants', () => {
         party,
         tasks: [task],
         repair,
-        repairWarnings: [],
+        repairWarnings: ['SERIAL_UNKNOWN'],
         scheduledActions: [
           action({
             jobId: null,
