@@ -1,12 +1,22 @@
+import { decodeJwt } from 'jose';
+import { z } from 'zod';
 import {
   createRawSupabaseClient,
   type RawSession,
 } from './supabase-runtime.mjs';
 import type { BrowserRuntimeConfig } from './runtime-config';
 
+const browserSessionClaimsSchema = z
+  .object({
+    sub: z.string().uuid(),
+    session_id: z.string().uuid(),
+  })
+  .passthrough();
+
 export interface BrowserAuthSession {
   accessToken: string;
   userId: string;
+  sessionId: string;
   email: string | null;
 }
 
@@ -26,9 +36,15 @@ export function toBrowserAuthSession(
 ): BrowserAuthSession | null {
   if (session === null) return null;
 
+  const claims = browserSessionClaimsSchema.parse(decodeJwt(session.access_token));
+  if (claims.sub !== session.user.id) {
+    throw new Error('Supabase session subject does not match the session user');
+  }
+
   return {
     accessToken: session.access_token,
     userId: session.user.id,
+    sessionId: claims.session_id,
     email: session.user.email ?? null,
   };
 }
