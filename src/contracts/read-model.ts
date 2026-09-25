@@ -7,6 +7,13 @@ import { scheduledActionSchema } from './scheduler';
 import { timestampSchema } from './shared';
 import { taskSchema } from './task';
 
+export const taskViewSchema = z
+  .object({
+    task: taskSchema,
+    job: jobSchema.nullable(),
+  })
+  .strict();
+
 export const repairViewSchema = z
   .object({
     repair: repairSchema,
@@ -71,6 +78,7 @@ export const searchResultSchema = z
   })
   .strict();
 
+export type TaskViewPayload = z.infer<typeof taskViewSchema>;
 export type RepairViewPayload = z.infer<typeof repairViewSchema>;
 export type JobViewPayload = z.infer<typeof jobViewSchema>;
 export type TodayResultPayload = z.infer<typeof todayResultSchema>;

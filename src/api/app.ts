@@ -216,6 +216,10 @@ function registerDomainRoutes(
     );
   });
 
+  app.get('/tasks/:taskId', async (context) =>
+    context.json(await kernel.getTask(context.req.param('taskId'))),
+  );
+
   app.post('/repairs', async (context) => {
     const request = createRepairRequestSchema.parse(await requestJson(context));
     return context.json(

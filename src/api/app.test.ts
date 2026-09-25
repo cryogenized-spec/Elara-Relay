@@ -294,6 +294,23 @@ describe('API foundation', () => {
     );
     expect(noteResponse.status).toBe(201);
 
+    const taskView = await app.request(`/tasks/${task.id}`, {
+      headers: authorizationHeaders(),
+    });
+    expect(taskView.status).toBe(200);
+    const taskDetail = (await taskView.json()) as {
+      task: { id: string; title: string };
+      job: { id: string; title: string } | null;
+    };
+    expect(taskDetail.task).toMatchObject({
+      id: task.id,
+      title: 'Pressure test through lunch',
+    });
+    expect(taskDetail.job).toMatchObject({
+      id: job.id,
+      title: 'Avenge-X regulator repair',
+    });
+
     const jobView = await app.request(`/jobs/${job.id}`, {
       headers: authorizationHeaders(),
     });

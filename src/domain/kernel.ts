@@ -76,6 +76,11 @@ export interface RepairView {
   warnings: RepairWarning[];
 }
 
+export interface TaskView {
+  task: Task;
+  job: Job | null;
+}
+
 export interface WorkResult {
   parties: Party[];
   jobs: Job[];
@@ -1485,6 +1490,22 @@ export class DomainKernel {
           repair === undefined ? [] : repairWarnings(repair),
         scheduledActions,
         events,
+      };
+    });
+  }
+
+  public async getTask(taskId: string): Promise<TaskView> {
+    const id = entityIdSchema.parse(taskId);
+    return this.store.read(async (read) => {
+      const task = await read.getTask(id);
+      if (task === undefined) {
+        throw new DomainNotFoundError('Task', id);
+      }
+      const job =
+        task.jobId === null ? undefined : await read.getJob(task.jobId);
+      return {
+        task,
+        job: job ?? null,
       };
     });
   }
