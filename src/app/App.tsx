@@ -335,6 +335,11 @@ function SearchSurface({ onClose }: { onClose: () => void }) {
     if (!dialog) return undefined;
 
     const previousOverflow = document.body.style.overflow;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
     dialog.showModal();
     document.body.style.overflow = 'hidden';
     inputRef.current?.focus();
@@ -342,6 +347,7 @@ function SearchSurface({ onClose }: { onClose: () => void }) {
     return () => {
       document.body.style.overflow = previousOverflow;
       if (dialog.open) dialog.close();
+      previousFocus?.focus();
     };
   }, []);
 
@@ -483,12 +489,18 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
     if (!dialog) return undefined;
 
     const previousOverflow = document.body.style.overflow;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
     dialog.showModal();
     document.body.style.overflow = 'hidden';
 
     return () => {
       document.body.style.overflow = previousOverflow;
       if (dialog.open) dialog.close();
+      previousFocus?.focus();
     };
   }, []);
 
