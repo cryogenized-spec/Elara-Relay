@@ -72,7 +72,8 @@ test('mobile operations shell renders and navigates without browser errors', asy
     page.getByRole('button', { name: 'Save unavailable in preview' }),
   ).toBeDisabled();
 
-  await page.getByRole('button', { name: 'Back' }).click();
+  const repairDialog = page.getByRole('dialog', { name: 'New repair / Job' });
+  await repairDialog.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Capture' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Capture' })).toBeFocused();
 
