@@ -38,6 +38,399 @@ const origin = `http://127.0.0.1:${port}`;
 const outputDir = join(outputRoot, label);
 const serverLog = [];
 
+
+const LIVE_IDS = Object.freeze({
+  user: '30000000-0000-4000-8000-000000000001',
+  session: '30000000-0000-4000-8000-000000000002',
+  party: '10000000-0000-4000-8000-000000000001',
+  jobRepair: '10000000-0000-4000-8000-000000000002',
+  jobWebsite: '10000000-0000-4000-8000-000000000003',
+  jobReady: '10000000-0000-4000-8000-000000000004',
+  taskPressure: '10000000-0000-4000-8000-000000000005',
+  taskWebsite: '10000000-0000-4000-8000-000000000006',
+  taskInbox: '10000000-0000-4000-8000-000000000007',
+  taskSupplier: '10000000-0000-4000-8000-000000000008',
+  repairWaiting: '10000000-0000-4000-8000-000000000009',
+  repairReady: '10000000-0000-4000-8000-000000000010',
+  actionDue: '10000000-0000-4000-8000-000000000011',
+  actionNext: '10000000-0000-4000-8000-000000000012',
+  actionPaused: '10000000-0000-4000-8000-000000000013',
+  eventJob: '10000000-0000-4000-8000-000000000014',
+});
+
+function isoOffset(asOf, minutes) {
+  return new Date(Date.parse(asOf) + minutes * 60_000).toISOString();
+}
+
+function liveSessionPayload() {
+  return {
+    access_token: 'visual-access-token',
+    token_type: 'bearer',
+    expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    refresh_token: 'visual-refresh-token',
+    user: {
+      id: LIVE_IDS.user,
+      aud: 'authenticated',
+      role: 'authenticated',
+      email: 'owner@example.com',
+      email_confirmed_at: '2026-09-24T08:00:00.000Z',
+      phone: '',
+      confirmed_at: '2026-09-24T08:00:00.000Z',
+      last_sign_in_at: '2026-09-25T04:00:00.000Z',
+      app_metadata: { provider: 'email', providers: ['email'] },
+      user_metadata: {},
+      identities: [],
+      created_at: '2026-09-24T08:00:00.000Z',
+      updated_at: '2026-09-25T04:00:00.000Z',
+      is_anonymous: false,
+    },
+  };
+}
+
+function liveParty() {
+  return {
+    id: LIVE_IDS.party,
+    name: 'Demo workshop customer',
+    kind: 'CUSTOMER',
+    createdAt: '2026-09-24T08:00:00.000Z',
+    updatedAt: '2026-09-24T08:00:00.000Z',
+    revision: 1,
+  };
+}
+
+function liveJobs() {
+  return [
+    {
+      id: LIVE_IDS.jobRepair,
+      key: 'JOB-7A31C4F2',
+      title: 'Avenge X regulator repair',
+      category: 'WAITING',
+      partyId: LIVE_IDS.party,
+      createdAt: '2026-09-24T08:20:00.000Z',
+      updatedAt: '2026-09-25T03:18:00.000Z',
+      revision: 6,
+    },
+    {
+      id: LIVE_IDS.jobWebsite,
+      key: 'JOB-42D117A0',
+      title: 'Website product cleanup',
+      category: 'ACTIVE',
+      partyId: null,
+      createdAt: '2026-09-24T09:00:00.000Z',
+      updatedAt: '2026-09-25T03:10:00.000Z',
+      revision: 2,
+    },
+    {
+      id: LIVE_IDS.jobReady,
+      key: 'JOB-18E92B11',
+      title: 'Baredda S56 — final check complete',
+      category: 'DONE',
+      partyId: LIVE_IDS.party,
+      createdAt: '2026-09-23T08:00:00.000Z',
+      updatedAt: '2026-09-25T02:10:00.000Z',
+      revision: 8,
+    },
+  ];
+}
+
+function liveTasks(asOf) {
+  return [
+    {
+      id: LIVE_IDS.taskPressure,
+      jobId: LIVE_IDS.jobRepair,
+      title: 'Pressure-test regulator block',
+      status: 'DOING',
+      priority: 'HIGH',
+      dueAt: isoOffset(asOf, 120),
+      followUpAt: null,
+      waitingOn: null,
+      waitingSince: null,
+      createdAt: '2026-09-25T02:42:00.000Z',
+      updatedAt: '2026-09-25T03:04:00.000Z',
+      revision: 3,
+    },
+    {
+      id: LIVE_IDS.taskWebsite,
+      jobId: LIVE_IDS.jobWebsite,
+      title: 'Review product description queue',
+      status: 'NEXT',
+      priority: 'NORMAL',
+      dueAt: isoOffset(asOf, 180),
+      followUpAt: null,
+      waitingOn: null,
+      waitingSince: null,
+      createdAt: '2026-09-25T02:00:00.000Z',
+      updatedAt: '2026-09-25T02:00:00.000Z',
+      revision: 1,
+    },
+    {
+      id: LIVE_IDS.taskInbox,
+      jobId: null,
+      title: 'Inspect returned CO₂ pistol',
+      status: 'INBOX',
+      priority: 'NORMAL',
+      dueAt: null,
+      followUpAt: null,
+      waitingOn: null,
+      waitingSince: null,
+      createdAt: '2026-09-25T02:12:00.000Z',
+      updatedAt: '2026-09-25T02:12:00.000Z',
+      revision: 1,
+    },
+    {
+      id: LIVE_IDS.taskSupplier,
+      jobId: LIVE_IDS.jobRepair,
+      title: 'Confirm supplier part availability',
+      status: 'WAITING',
+      priority: 'NORMAL',
+      dueAt: null,
+      followUpAt: isoOffset(asOf, 60),
+      waitingOn: 'Supplier response',
+      waitingSince: '2026-09-25T03:18:00.000Z',
+      createdAt: '2026-09-25T02:30:00.000Z',
+      updatedAt: '2026-09-25T03:18:00.000Z',
+      revision: 2,
+    },
+  ];
+}
+
+function liveRepairs(asOf) {
+  return [
+    {
+      id: LIVE_IDS.repairWaiting,
+      jobId: LIVE_IDS.jobRepair,
+      stage: 'AWAITING_PARTS',
+      reportedFault: 'Pressure drops after refill',
+      diagnosis: 'Transfer seal leak',
+      currentFinding: 'Regulator transfer seal leaking under pressure',
+      serialState: 'KNOWN',
+      serialValue: 'AVX-240924',
+      storageLocation: 'Workshop · regulator tray',
+      waitingOn: 'Transfer seal kit',
+      followUpAt: isoOffset(asOf, -42),
+      finalTestResult: null,
+      finalTestDetail: null,
+      testedAt: null,
+      receivedAt: '2026-09-24T08:21:00.000Z',
+      readyAt: null,
+      collectedAt: null,
+      cancelledAt: null,
+      createdAt: '2026-09-24T08:21:00.000Z',
+      updatedAt: '2026-09-25T03:18:00.000Z',
+      revision: 4,
+    },
+    {
+      id: LIVE_IDS.repairReady,
+      jobId: LIVE_IDS.jobReady,
+      stage: 'READY',
+      reportedFault: 'Final function check',
+      diagnosis: 'Service complete',
+      currentFinding: 'Final test passed',
+      serialState: 'UNKNOWN',
+      serialValue: null,
+      storageLocation: 'Collection shelf',
+      waitingOn: null,
+      followUpAt: null,
+      finalTestResult: 'PASS',
+      finalTestDetail: 'Four-point final test passed',
+      testedAt: '2026-09-25T02:10:00.000Z',
+      receivedAt: '2026-09-23T08:00:00.000Z',
+      readyAt: '2026-09-25T02:10:00.000Z',
+      collectedAt: null,
+      cancelledAt: null,
+      createdAt: '2026-09-23T08:00:00.000Z',
+      updatedAt: '2026-09-25T02:10:00.000Z',
+      revision: 8,
+    },
+  ];
+}
+
+function liveSchedule(asOf) {
+  const make = (id, title, status, nextRunAt, recurrenceRule = null) => ({
+    id,
+    jobId: LIVE_IDS.jobRepair,
+    taskId: null,
+    title,
+    actionType: 'REMINDER',
+    payload: { kind: 'REMINDER', message: title },
+    timezone: 'Africa/Johannesburg',
+    recurrenceRule,
+    status,
+    runAt: nextRunAt,
+    nextRunAt,
+    lastRunAt: null,
+    createdAt: '2026-09-24T08:00:00.000Z',
+    updatedAt: '2026-09-24T08:00:00.000Z',
+    revision: 1,
+  });
+  return {
+    due: [
+      make(
+        LIVE_IDS.actionDue,
+        'Follow up seal supplier',
+        'ACTIVE',
+        isoOffset(asOf, -10),
+      ),
+    ],
+    upcoming: [
+      make(
+        LIVE_IDS.actionNext,
+        'Check supplier ETA',
+        'ACTIVE',
+        isoOffset(asOf, 60),
+      ),
+    ],
+    paused: [
+      make(
+        LIVE_IDS.actionPaused,
+        'Website backlog review',
+        'PAUSED',
+        isoOffset(asOf, 1440),
+        'FREQ=WEEKLY;INTERVAL=1',
+      ),
+    ],
+  };
+}
+
+function liveEvent() {
+  return {
+    id: LIVE_IDS.eventJob,
+    mutationId: 'MUT-visual-job-note-01',
+    entityType: 'JOB',
+    entityId: LIVE_IDS.jobRepair,
+    eventType: 'JOB_NOTE',
+    actor: 'operator-ui',
+    occurredAt: '2026-09-25T03:18:00.000Z',
+    detail: 'Waiting on transfer seal kit',
+    changes: {},
+    revisionAfter: 6,
+  };
+}
+
+function jsonResponse(body, status = 200) {
+  return {
+    status,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  };
+}
+
+async function installLiveVisualRoutes(page) {
+  await page.route('**/auth/v1/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/token') || url.pathname.endsWith('/token/')) {
+      await route.fulfill(jsonResponse(liveSessionPayload()));
+      return;
+    }
+    if (url.pathname.endsWith('/logout')) {
+      await route.fulfill({ status: 204, body: '' });
+      return;
+    }
+    await route.fulfill(jsonResponse(liveSessionPayload().user));
+  });
+
+  await page.route('**/api-test/**', async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname.replace(/^\/api-test/, '');
+    const asOf =
+      url.searchParams.get('asOf') ?? '2026-09-25T04:00:00.000Z';
+    const jobs = liveJobs();
+    const tasks = liveTasks(asOf);
+    const repairs = liveRepairs(asOf);
+    const schedule = liveSchedule(asOf);
+
+    if (path === '/auth/whoami') {
+      await route.fulfill(
+        jsonResponse({
+          userId: LIVE_IDS.user,
+          sessionId: LIVE_IDS.session,
+          email: 'owner@example.com',
+          aal: 'aal1',
+        }),
+      );
+      return;
+    }
+    if (path === '/today') {
+      await route.fulfill(
+        jsonResponse({
+          asOf,
+          tasks: [],
+          repairs: [repairs[0]],
+          scheduledActions: schedule.due,
+        }),
+      );
+      return;
+    }
+    if (path === '/work') {
+      await route.fulfill(
+        jsonResponse({ parties: [liveParty()], jobs, tasks }),
+      );
+      return;
+    }
+    if (path === '/repairs') {
+      await route.fulfill(
+        jsonResponse({ parties: [liveParty()], jobs, repairs }),
+      );
+      return;
+    }
+    if (path === '/schedule') {
+      await route.fulfill(jsonResponse({ asOf, ...schedule }));
+      return;
+    }
+    if (path === '/search') {
+      await route.fulfill(
+        jsonResponse({
+          parties: [],
+          jobs: [jobs[0]],
+          tasks: [],
+          repairs: [repairs[0]],
+          scheduledActions: [],
+          events: [liveEvent()],
+        }),
+      );
+      return;
+    }
+    if (path === `/jobs/${LIVE_IDS.jobRepair}`) {
+      await route.fulfill(
+        jsonResponse({
+          job: jobs[0],
+          party: liveParty(),
+          tasks: tasks.filter((task) => task.jobId === LIVE_IDS.jobRepair),
+          repair: repairs[0],
+          repairWarnings: [],
+          scheduledActions: [...schedule.due, ...schedule.upcoming],
+          events: [liveEvent()],
+        }),
+      );
+      return;
+    }
+    if (path === `/tasks/${LIVE_IDS.taskPressure}`) {
+      await route.fulfill(
+        jsonResponse({
+          task: tasks.find((task) => task.id === LIVE_IDS.taskPressure),
+          job: jobs[0],
+        }),
+      );
+      return;
+    }
+    if (path === `/repairs/${LIVE_IDS.repairWaiting}`) {
+      await route.fulfill(
+        jsonResponse({ repair: repairs[0], warnings: [] }),
+      );
+      return;
+    }
+
+    await route.fulfill(
+      jsonResponse(
+        { error: { code: 'NOT_FOUND', message: 'Visual fixture missing' } },
+        404,
+      ),
+    );
+  });
+}
+
+
 const delay = (milliseconds) =>
   new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
 
@@ -103,6 +496,7 @@ async function captureViewport(browser, viewport, fileName) {
     colorScheme: 'dark',
   });
   const page = await context.newPage();
+  await installLiveVisualRoutes(page);
 
   const pageErrors = [];
   const consoleErrors = [];
@@ -118,6 +512,17 @@ async function captureViewport(browser, viewport, fileName) {
 
   await page.goto(origin, { waitUntil: 'networkidle' });
   await page.locator('main').waitFor({ state: 'visible' });
+
+  const signInHeading = page.getByRole('heading', { name: 'Sign in' });
+  if ((await signInHeading.count()) > 0 && (await signInHeading.isVisible())) {
+    await page.getByLabel('Email').fill('owner@example.com');
+    await page.getByLabel('Password').fill('visual-password');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.getByRole('heading', { name: 'Today' }).waitFor({
+      state: 'visible',
+      timeout: 5_000,
+    });
+  }
 
   const firstPanel = page.locator('main section').first();
   await firstPanel.waitFor({ state: 'visible' });
@@ -365,7 +770,13 @@ const server = spawn(
   {
     cwd: targetDir,
     detached: process.platform !== 'win32',
-    env: { ...process.env, TZ: 'Africa/Johannesburg' },
+    env: {
+      ...process.env,
+      TZ: 'Africa/Johannesburg',
+      VITE_SUPABASE_URL: origin,
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_visual',
+      VITE_ELARA_API_URL: `${origin}/api-test`,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   },
 );
