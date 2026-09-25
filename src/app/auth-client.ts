@@ -11,6 +11,7 @@ export interface BrowserAuthSession {
 }
 
 export interface BrowserAuthClient {
+  getAccessToken(): string | null;
   restoreSession(): Promise<BrowserAuthSession | null>;
   subscribe(
     listener: (session: BrowserAuthSession | null) => void,
@@ -34,6 +35,7 @@ export function toBrowserAuthSession(
 export function createSupabaseBrowserAuth(
   config: BrowserRuntimeConfig,
 ): BrowserAuthClient {
+  let currentSession: BrowserAuthSession | null = null;
   const client = createClient(
     config.supabaseUrl,
     config.publishableKey,
@@ -47,15 +49,21 @@ export function createSupabaseBrowserAuth(
   );
 
   return {
+    getAccessToken() {
+      return currentSession?.accessToken ?? null;
+    },
+
     async restoreSession() {
       const { data, error } = await client.auth.getSession();
       if (error !== null) throw error;
-      return toBrowserAuthSession(data.session);
+      currentSession = toBrowserAuthSession(data.session);
+      return currentSession;
     },
 
     subscribe(listener) {
       const { data } = client.auth.onAuthStateChange((_event, session) => {
-        listener(toBrowserAuthSession(session));
+        currentSession = toBrowserAuthSession(session);
+        listener(currentSession);
       });
       return () => data.subscription.unsubscribe();
     },
@@ -66,16 +74,17 @@ export function createSupabaseBrowserAuth(
         password,
       });
       if (error !== null) throw error;
-      const session = toBrowserAuthSession(data.session);
-      if (session === null) {
+      currentSession = toBrowserAuthSession(data.session);
+      if (currentSession === null) {
         throw new Error('Supabase sign-in completed without a session');
       }
-      return session;
+      return currentSession;
     },
 
     async signOut() {
       const { error } = await client.auth.signOut();
       if (error !== null) throw error;
+      currentSession = null;
     },
   };
 }
