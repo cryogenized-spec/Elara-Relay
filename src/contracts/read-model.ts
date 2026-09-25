@@ -450,6 +450,77 @@ export const scheduleResultSchema = z
     }
   });
 
+function sameEntityVersions(
+  left: readonly { id: string; revision: number }[],
+  right: readonly { id: string; revision: number }[],
+): boolean {
+  if (left.length !== right.length) return false;
+  const revisions = new Map(left.map((value) => [value.id, value.revision]));
+  return right.every((value) => revisions.get(value.id) === value.revision);
+}
+
+function subsetEntityVersions(
+  subset: readonly { id: string; revision: number }[],
+  superset: readonly { id: string; revision: number }[],
+): boolean {
+  const revisions = new Map(superset.map((value) => [value.id, value.revision]));
+  return subset.every((value) => revisions.get(value.id) === value.revision);
+}
+
+export const dashboardResultSchema = z
+  .object({
+    today: todayResultSchema,
+    work: workResultSchema,
+    repairs: repairsResultSchema,
+    schedule: scheduleResultSchema,
+  })
+  .strict()
+  .superRefine((dashboard, context) => {
+    if (dashboard.today.asOf !== dashboard.schedule.asOf) {
+      context.addIssue({
+        code: 'custom',
+        path: ['schedule', 'asOf'],
+        message: 'Dashboard Today and Schedule must share one asOf timestamp',
+      });
+    }
+
+    if (!sameEntityVersions(dashboard.work.parties, dashboard.repairs.parties)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['repairs', 'parties'],
+        message: 'Dashboard Work and Repairs must share Party versions',
+      });
+    }
+    if (!sameEntityVersions(dashboard.work.jobs, dashboard.repairs.jobs)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['repairs', 'jobs'],
+        message: 'Dashboard Work and Repairs must share Job versions',
+      });
+    }
+    if (!subsetEntityVersions(dashboard.today.tasks, dashboard.work.tasks)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['today', 'tasks'],
+        message: 'Dashboard Today Tasks must match Work Task versions',
+      });
+    }
+    if (!subsetEntityVersions(dashboard.today.repairs, dashboard.repairs.repairs)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['today', 'repairs'],
+        message: 'Dashboard Today Repairs must match Repairs versions',
+      });
+    }
+    if (!sameEntityVersions(dashboard.today.scheduledActions, dashboard.schedule.due)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['today', 'scheduledActions'],
+        message: 'Dashboard Today Scheduled Actions must equal Schedule due actions',
+      });
+    }
+  });
+
 export const searchResultSchema = z
   .object({
     parties: z.array(partySchema),
@@ -483,4 +554,5 @@ export type TodayResultPayload = z.infer<typeof todayResultSchema>;
 export type WorkResultPayload = z.infer<typeof workResultSchema>;
 export type RepairsResultPayload = z.infer<typeof repairsResultSchema>;
 export type ScheduleResultPayload = z.infer<typeof scheduleResultSchema>;
+export type DashboardResultPayload = z.infer<typeof dashboardResultSchema>;
 export type SearchResultPayload = z.infer<typeof searchResultSchema>;

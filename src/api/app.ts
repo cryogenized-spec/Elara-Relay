@@ -406,6 +406,11 @@ function registerDomainRoutes(
     context.json(await kernel.getWork()),
   );
 
+  app.get('/dashboard', async (context) => {
+    const asOf = z.string().parse(context.req.query('asOf'));
+    return context.json(await kernel.getDashboard(asOf));
+  });
+
   app.get('/today', async (context) => {
     const asOf = z.string().parse(context.req.query('asOf'));
     return context.json(await kernel.getToday(asOf));

@@ -1,6 +1,7 @@
 import { z, type ZodType } from 'zod';
 import { authIdentitySchema, type AuthIdentity } from '../auth/auth-verifier';
 import {
+  dashboardResultSchema,
   jobViewSchema,
   repairViewSchema,
   repairsResultSchema,
@@ -9,6 +10,7 @@ import {
   taskViewSchema,
   todayResultSchema,
   workResultSchema,
+  type DashboardResultPayload,
   type JobViewPayload,
   type RepairViewPayload,
   type RepairsResultPayload,
@@ -43,6 +45,7 @@ export class OperationsApiError extends Error {
 
 export interface OperationsApi {
   whoAmI(): Promise<AuthIdentity>;
+  dashboard(asOf: string): Promise<DashboardResultPayload>;
   today(asOf: string): Promise<TodayResultPayload>;
   work(): Promise<WorkResultPayload>;
   repairs(): Promise<RepairsResultPayload>;
@@ -148,6 +151,11 @@ export function createOperationsApi(
 
   return {
     whoAmI: () => request('/auth/whoami', authIdentitySchema),
+    dashboard: (asOf) =>
+      request(
+        `/dashboard?asOf=${encodeURIComponent(asOf)}`,
+        dashboardResultSchema,
+      ),
     today: (asOf) =>
       request(
         `/today?asOf=${encodeURIComponent(asOf)}`,

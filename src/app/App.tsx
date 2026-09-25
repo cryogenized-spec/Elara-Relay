@@ -11,6 +11,7 @@ import magniferLinear from '@iconify-icons/solar/magnifer-linear';
 import settingsLinear from '@iconify-icons/solar/settings-linear';
 import type { AuthIdentity } from '../auth/auth-verifier';
 import type {
+  DashboardResultPayload,
   JobViewPayload,
   RepairViewPayload,
   RepairsResultPayload,
@@ -1356,12 +1357,7 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-interface LiveReadState {
-  today: TodayResultPayload;
-  work: WorkResultPayload;
-  repairs: RepairsResultPayload;
-  schedule: ScheduleResultPayload;
-}
+type LiveReadState = DashboardResultPayload;
 
 type LivePhase =
   | 'restoring'
@@ -2191,6 +2187,7 @@ function LiveSearchSurface({
           value={query}
           onChange={(event) => {
             const nextQuery = event.target.value;
+            requestId.current += 1;
             setQuery(nextQuery);
             setGroups([]);
             setError(null);
@@ -2327,15 +2324,10 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
         setPhase('loading');
 
         const asOf = new Date().toISOString();
-        const [today, work, repairs, schedule] = await Promise.all([
-          runtime.api.today(asOf),
-          runtime.api.work(),
-          runtime.api.repairs(),
-          runtime.api.schedule(asOf),
-        ]);
+        const dashboard = await runtime.api.dashboard(asOf);
         if (sequence !== loadSequence.current) return;
 
-        setReadState({ today, work, repairs, schedule });
+        setReadState(dashboard);
         setPhase('ready');
       } catch (caught: unknown) {
         if (sequence !== loadSequence.current) return;
@@ -2418,7 +2410,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
 
       const authorizedUserId = authorizedUserIdRef.current;
       if (
-        authorizedUserId !== null &&
+        authorizedUserId === null ||
         session.userId !== authorizedUserId
       ) {
         clearOperationalState();

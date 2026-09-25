@@ -118,6 +118,13 @@ export interface ScheduleResult {
   paused: ScheduledAction[];
 }
 
+export interface DashboardResult {
+  today: TodayResult;
+  work: WorkResult;
+  repairs: RepairsResult;
+  schedule: ScheduleResult;
+}
+
 export interface SearchResult {
   parties: Party[];
   jobs: Job[];
@@ -169,6 +176,91 @@ const REPAIR_STAGE_TRANSITIONS: Readonly<
 
 function comparable(value: unknown): string {
   return canonicalJson(value);
+}
+
+function buildTodayResult(
+  asOf: string,
+  allTasks: Task[],
+  allRepairs: Repair[],
+  allScheduledActions: ScheduledAction[],
+): TodayResult {
+  const tasks = allTasks
+    .filter((task) => task.status !== 'DONE' && task.status !== 'CANCELLED')
+    .filter((task) => {
+      const candidates = [task.dueAt, task.followUpAt].filter(
+        (value): value is string => value !== null,
+      );
+      return candidates.some((value) => value <= asOf);
+    })
+    .sort((left, right) => {
+      const leftAt =
+        [left.dueAt, left.followUpAt]
+          .filter((value): value is string => value !== null)
+          .sort()[0] ?? '';
+      const rightAt =
+        [right.dueAt, right.followUpAt]
+          .filter((value): value is string => value !== null)
+          .sort()[0] ?? '';
+      return leftAt.localeCompare(rightAt) || left.title.localeCompare(right.title);
+    });
+  const repairs = allRepairs
+    .filter(
+      (repair) =>
+        (repair.stage === 'AWAITING_PARTS' ||
+          repair.stage === 'AWAITING_CUSTOMER') &&
+        repair.followUpAt !== null &&
+        repair.followUpAt <= asOf,
+    )
+    .sort(
+      (left, right) =>
+        (left.followUpAt ?? '').localeCompare(right.followUpAt ?? '') ||
+        left.reportedFault.localeCompare(right.reportedFault),
+    );
+  const scheduledActions = allScheduledActions
+    .filter(
+      (action) =>
+        action.status === 'ACTIVE' &&
+        action.nextRunAt !== null &&
+        action.nextRunAt <= asOf,
+    )
+    .sort((left, right) =>
+      (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
+    );
+
+  return { asOf, tasks, repairs, scheduledActions };
+}
+
+function buildScheduleResult(
+  asOf: string,
+  actions: ScheduledAction[],
+): ScheduleResult {
+  const due = actions
+    .filter(
+      (action) =>
+        action.status === 'ACTIVE' &&
+        action.nextRunAt !== null &&
+        action.nextRunAt <= asOf,
+    )
+    .sort((left, right) =>
+      (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
+    );
+  const upcoming = actions
+    .filter(
+      (action) =>
+        action.status === 'ACTIVE' &&
+        action.nextRunAt !== null &&
+        action.nextRunAt > asOf,
+    )
+    .sort((left, right) =>
+      (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
+    );
+  const paused = actions
+    .filter((action) => action.status === 'PAUSED')
+    .sort((left, right) =>
+      (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
+    );
+
+  return { asOf, due, upcoming, paused };
 }
 
 export class DomainKernel {
@@ -1087,36 +1179,9 @@ export class DomainKernel {
 
   public async getSchedule(rawAsOf: string): Promise<ScheduleResult> {
     const asOf = timestampSchema.parse(rawAsOf);
-    return this.store.read(async (read) => {
-      const actions = await read.listScheduledActions();
-      const due = actions
-        .filter(
-          (action) =>
-            action.status === 'ACTIVE' &&
-            action.nextRunAt !== null &&
-            action.nextRunAt <= asOf,
-        )
-        .sort((left, right) =>
-          (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
-        );
-      const upcoming = actions
-        .filter(
-          (action) =>
-            action.status === 'ACTIVE' &&
-            action.nextRunAt !== null &&
-            action.nextRunAt > asOf,
-        )
-        .sort((left, right) =>
-          (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
-        );
-      const paused = actions
-        .filter((action) => action.status === 'PAUSED')
-        .sort((left, right) =>
-          (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
-        );
-
-      return { asOf, due, upcoming, paused };
-    });
+    return this.store.read(async (read) =>
+      buildScheduleResult(asOf, await read.listScheduledActions()),
+    );
   }
 
   public async claimScheduledAction(
@@ -1532,52 +1597,33 @@ export class DomainKernel {
   public async getToday(rawAsOf: string): Promise<TodayResult> {
     const asOf = timestampSchema.parse(rawAsOf);
     return this.store.read(async (read) => {
-      const [allTasks, allRepairs, allScheduledActions] = await Promise.all([
+      const [tasks, repairs, scheduledActions] = await Promise.all([
         read.listTasks(),
         read.listRepairs(),
         read.listScheduledActions(),
       ]);
-      const tasks = allTasks
-        .filter((task) => task.status !== 'DONE' && task.status !== 'CANCELLED')
-        .filter((task) => {
-          const candidates = [task.dueAt, task.followUpAt].filter(
-            (value): value is string => value !== null,
-          );
-          return candidates.some((value) => value <= asOf);
-        })
-        .sort((left, right) => {
-          const leftAt = [left.dueAt, left.followUpAt]
-            .filter((value): value is string => value !== null)
-            .sort()[0] ?? '';
-          const rightAt = [right.dueAt, right.followUpAt]
-            .filter((value): value is string => value !== null)
-            .sort()[0] ?? '';
-          return leftAt.localeCompare(rightAt) || left.title.localeCompare(right.title);
-        });
-      const repairs = allRepairs
-        .filter(
-          (repair) =>
-            (repair.stage === 'AWAITING_PARTS' ||
-              repair.stage === 'AWAITING_CUSTOMER') &&
-            repair.followUpAt !== null &&
-            repair.followUpAt <= asOf,
-        )
-        .sort(
-          (left, right) =>
-            (left.followUpAt ?? '').localeCompare(right.followUpAt ?? '') ||
-            left.reportedFault.localeCompare(right.reportedFault),
-        );
-      const scheduledActions = allScheduledActions
-        .filter(
-          (action) =>
-            action.status === 'ACTIVE' &&
-            action.nextRunAt !== null &&
-            action.nextRunAt <= asOf,
-        )
-        .sort((left, right) =>
-          (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
-        );
-      return { asOf, tasks, repairs, scheduledActions };
+      return buildTodayResult(asOf, tasks, repairs, scheduledActions);
+    });
+  }
+
+  public async getDashboard(rawAsOf: string): Promise<DashboardResult> {
+    const asOf = timestampSchema.parse(rawAsOf);
+    return this.store.read(async (read) => {
+      const [parties, jobs, tasks, repairs, scheduledActions] =
+        await Promise.all([
+          read.listParties(),
+          read.listJobs(),
+          read.listTasks(),
+          read.listRepairs(),
+          read.listScheduledActions(),
+        ]);
+
+      return {
+        today: buildTodayResult(asOf, tasks, repairs, scheduledActions),
+        work: { parties, jobs, tasks },
+        repairs: { parties, jobs, repairs },
+        schedule: buildScheduleResult(asOf, scheduledActions),
+      };
     });
   }
 
