@@ -1,59 +1,62 @@
-# Elara Relay — Documentation Index
+# Elara Relay — Product Documents
 
-This directory is the canonical documentation home for Elara Relay.
+**Status:** Canonical product documentation  
+**Last reviewed:** 2026-09-24
 
-The documentation is intentionally split by concern. Product direction, visual rules,
-architecture, domain behavior, research, and milestone history should remain separate
-documents rather than being collapsed into a single monolith.
+This directory contains the durable product-level documentation for Elara Relay.
 
-## Canonical structure
+The purpose of `/documents/` is to answer three questions clearly:
 
-```text
-documents/
-├── README.md
-├── Layout_Guide.md
-├── Product_Direction.md
-├── Build_History.md
-├── architecture/
-│   └── Supabase_Runtime.md
-├── domains/
-│   ├── Repairs_Domain.md
-│   └── Scheduler_Domain.md
-├── research/
-│   └── UI_Research_2026-09-24.md
-└── milestones/
-    ├── 2026-09-24_1101_SAST_Pass-0_Fortress-Floor.md
-    ├── 2026-09-24_1246_SAST_Pass-1A_Transactional-Domain-Kernel.md
-    ├── 2026-09-24_1425_SAST_Pass-1B_Persistent-PostgreSQL-Runtime.md
-    ├── 2026-09-24_1542_SAST_Pass-1C_Authentication-Boundary.md
-    ├── 2026-09-24_1626_SAST_Pass-1D_Repairs-Domain.md
-    ├── 2026-09-24_1728_SAST_Pass-1E_Scheduler-Kernel.md
-    └── 2026-09-24_1954_SAST_Documentation-Baseline.md
-```
+1. What is Elara becoming?
+2. How should Elara look and behave?
+3. How did the product reach its current state?
 
-## Document roles
+## Canonical documents
 
-- **Layout_Guide.md** — visual system, mobile-first layout rules, dark-mode tokens,
-  Iconify conventions, interaction/accessibility rules, and visual acceptance criteria.
-- **Product_Direction.md** — why Elara exists, who it serves, architecture boundaries,
-  product information architecture, Phase 1 finish line, and Phase 2 direction.
-- **Build_History.md** — chronological milestone index tied to merged pull requests and
-  immutable commit SHAs.
-- **architecture/** — infrastructure and runtime contracts.
-- **domains/** — business-domain behavior and invariants.
-- **research/** — dated research that materially influenced product or implementation
-  decisions.
-- **milestones/** — timestamped snapshots of what became true at each important build
-  milestone.
+### `Layout_Guide.md`
 
-## Maintenance rules
+The visual and interaction specification.
 
-1. New milestone documents are append-only historical records. Correct mistakes with a
-   later note rather than silently rewriting project history.
-2. Product direction may evolve, but architectural invariants should only change through
-   reviewed implementation work.
-3. Layout guidance should stay implementation-oriented: measurable dimensions, tokens,
-   states, and acceptance criteria rather than mood-board language alone.
-4. Research documents should prefer primary or authoritative sources.
-5. Documentation changes that alter intended product behavior should be reviewed like
-   code changes.
+It defines the mobile-first layout, dark-mode visual system, typography,
+Iconify iconography, navigation structure, spacing, interaction density,
+responsive behavior, accessibility expectations, and visual-certification
+rules.
+
+### `App_Direction.md`
+
+The product and architecture direction.
+
+It defines Elara's purpose, architectural principles, domain boundaries,
+Phase 1 finish line, Phase 2 expansion path, and the relationship between
+the application, Supabase, AI providers, and external integrations.
+
+### `Build_History.md`
+
+The milestone ledger.
+
+It records major merged passes, production/database milestones, timestamps,
+commit identifiers, and the state of the product after each milestone.
+
+New major milestones should be appended here when they become durable.
+
+## Documentation boundaries
+
+`/documents/` contains product-level truth.
+
+`/docs/` may continue to contain focused technical notes such as runtime,
+database, Repair-domain, and Scheduler implementation details.
+
+`/skills/` contains review and engineering-governance instructions.
+
+Source code and migrations remain authoritative for executable behavior.
+Documentation must describe that behavior rather than silently redefine it.
+
+## Documentation rule
+
+When a product or architectural decision becomes durable enough that a future
+developer or agent would need to know it, update the relevant document in the
+same pull request that makes the decision real.
+
+Chat history is context.
+
+The repository is memory.

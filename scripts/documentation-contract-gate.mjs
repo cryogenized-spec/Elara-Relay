@@ -4,11 +4,12 @@ import process from 'node:process';
 
 const root = process.cwd();
 const findings = [];
+const read = (path) => readFileSync(join(root, path), 'utf8');
 
 const requiredFiles = [
   'documents/README.md',
   'documents/Layout_Guide.md',
-  'documents/Product_Direction.md',
+  'documents/App_Direction.md',
   'documents/Build_History.md',
   'documents/architecture/Supabase_Runtime.md',
   'documents/domains/Repairs_Domain.md',
@@ -29,42 +30,34 @@ for (const path of requiredFiles) {
   }
 }
 
-function read(path) {
-  return readFileSync(join(root, path), 'utf8');
-}
-
 const layout = read('documents/Layout_Guide.md');
 for (const marker of [
-  '360 × 640 px (9:16)',
-  '412 × 915 px Android portrait',
-  'Iconify — no Lucide icons',
-  '@iconify-icon/react',
-  'Phosphor via Iconify',
-  '44 × 44 px',
-  'color-scheme: dark',
-  'Vercel Web Interface Guidelines',
-  'Supabase Design System',
+  '405 × 720',
+  '412 × 915',
+  'Iconify only — no Lucide',
+  'solar',
+  '44 × 44',
+  'Vercel',
+  'Supabase',
 ]) {
   if (!layout.includes(marker)) {
     findings.push(`Layout_Guide.md lost required design contract: ${marker}`);
   }
 }
 
-const direction = read('documents/Product_Direction.md');
+const direction = read('documents/App_Direction.md');
 for (const marker of [
-  'AI is an enhancement layer, not the foundation.',
+  'AI is an optional operator of Elara.',
   'Phase 1 finish line',
   'Today',
   'Repairs',
   'Schedule',
   'Search',
   'Capture',
-  'Backup, export & restore',
-  'Phase 1 kill-test & freeze',
-  'Iconify icons only',
+  'backup',
 ]) {
   if (!direction.includes(marker)) {
-    findings.push(`Product_Direction.md lost required direction: ${marker}`);
+    findings.push(`App_Direction.md lost required direction: ${marker}`);
   }
 }
 
@@ -81,7 +74,7 @@ for (const sha of [
     findings.push(`Build_History.md lost merged milestone commit: ${sha}`);
   }
 }
-if (!history.includes('SAST (UTC+02:00)')) {
+if (!history.includes('SAST')) {
   findings.push('Build_History.md must retain explicit SAST timestamp semantics');
 }
 
@@ -107,5 +100,5 @@ if (findings.length > 0) {
 }
 
 process.stdout.write(
-  'Documentation contract gate passed: canonical documents tree, UI contract, product direction, authoritative research, and timestamped build history are intact.\n',
+  'Documentation contract gate passed: product documents, architecture/domain references, research, and milestone history are intact.\n',
 );

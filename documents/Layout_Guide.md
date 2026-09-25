@@ -1,390 +1,500 @@
 # Elara Relay — Layout Guide
 
-**Status:** Canonical visual-direction baseline  
-**Established:** 2026-09-24 19:54 SAST  
-**Primary surface:** Mobile portrait  
-**Primary design frame:** 360 × 640 px (9:16)  
-**Secondary certification frame:** 412 × 915 px Android portrait  
-**Theme:** Dark-first  
-**Icon system:** Iconify — no Lucide icons
+**Status:** Canonical UI direction  
+**Primary mode:** Mobile portrait, dark-first  
+**Visual target:** 9:16 portrait  
+**Icon system:** Iconify only — no Lucide
 
-## 1. Design thesis
+## 1. Design intent
 
-Elara should feel like a calm professional instrument: precise, quiet, fast, and
-trustworthy. The visual reference is the restraint of Vercel combined with the dense,
-tool-like clarity of Supabase Studio.
+Elara should feel like a professional operational instrument rather than a
+consumer productivity app.
 
-The goal is **not** to clone either product. The goal is to inherit the useful
-characteristics:
+The visual reference point is the restraint and precision associated with
+modern infrastructure products such as Vercel and Supabase:
 
-- crisp 1 px borders instead of decorative chrome
-- strong typographic hierarchy
-- low-noise dark surfaces
-- restrained use of accent color
-- deliberate spacing and alignment
-- information-dense screens that still breathe
-- fast, obvious interaction states
-- almost no ornamental gradients
-- no oversized marketing-style cards inside the operational app
+- dark, quiet surfaces
+- strong typography
+- thin boundaries
+- disciplined spacing
+- minimal decoration
+- high information density without visual noise
+- one clear hierarchy per screen
+- color used primarily for state and attention
 
-Supabase's own design principles emphasize subtlety, simplification, and restrained
-brand color. Vercel's interface guidance emphasizes crisp borders, layered shadows,
-nested radii, strong focus states, safe-area handling, and generous mobile hit targets.
+Elara should not imitate either product literally.
 
-## 2. Research-backed rules
+The objective is the same class of visual confidence: crisp, intentional,
+technical, and calm.
 
-The UI implementation should treat these as hard defaults:
+## 2. Research basis
 
-- Mobile interactive targets are at least **44 × 44 px**.
-- Mobile text inputs use at least **16 px** text.
-- Every focusable control has a visible `:focus-visible` state.
-- Sticky chrome must not obscure focused elements.
-- Safe-area insets are respected at top and bottom.
-- Motion honors `prefers-reduced-motion`.
-- Status meaning is never communicated by color alone.
-- Destructive actions require confirmation or a safe undo path.
-- Dark mode sets `color-scheme: dark` and the browser theme color to the app
-  background.
-- Loading states preserve layout and avoid spinner flicker.
-- Empty, sparse, dense, error, offline, stale-auth, and loading states are designed,
-  not left to browser defaults.
+The layout direction is informed by:
 
-## 3. Device & responsive targets
+- Vercel Geist — simplicity, minimalism, speed, precision, and clarity
+- Supabase Design System — theme tokens, restrained surface hierarchy,
+  consistent layouts, compact application chrome, and accessible contrast
+- Iconify — a unified SVG icon system independent of one icon family
+- WCAG 2.2 — target-size, contrast, focus, reflow, and mobile interaction
+  requirements
 
-### Primary mobile target
+These are design references, not dependencies on another product's branding.
 
-Design every core screen first at **360 × 640 px**, an exact 9:16 reference frame.
+## 3. Reference viewports
 
-The layout must remain fully usable from **320 px to 480 px** CSS width without
-horizontal scrolling.
+### Primary composition target
 
-### Certification target
+Use an exact 9:16 reference when making layout decisions.
 
-The existing Android Playwright viewport remains **412 × 915 px**. A screen passing
-the 9:16 design frame but failing the 412 × 915 certification frame is not complete.
+Recommended canonical design frame:
 
-### Tablet / desktop
+`405 × 720`
 
-Mobile is the product priority. Larger layouts should progressively enhance rather
-than reorganize the product into a different mental model.
+This is the viewport used to judge hierarchy, vertical rhythm, density,
+navigation placement, and first-screen usefulness.
 
-- under 720 px: mobile navigation
-- 720–1023 px: compact rail / adaptive two-column detail where useful
-- 1024 px and above: left navigation rail/sidebar may appear
-- content widths remain intentional; dense operational views may use more width than
-  settings/forms
+### Regression viewport
 
-## 4. App information architecture
+The existing Android Playwright viewport:
 
-The primary navigation is:
+`412 × 915`
 
-1. **Today** — attention surface
-2. **Work** — Jobs and Tasks
-3. **Repairs** — workshop workflow
-4. **Schedule** — reminders and recurring actions
-5. **Search** — cross-domain retrieval
+remains an important secondary regression target until the automated visual
+suite is intentionally changed.
 
-A persistent **Capture** action remains reachable without navigating away from the
-current work.
+A design is not considered mobile-complete merely because it fits a tall
+modern phone. Critical actions and primary attention content should remain
+coherent in the 9:16 frame.
 
-On narrow mobile screens, do not squeeze 6 equal nav items into one row. Prefer:
+Desktop remains supported but is not the layout authority.
 
-- 4 primary bottom-nav destinations
-- Search in the top application bar
-- persistent Capture action
-- secondary destinations inside the Work/More sheet when necessary
+## 4. Dark-first surface system
 
-The exact composition can be tuned during UI implementation, but no important action
-may require a hidden hamburger-only workflow on the primary mobile surface.
+Dark mode is the primary visual language.
 
-## 5. Visual tokens
+Use layered neutral surfaces rather than large color fills.
 
-The first UI implementation should start from these tokens. Small optical changes are
-allowed during screenshot review; wholesale palette drift is not.
+Suggested token hierarchy:
 
-```css
-:root {
-  color-scheme: dark;
+- Canvas: near-black
+- Base surface: slightly lifted charcoal
+- Raised surface: one subtle step lighter
+- Hover/pressed surface: another small neutral step
+- Border: low-contrast neutral hairline
+- Primary text: soft near-white
+- Secondary text: cool neutral grey
+- Disabled text: lower-contrast grey
+- Accent: one restrained Elara accent
+- Success, warning, and destructive colors: reserved for actual state
 
-  --elara-bg: #090a0c;
-  --elara-bg-elevated: #0d0f12;
-  --elara-surface: #111419;
-  --elara-surface-hover: #161a20;
-  --elara-surface-active: #1b2027;
+Avoid:
 
-  --elara-border-subtle: rgba(255, 255, 255, 0.07);
-  --elara-border: rgba(255, 255, 255, 0.11);
-  --elara-border-strong: rgba(255, 255, 255, 0.18);
+- large gradients
+- neon glow
+- glassmorphism as a general surface treatment
+- heavy shadows
+- saturated borders around every component
+- decorative color with no semantic purpose
 
-  --elara-text: #f5f7fa;
-  --elara-text-secondary: #a8b0bb;
-  --elara-text-muted: #737d89;
+Depth should normally come from surface contrast and borders rather than
+shadow.
 
-  --elara-accent: #3ecf8e;
-  --elara-accent-strong: #52dfa0;
-  --elara-warning: #e7ad55;
-  --elara-danger: #ef6673;
-  --elara-info: #6b91f7;
+## 5. Typography
 
-  --elara-focus: #7ee2b8;
-}
-```
+Use Geist Sans as the preferred interface typeface.
 
-### Accent policy
+Use Geist Mono selectively for:
 
-Green is a **signal**, not wallpaper.
+- identifiers
+- Job keys
+- timestamps
+- technical status
+- revision numbers
+- system/debug metadata
 
-Use accent color for:
+Do not turn the whole interface into a terminal.
 
-- primary CTA
-- active navigation indicator
-- positive system state
-- focus emphasis where appropriate
-- a small number of high-value status signals
+Recommended hierarchy:
 
-Do not fill entire cards, headers, or backgrounds with green. Warning and destructive
-colors are equally restrained.
+- Screen title: 20–24 px, semibold
+- Section title: 15–17 px, semibold
+- Primary row text: 14–16 px
+- Secondary/meta text: 12–14 px
+- Technical labels: 11–13 px mono where useful
 
-## 6. Typography
+Prefer weight and spacing over oversized headings.
 
-Preferred application typography:
+Mobile vertical space is operational real estate.
 
-- **Sans:** Geist Sans when bundled locally; otherwise a high-quality system sans stack
-- **Mono:** Geist Mono for IDs, job keys, timestamps, diagnostics, revisions, and
-  machine-state snippets
+## 6. Spacing
 
-Default scale:
+Use a disciplined 4 px base rhythm.
 
-| Role | Size | Weight | Line height |
-|---|---:|---:|---:|
-| Page title | 22 px | 600 | 28 px |
-| Section title | 16 px | 600 | 22 px |
-| Body | 14 px | 400 | 20 px |
-| Control label | 13 px | 500 | 18 px |
-| Metadata | 12 px | 400 | 17 px |
-| Micro/status | 11 px | 500 | 16 px |
+Primary increments:
 
-Operational interfaces should avoid giant headings. The content is the hero.
+`4 / 8 / 12 / 16 / 20 / 24 / 32`
 
-Use tabular numerals for times, counts, pressure values, revisions, and comparable
-numbers.
+Recommended mobile page gutter:
 
-## 7. Spacing & geometry
+`16 px`
 
-Use a 4 px base unit.
+Dense information rows may use 12 px internal spacing.
 
-```text
-4   micro
-8   compact
-12  control interior
-16  standard
-20  section transition
-24  major section
-32  page rhythm
-48  exceptional separation
-```
+Large empty gaps should be intentional. Do not use excessive padding to make
+a sparse screen look premium.
 
-Radii:
+## 7. Shape language
 
-- controls: 6–8 px
-- cards/panels: 10–12 px
-- sheets/dialogs: 14–16 px
-- pills only for genuine tags/statuses, not ordinary buttons
+Elara should be moderately squared, not bubbly.
 
-Avoid "bubble UI". Most controls should have a compact rectangular silhouette.
+Recommended radii:
 
-Borders are normally 1 px. Use layered shadow only for floating surfaces, dialogs,
-menus, and sticky elements that genuinely sit above content.
+- small controls: 6–8 px
+- inputs/buttons: 8 px
+- panels/cards: 10–12 px
+- sheets/modals: 14–16 px
 
-## 8. Iconography — Iconify only
+Avoid pill shapes except where the semantic object is actually a compact
+status, filter, or tag.
 
-Elara uses **Iconify**, not Lucide.
+Do not put every piece of information inside its own card.
 
-Implementation preference: use the current Iconify web-component path through
-`@iconify-icon/react`, keeping the delivery mechanism framework-light and consistent
-with Iconify's current guidance.
+Prefer grouped rows, sections, and hairline dividers.
 
-### Primary icon family
+## 8. Iconography
 
-Use **Phosphor via Iconify** (`ph:`) as the default family because its regular outline
-weight reads cleanly on dark operational surfaces.
+Use Iconify.
 
-Do not casually mix icon families. If a domain-specific symbol is missing, prefer a
-small local custom Iconify collection over introducing a second visual language.
+Do not introduce Lucide.
 
-Suggested semantic mapping:
+Preferred implementation direction:
 
-| Meaning | Iconify name |
-|---|---|
-| Today | `ph:sun` |
-| Work | `ph:check-square` |
-| Repairs | `ph:wrench` |
-| Schedule | `ph:calendar-dots` |
-| Search | `ph:magnifying-glass` |
-| Capture | `ph:plus` |
-| History | `ph:clock-counter-clockwise` |
-| Waiting | `ph:hourglass-medium` |
-| Warning | `ph:warning` |
-| Complete | `ph:check-circle` |
-| Settings | `ph:gear-six` |
-| User/session | `ph:user-circle` |
+`@iconify-icon/react`
 
-Icon rules:
+Choose one dominant outline/linear Iconify family for the application and stay
+within it wherever possible.
 
-- 18–20 px in compact controls
-- 22–24 px in bottom navigation
-- 16 px beside metadata
-- monotone `currentColor`
-- icons accompany text for ambiguous actions
-- icon-only buttons require an accessible name
-- active state changes contrast and/or container treatment, not icon size
+Recommended starting family:
 
-## 9. Screen anatomy
+`solar`
 
-### Mobile app shell
+Use another Iconify collection only when the primary family genuinely lacks
+the required concept.
 
-The default vertical stack is:
+Rules:
 
-```text
-safe area
-top app bar / contextual header
-optional attention summary
-scrolling content
-persistent capture affordance
-bottom navigation
-safe area
-```
+- standard navigation glyph: 20–22 px
+- compact inline glyph: 16–18 px
+- large empty-state glyph: 28–36 px
+- icons inherit text/state color
+- do not put every icon inside a circle
+- use labels for ambiguous actions
+- icon style must remain visually consistent across a screen
 
-The content layer owns scrolling. Avoid nested full-height scroll containers unless a
-sheet or drawer requires one.
+The icon is not the touch target.
+
+Interactive controls should generally provide at least a 44 × 44 CSS pixel
+touch area even when the visible glyph is smaller.
+
+## 9. Primary mobile shell
+
+The mobile shell should be extremely stable.
 
 ### Top bar
 
-Target height: **48–52 px** plus safe-area inset.
+Keep it compact.
 
-Use it for:
+Typical contents:
 
-- page/context title
-- search or global utility action
-- concise status when operationally relevant
+- current screen title or context
+- optional small secondary status
+- Search action
+- contextual overflow action where needed
 
-Do not reserve large vertical branding space. "Elara" may appear in onboarding or
-empty-state identity, not as a permanent oversized masthead.
+Do not consume a large vertical block for branding.
+
+The application name does not need to be repeated on every operational screen.
 
 ### Bottom navigation
 
-Target visual height: **58–64 px** plus bottom safe-area inset.
+Primary destinations:
 
-Each destination gets:
+- Today
+- Work
+- Repairs
+- Schedule
 
-- Iconify icon
-- short text label
-- 44 px minimum hit target
-- active state using stronger contrast and a restrained indicator
+Search is globally available from the top bar.
 
-## 10. Core component character
+Capture is a persistent primary action rather than a fifth information
+destination.
 
-### Cards
+### Capture
 
-Cards exist only when grouping materially improves comprehension. Prefer section
-boundaries and dividers over wrapping every row in a rounded box.
+The `+` Capture action opens a bottom sheet.
 
-### Lists
+Initial manual capture choices:
 
-Operational lists are compact, scannable, and stable:
+- Task
+- Repair / Job
+- Reminder
 
-- primary label left
-- state/time/priority aligned consistently
-- metadata is secondary, not decorative
-- row target height roughly 48–60 px
-- avoid variable row padding unless content genuinely wraps
+Later AI capture uses the same underlying domain operations.
 
-### Status
+Capture must remain useful with AI completely disabled.
 
-Status requires text plus a secondary cue:
+## 10. Screen direction
 
-`Waiting · Supplier`, `Ready · Final test passed`, `Overdue · 2 h`.
+### Today
 
-No traffic-light dots without labels.
+Today is the operational home screen.
 
-### Forms
+It should answer:
 
-- labels remain visible
-- validation appears next to the field
-- save action names the outcome: **Create Repair**, **Save Schedule**
-- never use vague **Continue** where a specific verb exists
-- date/time entry always shows timezone context where ambiguity matters
+"What requires my attention?"
 
-### Sheets & dialogs
+Priority order:
 
-On mobile, prefer bottom sheets for short contextual actions and full-screen sheets for
-multi-field workflows. Destructive confirmation can use a compact dialog.
+1. overdue
+2. due now / today
+3. Repair follow-ups
+4. Ready for collection
+5. Waiting items that have gone stale
+6. Scheduled actions
+7. data-health warnings
 
-## 11. Motion
+Use compact attention rows rather than a dashboard full of decorative cards.
 
-Motion is subtle and functional.
+### Work
 
-Allowed defaults:
+Work presents Jobs and Tasks.
 
-- 120–180 ms for press/hover/focus feedback
-- 180–240 ms for sheets, menus, and route-adjacent transitions
-- transform + opacity preferred
-- no `transition: all`
-- no looping decorative motion in the operational shell
+Support:
 
-Loading indicators should appear only after a short delay when possible so fast actions
-do not flash spinners.
+- Active
+- Waiting
+- Inbox / Next
+- Done when explicitly requested
 
-## 12. Required UI states
+A Job is the durable case.
 
-Every production screen must account for:
+A Task is an atomic action.
 
-- loading
-- empty
-- populated
-- dense/populated
-- validation error
-- server/network error
-- unauthorized / stale session
-- offline or unavailable API
-- mutation conflict / stale revision
-- retryable scheduler state where relevant
+Do not visually collapse those concepts into one object.
 
-## 13. Visual acceptance gate
+### Repairs
 
-A UI PR is not visually complete until it demonstrates:
+Repairs are stage-oriented.
 
-1. 360 × 640 mobile portrait
-2. 412 × 915 Android portrait
-3. dark mode
-4. long text stress case
-5. empty state
-6. error/attention state where relevant
-7. keyboard focus state on desktop
-8. no horizontal overflow
-9. safe-area correctness
-10. no Lucide dependency or Lucide icon imports
+Make the stage immediately visible.
 
-Before/after screenshots should be generated for presentation-changing PRs.
+Important information near the top:
 
-## 14. Authoritative research basis
+- customer / party
+- Job key
+- reported fault
+- current finding
+- serial state/value
+- waiting state
+- follow-up
+- current Repair stage
 
-This guide was grounded in primary/authoritative sources checked on 2026-09-24:
+History belongs below the current operational state.
 
-- Vercel Web Interface Guidelines  
-  https://vercel.com/design/guidelines
-- Supabase Design System  
-  https://supabase.com/design-system
-- Supabase color usage  
-  https://supabase.com/design-system/docs/color-usage
-- Supabase layout patterns  
-  https://supabase.com/design-system/docs/ui-patterns/layout
-- Supabase theming  
-  https://supabase.com/design-system/docs/theming
-- Iconify monorepo and current component guidance  
-  https://github.com/iconify/iconify
-- Iconify Icon web component  
-  https://iconify.design/docs/iconify-icon/
+### Schedule
 
-See `research/UI_Research_2026-09-24.md` for the research notes that informed this
-baseline.
+Schedule emphasizes:
+
+- due
+- upcoming
+- paused
+- recurring
+
+Show recurrence compactly.
+
+Execution-ledger internals do not belong in the normal operator interface.
+
+### Search
+
+Search should feel closer to a command palette than a form page.
+
+Search targets include:
+
+- customer / Party
+- Job key
+- Task
+- Repair
+- serial
+- product/model text
+- waiting text
+- Event detail
+- Scheduled Action
+
+Results should be grouped by entity type.
+
+## 11. Job / Repair detail
+
+Use one strong summary region followed by sections.
+
+Recommended order:
+
+- identity / current state
+- primary actions
+- current operational fields
+- linked Tasks
+- linked Scheduled Actions
+- Timeline
+
+Timeline is historical truth.
+
+Notes or current findings are present-state information.
+
+Do not use one giant notes field as a substitute for Events.
+
+## 12. Status presentation
+
+Color must never be the only status signal.
+
+Use:
+
+- icon
+- concise text label
+- restrained semantic color
+
+Examples:
+
+- green: successful / ready / healthy
+- amber: waiting / attention
+- red: destructive / failed / overdue where warranted
+- neutral: ordinary inactive metadata
+
+Do not paint entire cards bright colors for normal states.
+
+## 13. Forms
+
+Prefer one-column forms on mobile.
+
+Group related fields.
+
+Place primary action where it remains reachable without obscuring content.
+
+Validation should be:
+
+- inline
+- specific
+- close to the field
+- non-destructive to entered data
+
+Use native input semantics wherever possible.
+
+Do not hide essential fields behind clever gestures.
+
+## 14. Interaction and motion
+
+Motion should communicate state, not decorate the interface.
+
+Recommended transition range:
+
+`120–180 ms`
+
+Use subtle:
+
+- fade
+- translate
+- collapse/expand
+
+Avoid:
+
+- springy overshoot
+- large zooms
+- parallax
+- perpetual animation
+
+Respect reduced-motion preferences.
+
+## 15. Accessibility floor
+
+WCAG 2.2 AA is the baseline.
+
+Elara should voluntarily aim above the minimum where mobile ergonomics benefit.
+
+Requirements include:
+
+- visible keyboard focus
+- meaningful non-text contrast
+- no color-only status communication
+- no essential drag-only operation
+- sensible reflow
+- minimum target spacing
+- approximately 44 × 44 px touch targets for primary mobile controls
+- readable text contrast on all dark surfaces
+
+## 16. Responsive behavior
+
+Mobile decides the information hierarchy.
+
+Tablet and desktop may expand it.
+
+Do not design desktop first and collapse it afterward.
+
+Desktop adaptations may introduce:
+
+- persistent side navigation
+- multi-column detail
+- wider tables
+- split list/detail layouts
+
+The underlying task flow should remain the same.
+
+## 17. Visual certification
+
+UI work is incomplete until visually checked.
+
+For meaningful presentation changes, capture before/after evidence.
+
+Required visual targets:
+
+- exact 9:16 mobile reference
+- existing Android portrait regression viewport
+- desktop Chromium
+
+Check:
+
+- horizontal overflow
+- clipped controls
+- safe-area collisions
+- bottom-navigation overlap
+- awkward wrapping
+- inconsistent icon sizing
+- poor vertical centering
+- accidental high-contrast borders
+- oversized empty space
+- inaccessible state distinction
+
+A green typecheck is not visual proof.
+
+## 18. Design anti-patterns
+
+Do not:
+
+- use Lucide
+- use giant hero headers inside operational screens
+- add gradients simply to make a screen feel modern
+- over-cardify lists
+- use pills for ordinary buttons
+- hide labels behind unexplained icons
+- make status colors decorative
+- use fixed heights where content/padding should determine size
+- create desktop-only information architecture
+- let AI controls dominate core manual workflows
+- expose database or scheduler implementation terminology to ordinary users
+
+## 19. Product feeling
+
+Elara should feel like:
+
+an instrument panel built by people who care about details.
+
+Quiet when nothing requires attention.
+
+Extremely clear when something does.
