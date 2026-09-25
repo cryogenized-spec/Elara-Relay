@@ -89,7 +89,8 @@ for (const marker of [
 for (const marker of [
   "if (token === null || token === '')",
   'authorization: `Bearer ${token}`',
-  'return schema.parse(raw);',
+  'if (response.status === 401 || response.status === 403)',
+  'return schema.parse(body.value);',
 ]) {
   if (!browserApi.includes(marker)) {
     findings.push(`Browser Operations API lost required control: ${marker}`);
