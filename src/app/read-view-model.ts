@@ -12,7 +12,13 @@ import type {
 } from '../contracts/read-model';
 
 export type UiTone = 'danger' | 'attention' | 'success' | 'info' | 'neutral';
-export type UiEntityType = 'PARTY' | 'JOB' | 'TASK' | 'REPAIR' | 'SCHEDULED_ACTION';
+export type UiEntityType =
+  | 'PARTY'
+  | 'JOB'
+  | 'TASK'
+  | 'REPAIR'
+  | 'SCHEDULED_ACTION'
+  | 'EVENT';
 
 export interface UiRow {
   id: string;
@@ -99,12 +105,22 @@ function relativeScheduleLabel(value: string | null): string {
   return `${formatDay.format(date)} · ${formatClock.format(date)}`;
 }
 
+function elapsedAt(value: string | null, asOf?: string): boolean {
+  return (
+    value !== null &&
+    asOf !== undefined &&
+    Date.parse(value) <= Date.parse(asOf)
+  );
+}
+
+function taskNeedsAttention(task: Task, asOf?: string): boolean {
+  return elapsedAt(task.dueAt, asOf) || elapsedAt(task.followUpAt, asOf);
+}
+
 function taskTone(task: Task, asOf?: string): UiTone {
   if (task.status === 'WAITING') return 'attention';
   if (
-    asOf !== undefined &&
-    task.dueAt !== null &&
-    task.dueAt <= asOf &&
+    taskNeedsAttention(task, asOf) &&
     task.status !== 'DONE' &&
     task.status !== 'CANCELLED'
   ) {
@@ -116,12 +132,10 @@ function taskTone(task: Task, asOf?: string): UiTone {
 
 function taskBadge(task: Task, asOf?: string): string {
   if (
-    asOf !== undefined &&
-    task.dueAt !== null &&
-    task.dueAt <= asOf &&
     task.status !== 'WAITING' &&
     task.status !== 'DONE' &&
-    task.status !== 'CANCELLED'
+    task.status !== 'CANCELLED' &&
+    taskNeedsAttention(task, asOf)
   ) {
     return 'Overdue';
   }
@@ -130,21 +144,51 @@ function taskBadge(task: Task, asOf?: string): string {
 
 function taskRow(task: Task, jobs: Map<string, Job>, asOf?: string): UiRow {
   const linkedKey = jobKey(task.jobId, jobs);
-  const timing =
-    task.status === 'WAITING' && task.waitingOn !== null
-      ? `Waiting on ${task.waitingOn}`
-      : task.dueAt !== null
-        ? `Due ${formatDay.format(new Date(task.dueAt))} · ${formatClock.format(new Date(task.dueAt))}`
-        : task.followUpAt !== null
-          ? `Follow up ${formatDay.format(new Date(task.followUpAt))} · ${formatClock.format(new Date(task.followUpAt))}`
-          : 'No due date';
+  const dueElapsed = elapsedAt(task.dueAt, asOf);
+  const followUpElapsed = elapsedAt(task.followUpAt, asOf);
+  const timingParts: string[] = [];
+
+  if (dueElapsed && task.dueAt !== null) {
+    timingParts.push(
+      `Due ${formatDay.format(new Date(task.dueAt))} · ${formatClock.format(new Date(task.dueAt))}`,
+    );
+  }
+  if (followUpElapsed && task.followUpAt !== null) {
+    timingParts.push(
+      `Follow up ${formatDay.format(new Date(task.followUpAt))} · ${formatClock.format(new Date(task.followUpAt))}`,
+    );
+  }
+
+  if (timingParts.length === 0) {
+    if (task.status === 'WAITING' && task.waitingOn !== null) {
+      timingParts.push(`Waiting on ${task.waitingOn}`);
+    } else if (task.dueAt !== null) {
+      timingParts.push(
+        `Due ${formatDay.format(new Date(task.dueAt))} · ${formatClock.format(new Date(task.dueAt))}`,
+      );
+    } else if (task.followUpAt !== null) {
+      timingParts.push(
+        `Follow up ${formatDay.format(new Date(task.followUpAt))} · ${formatClock.format(new Date(task.followUpAt))}`,
+      );
+    } else {
+      timingParts.push('No due date');
+    }
+  }
+
+  if (
+    task.status === 'WAITING' &&
+    task.waitingOn !== null &&
+    !timingParts.some((part) => part.startsWith('Waiting on '))
+  ) {
+    timingParts.push(`Waiting on ${task.waitingOn}`);
+  }
 
   return {
     id: task.id,
     entityType: 'TASK',
     eyebrow: linkedKey === null ? 'TASK' : `TASK · ${linkedKey}`,
     title: task.title,
-    meta: `${timing} · ${titleCase(task.priority)} priority`,
+    meta: `${timingParts.join(' · ')} · ${titleCase(task.priority)} priority`,
     badge: taskBadge(task, asOf),
     tone: taskTone(task, asOf),
   };
@@ -209,7 +253,7 @@ function repairRow(repair: Repair, jobs: Map<string, Job>): UiRow {
   return {
     id: repair.id,
     entityType: 'REPAIR',
-    eyebrow: `REPAIR · ${job?.key ?? 'UNLINKED'}`,
+    eyebrow: `REPAIR · ${job?.key ?? 'LINKED JOB'}`,
     title,
     meta: [
       titleCase(repair.stage),
@@ -264,6 +308,9 @@ export function buildTodayView(
   const jobs = indexById(repairs.jobs);
   const dueTasks = today.tasks.map((task) => taskRow(task, jobs, today.asOf));
   const waitingRepairs = today.repairs.map((repair) => repairRow(repair, jobs));
+  const dueActions = today.scheduledActions.map((action) =>
+    scheduleRow(action, 'Due', jobs),
+  );
   const ready = repairs.repairs
     .filter((repair) => repair.stage === 'READY')
     .map((repair) => repairRow(repair, jobs));
@@ -273,14 +320,14 @@ export function buildTodayView(
 
   return {
     summary: {
-      overdue: today.tasks.filter(
-        (task) => task.dueAt !== null && task.dueAt <= today.asOf,
+      overdue: today.tasks.filter((task) =>
+        taskNeedsAttention(task, today.asOf),
       ).length,
       today: today.tasks.length + today.scheduledActions.length,
       waiting: today.repairs.length,
       ready: ready.length,
     },
-    attention: [...waitingRepairs, ...dueTasks],
+    attention: [...waitingRepairs, ...dueTasks, ...dueActions],
     ready,
     next,
   };
@@ -397,6 +444,18 @@ export function buildSearchGroups(
         title: party.name,
         meta: 'Party',
         badge: titleCase(party.kind),
+        tone: 'neutral' as const,
+      })),
+    },
+    {
+      label: 'History',
+      rows: result.events.map((event) => ({
+        id: event.id,
+        entityType: 'EVENT' as const,
+        eyebrow: `${event.entityType} · EVENT`,
+        title: event.detail ?? titleCase(event.eventType),
+        meta: `${titleCase(event.eventType)} · ${formatDay.format(new Date(event.occurredAt))} · ${formatClock.format(new Date(event.occurredAt))}`,
+        badge: 'History',
         tone: 'neutral' as const,
       })),
     },

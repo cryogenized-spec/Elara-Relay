@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRepairsView,
   buildScheduleView,
+  buildSearchGroups,
   buildTodayView,
   buildWorkView,
 } from './read-view-model';
@@ -168,6 +169,126 @@ describe('read model view adapter', () => {
     expect(view.attention).toHaveLength(2);
     expect(view.ready[0]?.badge).toBe('Ready');
     expect(view.next[0]?.title).toBe('Check supplier ETA');
+  });
+
+  it('renders due Scheduled Actions in Today attention', () => {
+    const dueAction = {
+      ...action,
+      nextRunAt: '2026-09-25T02:50:00.000Z',
+      runAt: '2026-09-25T02:50:00.000Z',
+    };
+
+    const view = buildTodayView(
+      {
+        asOf: '2026-09-25T03:00:00.000Z',
+        tasks: [],
+        repairs: [],
+        scheduledActions: [dueAction],
+      },
+      { parties: [party], jobs: [job], repairs: [] },
+      {
+        asOf: '2026-09-25T03:00:00.000Z',
+        due: [dueAction],
+        upcoming: [],
+        paused: [],
+      },
+    );
+
+    expect(view.summary.today).toBe(1);
+    expect(view.attention).toEqual([
+      expect.objectContaining({
+        entityType: 'SCHEDULED_ACTION',
+        title: 'Check supplier ETA',
+        badge: 'Due',
+        tone: 'attention',
+      }),
+    ]);
+  });
+
+  it('uses an expired follow-up when that is what made a Task due', () => {
+    const followUpTask = {
+      ...task,
+      dueAt: '2026-09-25T05:00:00.000Z',
+      followUpAt: '2026-09-25T02:30:00.000Z',
+    };
+
+    const view = buildTodayView(
+      {
+        asOf: '2026-09-25T03:00:00.000Z',
+        tasks: [followUpTask],
+        repairs: [],
+        scheduledActions: [],
+      },
+      { parties: [party], jobs: [job], repairs: [] },
+      {
+        asOf: '2026-09-25T03:00:00.000Z',
+        due: [],
+        upcoming: [],
+        paused: [],
+      },
+    );
+
+    expect(view.summary.overdue).toBe(1);
+    expect(view.attention[0]).toMatchObject({
+      badge: 'Overdue',
+      tone: 'danger',
+    });
+    expect(view.attention[0]?.meta).toContain('Follow up');
+    expect(view.attention[0]?.meta).not.toContain('Due Fri');
+  });
+
+  it('surfaces Event-only Search matches as non-domain history rows', () => {
+    const groups = buildSearchGroups({
+      parties: [],
+      jobs: [],
+      tasks: [],
+      repairs: [],
+      scheduledActions: [],
+      events: [
+        {
+          id: '10000000-0000-4000-8000-000000000099',
+          mutationId: 'MUT-search-history-0001',
+          entityType: 'JOB',
+          entityId: JOB_ID,
+          eventType: 'JOB_NOTE',
+          actor: 'operator-ui',
+          occurredAt: '2026-09-25T02:30:00.000Z',
+          detail: 'Supplier confirmed seal kit',
+          changes: {},
+          revisionAfter: 2,
+        },
+      ],
+    });
+
+    expect(groups).toEqual([
+      expect.objectContaining({
+        label: 'History',
+        rows: [
+          expect.objectContaining({
+            entityType: 'EVENT',
+            title: 'Supplier confirmed seal kit',
+            badge: 'History',
+          }),
+        ],
+      }),
+    ]);
+  });
+
+  it('does not describe a Search Repair as unlinked when Job context is absent', () => {
+    const groups = buildSearchGroups({
+      parties: [],
+      jobs: [],
+      tasks: [],
+      repairs: [repair],
+      scheduledActions: [],
+      events: [],
+    });
+
+    expect(groups[0]?.rows[0]).toMatchObject({
+      entityType: 'REPAIR',
+      eyebrow: 'REPAIR · LINKED JOB',
+      title: 'Pressure loss',
+    });
   });
 
   it('preserves due/upcoming/paused scheduler state', () => {
