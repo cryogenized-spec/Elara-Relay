@@ -1484,7 +1484,7 @@ export class DomainKernel {
         tasks: jobTasks,
         repair: repair ?? null,
         repairWarnings:
-          repair === undefined ? [] : repairWarnings(repair),
+          repair === undefined ? [] : repairWarningsFor(repair),
         scheduledActions,
         events,
       };
