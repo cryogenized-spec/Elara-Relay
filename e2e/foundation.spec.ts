@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-test('foundation shell renders without browser errors', async ({ page }) => {
+test('mobile operations shell renders and navigates without browser errors', async ({
+  page,
+}) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   const failedRequests: string[] = [];
@@ -21,17 +23,62 @@ test('foundation shell renders without browser errors', async ({ page }) => {
 
   await page.goto('/');
 
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await expect(page.getByText('Needs attention')).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'Elara Relay' }),
+    page.getByRole('heading', { name: 'Ready for collection' }),
   ).toBeVisible();
-  await expect(page.getByRole('status')).toContainText('Foundation online');
-  await expect(page.getByText('TS6 + TS7')).toBeVisible();
+  await expect(page.getByText('Preview')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Work' }).click();
+  await expect(page.getByRole('heading', { name: 'Work' })).toBeVisible();
+  await expect(page.getByText('Jobs & tasks')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Repairs' }).click();
+  await expect(page.getByRole('heading', { name: 'Repairs' })).toBeVisible();
+  await expect(page.getByText('Workshop')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Schedule' }).click();
+  await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
+  await expect(page.getByText('Africa/Johannesburg')).toBeVisible();
+
+  const searchButton = page.getByRole('button', { name: 'Search' });
+  await searchButton.click();
+  await expect(page.getByRole('dialog', { name: 'Search' })).toBeVisible();
+  await expect(
+    page.getByPlaceholder('Job, serial, task, customer…'),
+  ).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Search' })).toBeHidden();
+  await expect(searchButton).toBeFocused();
+
+  const captureButton = page.getByRole('button', { name: 'Capture' });
+  await captureButton.click();
+  await expect(page.getByRole('dialog', { name: 'Capture' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Capture' })).toBeFocused();
+  await expect(page.getByRole('button', { name: /Repair \/ Job/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Capture' })).toBeHidden();
+  await expect(captureButton).toBeFocused();
 
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     innerWidth: window.innerWidth,
   }));
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
+
+  const navTargets = await page.locator('.bottomNav button').evaluateAll(
+    (buttons) =>
+      buttons.map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      }),
+  );
+  expect(
+    navTargets.every(
+      (target) => target.width >= 48 && target.height >= 48,
+    ),
+  ).toBe(true);
 
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);

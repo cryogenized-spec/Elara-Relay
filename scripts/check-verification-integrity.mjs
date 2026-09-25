@@ -126,6 +126,8 @@ for (const marker of [
 const playwright = read('playwright.config.ts');
 for (const marker of [
   "name: 'chromium'",
+  "name: 'mobile-9x16'",
+  'viewport: { width: 405, height: 720 }',
   "name: 'android-portrait'",
   'viewport: { width: 412, height: 915 }',
   'reuseExistingServer: false',
@@ -184,7 +186,7 @@ for (const required of [
   'image: postgres:17.6-alpine',
   'npm run test:postgres',
   'npm run build',
-  'npm run e2e -- --project=chromium --project=android-portrait',
+  'npm run e2e -- --project=chromium --project=mobile-9x16 --project=android-portrait',
 ]) {
   if (!ci.includes(required)) {
     fail(`CI lost required control: ${required}`);

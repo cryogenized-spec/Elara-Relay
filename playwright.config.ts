@@ -18,6 +18,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
+      name: 'mobile-9x16',
+      use: {
+        ...devices['Pixel 5'],
+        viewport: { width: 405, height: 720 },
+      },
+    },
+    {
       name: 'android-portrait',
       use: {
         ...devices['Pixel 5'],
