@@ -29,9 +29,9 @@ function isoOffset(asOf: string, minutes: number): string {
   return new Date(Date.parse(asOf) + minutes * 60_000).toISOString();
 }
 
-function sessionPayload() {
+function sessionPayload(accessToken = 'test-access-token') {
   return {
-    access_token: 'test-access-token',
+    access_token: accessToken,
     token_type: 'bearer',
     expires_in: 3600,
     expires_at: Math.floor(Date.now() / 1000) + 3600,
@@ -311,6 +311,7 @@ export async function installLiveHarness(
   options: LiveHarnessOptions = {},
 ): Promise<void> {
   let whoAmICalls = 0;
+  let tokenGrantCount = 0;
 
   await page.route('**/auth/v1/**', async (route) => {
     const url = new URL(route.request().url());
@@ -319,7 +320,8 @@ export async function installLiveHarness(
       url.pathname.endsWith('/token') ||
       url.pathname.endsWith('/token/')
     ) {
-      await route.fulfill(json(sessionPayload()));
+      tokenGrantCount += 1;
+      await route.fulfill(json(sessionPayload(`test-access-token-${tokenGrantCount}`)));
       return;
     }
 

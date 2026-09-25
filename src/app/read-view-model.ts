@@ -229,6 +229,23 @@ function jobRow(
   };
 }
 
+function searchJobRow(
+  job: Job,
+  parties: Map<string, Party>,
+): UiRow {
+  const party = partyName(job.partyId, parties);
+
+  return {
+    id: job.id,
+    entityType: 'JOB',
+    eyebrow: `${job.key} · ${job.category}`,
+    title: job.title,
+    meta: party ?? 'Job',
+    badge: titleCase(job.category),
+    tone: jobTone(job),
+  };
+}
+
 function repairTone(stage: RepairStage): UiTone {
   if (stage === 'AWAITING_PARTS' || stage === 'AWAITING_CUSTOMER') {
     return 'attention';
@@ -275,7 +292,7 @@ function repairRow(repair: Repair, jobs: Map<string, Job>): UiRow {
 
 function scheduleRow(
   action: ScheduledAction,
-  state: 'Due' | 'Upcoming' | 'Paused',
+  state: 'Due' | 'Upcoming' | 'Paused' | 'Completed' | 'Cancelled',
   jobs: Map<string, Job>,
 ): UiRow {
   const linkedKey = jobKey(action.jobId, jobs);
@@ -412,6 +429,7 @@ export function buildScheduleView(
 
 export function buildSearchGroups(
   result: SearchResultPayload,
+  asOf: string,
 ): SearchGroupViewModel[] {
   const jobs = indexById(result.jobs);
   const parties = indexById(result.parties);
@@ -423,7 +441,7 @@ export function buildSearchGroups(
     },
     {
       label: 'Jobs',
-      rows: result.jobs.map((job) => jobRow(job, parties, result.tasks)),
+      rows: result.jobs.map((job) => searchJobRow(job, parties)),
     },
     {
       label: 'Tasks',
@@ -431,9 +449,20 @@ export function buildSearchGroups(
     },
     {
       label: 'Schedule',
-      rows: result.scheduledActions.map((action) =>
-        scheduleRow(action, action.status === 'PAUSED' ? 'Paused' : 'Upcoming', jobs),
-      ),
+      rows: result.scheduledActions.map((action) => {
+        const state =
+          action.status === 'PAUSED'
+            ? 'Paused'
+            : action.status === 'COMPLETED'
+              ? 'Completed'
+              : action.status === 'CANCELLED'
+                ? 'Cancelled'
+                : action.nextRunAt !== null &&
+                    Date.parse(action.nextRunAt) <= Date.parse(asOf)
+                  ? 'Due'
+                  : 'Upcoming';
+        return scheduleRow(action, state, jobs);
+      }),
     },
     {
       label: 'Parties',

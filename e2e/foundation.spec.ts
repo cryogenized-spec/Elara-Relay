@@ -218,6 +218,92 @@ test('later authorization denial clears the cached operational shell', async ({
   await expect(page.getByRole('dialog', { name: 'Search' })).toHaveCount(0);
 });
 
+test('authorization denial from a stale Search UI request still clears current shell', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  let releaseSearch: (() => void) | undefined;
+  let markSearchStarted: (() => void) | undefined;
+  const searchStarted = new Promise<void>((resolve) => {
+    markSearchStarted = resolve;
+  });
+  const searchReleased = new Promise<void>((resolve) => {
+    releaseSearch = resolve;
+  });
+
+  await page.route('**/api-test/search*', async (route) => {
+    markSearchStarted?.();
+    await searchReleased;
+    await route.fulfill({
+      status: 403,
+      contentType: 'text/plain',
+      body: 'forbidden',
+    });
+  });
+
+  await page.getByRole('button', { name: 'Search' }).click();
+  const input = page.getByPlaceholder('Job, serial, task, customer…');
+  await input.fill('Avenge');
+  await searchStarted;
+  await input.fill('');
+  releaseSearch?.();
+
+  await expect(
+    page.getByRole('heading', { name: 'Access not authorized' }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today' })).toHaveCount(0);
+});
+
+test('denial from an obsolete signed-out Search session cannot clear a new session', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  let releaseSearch: (() => void) | undefined;
+  let markSearchStarted: (() => void) | undefined;
+  const searchStarted = new Promise<void>((resolve) => {
+    markSearchStarted = resolve;
+  });
+  const searchReleased = new Promise<void>((resolve) => {
+    releaseSearch = resolve;
+  });
+
+  await page.route('**/api-test/search*', async (route) => {
+    markSearchStarted?.();
+    await searchReleased;
+    await route.fulfill({
+      status: 403,
+      contentType: 'text/plain',
+      body: 'old session forbidden',
+    });
+  });
+
+  await page.getByRole('button', { name: 'Search' }).click();
+  await page
+    .getByPlaceholder('Job, serial, task, customer…')
+    .fill('Avenge');
+  await searchStarted;
+
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  releaseSearch?.();
+  await page.waitForTimeout(100);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Access not authorized' }),
+  ).toHaveCount(0);
+});
+
 test('stale bearer gets one refresh and server authorization retry', async ({
   page,
 }) => {

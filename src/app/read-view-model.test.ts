@@ -258,7 +258,7 @@ describe('read model view adapter', () => {
           revisionAfter: 2,
         },
       ],
-    });
+    }, '2026-09-25T03:00:00.000Z');
 
     expect(groups).toEqual([
       expect.objectContaining({
@@ -282,13 +282,73 @@ describe('read model view adapter', () => {
       repairs: [repair],
       scheduledActions: [],
       events: [],
-    });
+    }, '2026-09-25T03:00:00.000Z');
 
     expect(groups[0]?.rows[0]).toMatchObject({
       entityType: 'REPAIR',
       eyebrow: 'REPAIR · LINKED JOB',
       title: 'Pressure loss',
     });
+  });
+
+  it('does not infer open Task counts from partial Search matches', () => {
+    const groups = buildSearchGroups(
+      {
+        parties: [party],
+        jobs: [job],
+        tasks: [],
+        repairs: [],
+        scheduledActions: [],
+        events: [],
+      },
+      '2026-09-25T03:00:00.000Z',
+    );
+
+    expect(groups[0]?.label).toBe('Jobs');
+    expect(groups[0]?.rows[0]).toMatchObject({
+      title: 'Regulator service',
+      meta: 'Workshop customer',
+    });
+    expect(groups[0]?.rows[0]?.meta).not.toContain('open Task');
+  });
+
+  it('preserves terminal and due Scheduled Action state in Search', () => {
+    const completed = {
+      ...action,
+      id: '10000000-0000-4000-8000-000000000080',
+      status: 'COMPLETED' as const,
+      nextRunAt: null,
+    };
+    const cancelled = {
+      ...action,
+      id: '10000000-0000-4000-8000-000000000081',
+      status: 'CANCELLED' as const,
+      nextRunAt: null,
+    };
+    const due = {
+      ...action,
+      id: '10000000-0000-4000-8000-000000000082',
+      nextRunAt: '2026-09-25T02:30:00.000Z',
+    };
+
+    const groups = buildSearchGroups(
+      {
+        parties: [],
+        jobs: [],
+        tasks: [],
+        repairs: [],
+        scheduledActions: [completed, cancelled, due],
+        events: [],
+      },
+      '2026-09-25T03:00:00.000Z',
+    );
+
+    expect(groups[0]?.label).toBe('Schedule');
+    expect(groups[0]?.rows.map((row) => row.badge)).toEqual([
+      'Completed',
+      'Cancelled',
+      'Due',
+    ]);
   });
 
   it('preserves due/upcoming/paused scheduler state', () => {

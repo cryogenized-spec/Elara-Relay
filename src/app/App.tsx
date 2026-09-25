@@ -20,6 +20,7 @@ import type {
   WorkResultPayload,
 } from '../contracts/read-model';
 import type { BrowserRuntime } from './browser-runtime';
+import { classifyAuthorizationFailure } from './authorization-policy';
 import { OperationsApiError } from './operations-api';
 import {
   buildRepairsView,
@@ -1376,7 +1377,10 @@ type LiveDetail =
   | { type: 'TASK'; id: string }
   | { type: 'REPAIR'; id: string };
 
-type AuthorizationFailureHandler = (error: unknown) => boolean;
+type AuthorizationFailureHandler = (
+  error: unknown,
+  requestAccessToken: string | null,
+) => boolean;
 
 function readableError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -1689,14 +1693,15 @@ function LiveTaskDetailSurface({
 
   useEffect(() => {
     let active = true;
+    const requestAccessToken = runtime.auth.getAccessToken();
     void runtime.api
       .task(taskId)
       .then((result) => {
         if (active) setData(result);
       })
       .catch((caught: unknown) => {
+        if (onAuthorizationFailure(caught, requestAccessToken)) return;
         if (!active) return;
-        if (onAuthorizationFailure(caught)) return;
         setError(readableError(caught));
       });
     return () => {
@@ -1793,14 +1798,15 @@ function LiveJobDetailSurface({
 
   useEffect(() => {
     let active = true;
+    const requestAccessToken = runtime.auth.getAccessToken();
     void runtime.api
       .job(jobId)
       .then((result) => {
         if (active) setData(result);
       })
       .catch((caught: unknown) => {
+        if (onAuthorizationFailure(caught, requestAccessToken)) return;
         if (!active) return;
-        if (onAuthorizationFailure(caught)) return;
         setError(readableError(caught));
       });
     return () => {
@@ -1997,19 +2003,32 @@ function LiveRepairDetailSurface({
 
   useEffect(() => {
     let active = true;
-    void runtime.api
-      .repair(repairId)
-      .then(async (result) => {
-        if (!active) return;
-        setData(result);
-        const jobResult = await runtime.api.job(result.repair.jobId);
+
+    const readRepair = async () => {
+      const repairAccessToken = runtime.auth.getAccessToken();
+      let repairResult: RepairViewPayload;
+      try {
+        repairResult = await runtime.api.repair(repairId);
+      } catch (caught: unknown) {
+        if (onAuthorizationFailure(caught, repairAccessToken)) return;
+        if (active) setError(readableError(caught));
+        return;
+      }
+
+      if (!active) return;
+      setData(repairResult);
+
+      const jobAccessToken = runtime.auth.getAccessToken();
+      try {
+        const jobResult = await runtime.api.job(repairResult.repair.jobId);
         if (active) setJob(jobResult);
-      })
-      .catch((caught: unknown) => {
-        if (!active) return;
-        if (onAuthorizationFailure(caught)) return;
-        setError(readableError(caught));
-      });
+      } catch (caught: unknown) {
+        if (onAuthorizationFailure(caught, jobAccessToken)) return;
+        if (active) setError(readableError(caught));
+      }
+    };
+
+    void readRepair();
     return () => {
       active = false;
     };
@@ -2119,16 +2138,18 @@ function LiveSearchSurface({
     const timer = window.setTimeout(() => {
       setState('loading');
       setError(null);
+      const requestAccessToken = runtime.auth.getAccessToken();
+      const asOf = new Date().toISOString();
       void runtime.api
         .search(normalized)
         .then((result) => {
           if (requestId.current !== currentRequest) return;
-          setGroups(buildSearchGroups(result));
+          setGroups(buildSearchGroups(result, asOf));
           setState('ready');
         })
         .catch((caught: unknown) => {
+          if (onAuthorizationFailure(caught, requestAccessToken)) return;
           if (requestId.current !== currentRequest) return;
-          if (onAuthorizationFailure(caught)) return;
           setGroups([]);
           setError(readableError(caught));
           setState('error');
@@ -2356,17 +2377,23 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
   }, [clearOperationalState, runtime]);
 
   const handleAuthorizationFailure = useCallback(
-    (caught: unknown): boolean => {
-      if (
-        !(caught instanceof OperationsApiError) ||
-        (caught.status !== 401 && caught.status !== 403)
-      ) {
+    (caught: unknown, requestAccessToken: string | null): boolean => {
+      const classification = classifyAuthorizationFailure(
+        caught,
+        requestAccessToken,
+        runtime.auth.getAccessToken(),
+      );
+
+      if (classification === 'NOT_AUTHORIZATION_FAILURE') {
         return false;
+      }
+      if (classification === 'STALE_SESSION') {
+        return true;
       }
 
       clearOperationalState();
 
-      if (caught.status === 403) {
+      if (classification === 'FORBIDDEN') {
         loadSequence.current += 1;
         setPhase('forbidden');
       } else {
@@ -2374,7 +2401,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
       }
       return true;
     },
-    [clearOperationalState, load],
+    [clearOperationalState, load, runtime],
   );
 
   useEffect(() => {
