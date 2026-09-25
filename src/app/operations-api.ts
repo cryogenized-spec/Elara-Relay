@@ -59,6 +59,21 @@ export interface OperationsApiClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+type ParsedResponseBody =
+  | { parsed: true; value: unknown }
+  | { parsed: false };
+
+async function readResponseBody(response: Response): Promise<ParsedResponseBody> {
+  const text = await response.text();
+  if (text.trim() === '') return { parsed: false };
+
+  try {
+    return { parsed: true, value: JSON.parse(text) as unknown };
+  } catch {
+    return { parsed: false };
+  }
+}
+
 export function createOperationsApi(
   options: OperationsApiClientOptions,
 ): OperationsApi {
@@ -82,11 +97,31 @@ export function createOperationsApi(
       },
     });
 
-    const raw: unknown = await response.json();
+    if (response.status === 401 || response.status === 403) {
+      const body = await readResponseBody(response);
+      const parsed =
+        body.parsed ? apiErrorSchema.safeParse(body.value) : null;
+      if (parsed?.success === true) {
+        throw new OperationsApiError(
+          response.status,
+          parsed.data.error.code,
+          parsed.data.error.message,
+        );
+      }
+
+      throw new OperationsApiError(
+        response.status,
+        response.status === 401 ? 'UNAUTHENTICATED' : 'FORBIDDEN',
+        `Operations API returned HTTP ${response.status}`,
+      );
+    }
+
+    const body = await readResponseBody(response);
 
     if (!response.ok) {
-      const parsed = apiErrorSchema.safeParse(raw);
-      if (parsed.success) {
+      const parsed =
+        body.parsed ? apiErrorSchema.safeParse(body.value) : null;
+      if (parsed?.success === true) {
         throw new OperationsApiError(
           response.status,
           parsed.data.error.code,
@@ -100,7 +135,15 @@ export function createOperationsApi(
       );
     }
 
-    return schema.parse(raw);
+    if (!body.parsed) {
+      throw new OperationsApiError(
+        response.status,
+        'INVALID_JSON_RESPONSE',
+        'Operations API returned a non-JSON success response',
+      );
+    }
+
+    return schema.parse(body.value);
   }
 
   return {

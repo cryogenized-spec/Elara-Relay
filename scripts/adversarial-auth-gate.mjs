@@ -91,8 +91,16 @@ mutate(
 
 mutate(
   'src/app/operations-api.ts',
-  'return schema.parse(raw);',
-  'return raw;',
+  'if (response.status === 401 || response.status === 403) {',
+  'if (false) {',
+  () => runVitest('src/app/operations-api.test.ts'),
+  'browser authorization-status classification bypass',
+);
+
+mutate(
+  'src/app/operations-api.ts',
+  'return schema.parse(body.value);',
+  'return body.value;',
   () => runVitest('src/app/operations-api.test.ts'),
   'browser read-model validation bypass',
 );

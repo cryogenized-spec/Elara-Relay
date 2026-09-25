@@ -96,6 +96,49 @@ describe('Operations API browser client', () => {
     );
   });
 
+  it('classifies an empty 401 before attempting to parse an error body', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(null, { status: 401 }),
+    );
+
+    const api = createOperationsApi({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'stale-session-token',
+      fetchImpl,
+    });
+
+    await expect(api.work()).rejects.toEqual(
+      new OperationsApiError(
+        401,
+        'UNAUTHENTICATED',
+        'Operations API returned HTTP 401',
+      ),
+    );
+  });
+
+  it('classifies a non-JSON 403 before attempting to parse an error body', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response('<html>forbidden</html>', {
+        status: 403,
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+
+    const api = createOperationsApi({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'session-token',
+      fetchImpl,
+    });
+
+    await expect(api.work()).rejects.toEqual(
+      new OperationsApiError(
+        403,
+        'FORBIDDEN',
+        'Operations API returned HTTP 403',
+      ),
+    );
+  });
+
   it('rejects malformed success payloads instead of trusting the server shape', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ jobs: [] }), {
