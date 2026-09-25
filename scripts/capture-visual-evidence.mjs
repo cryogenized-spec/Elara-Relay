@@ -220,6 +220,7 @@ async function captureViewport(browser, viewport, fileName) {
     });
     surfaceFiles[suffix] = `${label}/${surfaceFile}`;
   }
+  let taskDetailFile = null;
   let jobDetailFile = null;
   const workButton = page.getByRole('button', { name: 'Work', exact: true });
   if ((await workButton.count()) > 0) {
@@ -245,6 +246,33 @@ async function captureViewport(browser, viewport, fileName) {
         }).click();
       } catch {
         // Older comparison baselines may not have a Job detail surface yet.
+      }
+    }
+  }
+
+  if ((await workButton.count()) > 0) {
+    await workButton.click();
+    const taskRow = page.getByRole('button', {
+      name: /Open Pressure-test regulator block/,
+    });
+    if ((await taskRow.count()) > 0) {
+      await taskRow.click();
+      const taskDetail = page.getByRole('dialog', {
+        name: 'Pressure-test regulator block',
+      });
+      try {
+        await taskDetail.waitFor({ state: 'visible', timeout: 1_500 });
+        taskDetailFile = fileName.replace('.png', '-task-detail.png');
+        await page.screenshot({
+          path: join(outputDir, taskDetailFile),
+          fullPage: false,
+        });
+        await taskDetail.getByRole('button', {
+          name: 'Back',
+          exact: true,
+        }).click();
+      } catch {
+        // Older comparison baselines may not have a Task detail surface yet.
       }
     }
   }
@@ -322,6 +350,8 @@ async function captureViewport(browser, viewport, fileName) {
     surfaceFiles,
     jobDetailFile:
       jobDetailFile === null ? null : `${label}/${jobDetailFile}`,
+    taskDetailFile:
+      taskDetailFile === null ? null : `${label}/${taskDetailFile}`,
     captureFiles,
     searchFile: searchFile === null ? null : `${label}/${searchFile}`,
   };

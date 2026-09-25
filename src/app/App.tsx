@@ -425,8 +425,10 @@ function TodayView({
 
 function WorkView({
   onOpenJob,
+  onOpenTask,
 }: {
   onOpenJob: () => void;
+  onOpenTask: () => void;
 }) {
   return (
     <>
@@ -438,7 +440,14 @@ function WorkView({
           if (row.id === 'job-regulator') onOpenJob();
         }}
       />
-      <Section title="Tasks" count={taskRows.length} rows={taskRows} />
+      <Section
+        title="Tasks"
+        count={taskRows.length}
+        rows={taskRows}
+        onActivateRow={(row) => {
+          if (row.id === 'task-doing') onOpenTask();
+        }}
+      />
     </>
   );
 }
@@ -612,6 +621,161 @@ function SearchSurface({ onClose }: { onClose: () => void }) {
     </dialog>
   );
 }
+function TaskDetailSurface({ onClose }: { onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    titleRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (dialog.open) dialog.close();
+      previousFocus?.focus();
+    };
+  }, []);
+
+  return (
+    <dialog
+      className="overlaySurface detailSurface"
+      ref={dialogRef}
+      aria-labelledby="task-detail-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="detailTopBar">
+        <button className="detailBackButton" type="button" onClick={onClose}>
+          <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
+          <span>Back</span>
+        </button>
+        <span className="previewState" role="status">
+          <span aria-hidden="true" />
+          Preview
+        </span>
+      </div>
+
+      <section className="repairSummary" aria-labelledby="task-detail-title">
+        <span className="repairSummary__key">TASK · JOB-7A31C4F2</span>
+        <div className="repairSummary__titleRow">
+          <div>
+            <h1 id="task-detail-title" ref={titleRef} tabIndex={-1}>
+              Pressure-test regulator block
+            </h1>
+            <p>Linked to Avenge X regulator repair</p>
+          </div>
+          <StatusBadge tone="info">Doing</StatusBadge>
+        </div>
+        <p className="repairSummary__reason">
+          High priority · started today 09:04
+        </p>
+      </section>
+
+      <div className="detailActionBar" aria-label="Task actions">
+        <button type="button" disabled>
+          Update Task
+        </button>
+        <button type="button" disabled>
+          Mark waiting
+        </button>
+        <span>Preview only</span>
+      </div>
+
+      <section className="detailSection" aria-labelledby="task-current-state">
+        <div className="detailSection__heading">
+          <h2 id="task-current-state">Current state</h2>
+        </div>
+        <dl className="detailFields">
+          <div>
+            <dt>Status</dt>
+            <dd>Doing</dd>
+          </div>
+          <div>
+            <dt>Priority</dt>
+            <dd>High</dd>
+          </div>
+          <div>
+            <dt>Due</dt>
+            <dd>Today · 12:00</dd>
+          </div>
+          <div>
+            <dt>Follow-up</dt>
+            <dd>None</dd>
+          </div>
+          <div>
+            <dt>Created</dt>
+            <dd>Today · 08:42</dd>
+          </div>
+          <div>
+            <dt>Updated</dt>
+            <dd>Today · 09:04</dd>
+          </div>
+          <div>
+            <dt>Revision</dt>
+            <dd className="detailValue--mono">3</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="detailSection" aria-labelledby="task-linked-job">
+        <div className="detailSection__heading">
+          <h2 id="task-linked-job">Linked Job</h2>
+        </div>
+        <div className="detailCompactRows">
+          <div>
+            <span>
+              <strong>Avenge X regulator repair</strong>
+              <small>JOB-7A31C4F2 · Demo workshop customer</small>
+            </span>
+            <StatusBadge tone="attention">Waiting</StatusBadge>
+          </div>
+        </div>
+      </section>
+
+      <section className="detailSection detailTimeline" aria-labelledby="task-timeline">
+        <div className="detailSection__heading">
+          <h2 id="task-timeline">Timeline</h2>
+        </div>
+        <ol>
+          <li>
+            <span className="detailTimeline__time">09:04</span>
+            <div>
+              <strong>Task started</strong>
+              <p>Status changed from Next to Doing</p>
+            </div>
+          </li>
+          <li>
+            <span className="detailTimeline__time">08:51</span>
+            <div>
+              <strong>Priority set to High</strong>
+              <p>Due today at 12:00</p>
+            </div>
+          </li>
+          <li>
+            <span className="detailTimeline__time">08:42</span>
+            <div>
+              <strong>Task created</strong>
+              <p>Linked to JOB-7A31C4F2</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+    </dialog>
+  );
+}
+
 function JobDetailSurface({ onClose }: { onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -1164,6 +1328,7 @@ export function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [jobDetailOpen, setJobDetailOpen] = useState(false);
+  const [taskDetailOpen, setTaskDetailOpen] = useState(false);
   const [repairDetailOpen, setRepairDetailOpen] = useState(false);
   const context = viewContext[activeView];
 
@@ -1172,7 +1337,12 @@ export function App() {
       case 'today':
         return <TodayView onOpenRepair={() => setRepairDetailOpen(true)} />;
       case 'work':
-        return <WorkView onOpenJob={() => setJobDetailOpen(true)} />;
+        return (
+          <WorkView
+            onOpenJob={() => setJobDetailOpen(true)}
+            onOpenTask={() => setTaskDetailOpen(true)}
+          />
+        );
       case 'repairs':
         return <RepairsView onOpenRepair={() => setRepairDetailOpen(true)} />;
       case 'schedule':
@@ -1249,6 +1419,9 @@ export function App() {
       {captureOpen ? <CaptureSheet onClose={() => setCaptureOpen(false)} /> : null}
       {jobDetailOpen ? (
         <JobDetailSurface onClose={() => setJobDetailOpen(false)} />
+      ) : null}
+      {taskDetailOpen ? (
+        <TaskDetailSurface onClose={() => setTaskDetailOpen(false)} />
       ) : null}
       {repairDetailOpen ? (
         <RepairDetailSurface onClose={() => setRepairDetailOpen(false)} />
