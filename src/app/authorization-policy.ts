@@ -10,6 +10,8 @@ export function classifyAuthorizationFailure(
   error: unknown,
   requestAccessToken: string | null,
   currentAccessToken: string | null,
+  requestSessionId: string | null,
+  currentSessionId: string | null,
 ): AuthorizationFailureClassification {
   if (
     !(error instanceof OperationsApiError) ||
@@ -18,9 +20,17 @@ export function classifyAuthorizationFailure(
     return 'NOT_AUTHORIZATION_FAILURE';
   }
 
+  if (requestSessionId !== currentSessionId) {
+    return 'STALE_SESSION';
+  }
+
+  if (error.status === 403) {
+    return 'FORBIDDEN';
+  }
+
   if (requestAccessToken !== currentAccessToken) {
     return 'STALE_SESSION';
   }
 
-  return error.status === 403 ? 'FORBIDDEN' : 'UNAUTHENTICATED';
+  return 'UNAUTHENTICATED';
 }

@@ -2,23 +2,44 @@ import { describe, expect, it } from 'vitest';
 import { classifyAuthorizationFailure } from './authorization-policy';
 import { OperationsApiError } from './operations-api';
 
+const SESSION_A = '30000000-0000-4000-8000-000000000001';
+const SESSION_B = '30000000-0000-4000-8000-000000000002';
+
 describe('authorization failure classification', () => {
-  it('processes a denial from the current bearer session', () => {
+  it('processes a current-session 403 even after bearer rotation', () => {
     expect(
       classifyAuthorizationFailure(
         new OperationsApiError(403, 'FORBIDDEN', 'Denied'),
-        'token-current',
-        'token-current',
+        'token-old',
+        'token-new',
+        SESSION_A,
+        SESSION_A,
       ),
     ).toBe('FORBIDDEN');
   });
 
-  it('discards a denial from an obsolete bearer session', () => {
+  it('discards 401 and 403 denials from an obsolete logical session', () => {
+    for (const status of [401, 403] as const) {
+      expect(
+        classifyAuthorizationFailure(
+          new OperationsApiError(status, 'DENIED', 'Denied'),
+          'token-old',
+          'token-new',
+          SESSION_A,
+          SESSION_B,
+        ),
+      ).toBe('STALE_SESSION');
+    }
+  });
+
+  it('allows same-session bearer rotation to supersede only a 401', () => {
     expect(
       classifyAuthorizationFailure(
         new OperationsApiError(401, 'UNAUTHENTICATED', 'Expired'),
         'token-old',
         'token-new',
+        SESSION_A,
+        SESSION_A,
       ),
     ).toBe('STALE_SESSION');
   });
@@ -27,6 +48,8 @@ describe('authorization failure classification', () => {
     expect(
       classifyAuthorizationFailure(
         new OperationsApiError(401, 'UNAUTHENTICATED', 'Missing'),
+        null,
+        null,
         null,
         null,
       ),
@@ -39,6 +62,8 @@ describe('authorization failure classification', () => {
         new OperationsApiError(500, 'INTERNAL_ERROR', 'Boom'),
         'token-current',
         'token-current',
+        SESSION_A,
+        SESSION_A,
       ),
     ).toBe('NOT_AUTHORIZATION_FAILURE');
   });

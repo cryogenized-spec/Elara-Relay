@@ -15,6 +15,10 @@ function session(userId: string): BrowserAuthSession {
     accessToken:
       userId === OWNER_ID ? 'owner-access-token' : 'other-access-token',
     userId,
+    sessionId:
+      userId === OWNER_ID
+        ? '30000000-0000-4000-8000-000000000010'
+        : '30000000-0000-4000-8000-000000000099',
     email: userId === OWNER_ID ? 'owner@example.com' : 'other@example.com',
   };
 }
