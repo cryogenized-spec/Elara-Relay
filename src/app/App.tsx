@@ -1680,6 +1680,10 @@ function LiveTaskDetailSurface({
   useLiveDialog(true, dialogRef, titleRef);
 
   useEffect(() => {
+    if (data !== null) titleRef.current?.focus();
+  }, [data]);
+
+  useEffect(() => {
     let active = true;
     void runtime.api
       .task(taskId)
@@ -1774,6 +1778,10 @@ function LiveJobDetailSurface({
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   useLiveDialog(true, dialogRef, titleRef);
+
+  useEffect(() => {
+    if (data !== null) titleRef.current?.focus();
+  }, [data]);
 
   useEffect(() => {
     let active = true;
@@ -1911,6 +1919,10 @@ function LiveRepairDetailSurface({
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   useLiveDialog(true, dialogRef, titleRef);
+
+  useEffect(() => {
+    if (data !== null && job !== null) titleRef.current?.focus();
+  }, [data, job]);
 
   useEffect(() => {
     let active = true;
