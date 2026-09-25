@@ -30,6 +30,31 @@ test('mobile operations shell renders and navigates without browser errors', asy
   ).toBeVisible();
   await expect(page.getByText('Preview')).toBeVisible();
 
+  await expect(page.getByText('Preview')).toBeVisible();
+
+  const repairAttentionRow = page.getByRole('button', {
+    name: /Open Avenge X regulator/,
+  });
+  await repairAttentionRow.click();
+  const repairDetail = page.getByRole('dialog', { name: 'Avenge X regulator' });
+  await expect(repairDetail).toBeVisible();
+  await expect(
+    repairDetail.getByRole('heading', { name: 'Avenge X regulator' }),
+  ).toBeFocused();
+  await expect(repairDetail.getByText('Awaiting parts')).toBeVisible();
+  await expect(
+    repairDetail.getByText('Regulator transfer seal leaking under pressure'),
+  ).toBeVisible();
+  await expect(
+    repairDetail.getByRole('heading', { name: 'Linked tasks' }),
+  ).toBeVisible();
+  await expect(
+    repairDetail.getByRole('heading', { name: 'Timeline' }),
+  ).toBeVisible();
+  await repairDetail.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(repairDetail).toBeHidden();
+  await expect(repairAttentionRow).toBeFocused();
+
   await page.getByRole('button', { name: 'Work' }).click();
   await expect(page.getByRole('heading', { name: 'Work' })).toBeVisible();
   await expect(page.getByText('Jobs & tasks')).toBeVisible();

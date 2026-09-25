@@ -178,6 +178,31 @@ async function captureViewport(browser, viewport, fileName) {
     path: join(outputDir, fileName.replace('.png', '-panel.png')),
   });
 
+  let repairDetailFile = null;
+  const repairAttentionRow = page.getByRole('button', {
+    name: /Open Avenge X regulator/,
+  });
+  if ((await repairAttentionRow.count()) > 0) {
+    await repairAttentionRow.click();
+    const repairDetail = page.getByRole('dialog', {
+      name: 'Avenge X regulator',
+    });
+    try {
+      await repairDetail.waitFor({ state: 'visible', timeout: 1_500 });
+      repairDetailFile = fileName.replace('.png', '-repair-detail.png');
+      await page.screenshot({
+        path: join(outputDir, repairDetailFile),
+        fullPage: false,
+      });
+      await repairDetail.getByRole('button', {
+        name: 'Back',
+        exact: true,
+      }).click();
+    } catch {
+      // Older comparison baselines may not have a Repair detail surface yet.
+    }
+  }
+
   let captureFiles = null;
   const captureButton = page.getByRole('button', { name: 'Capture' });
   if ((await captureButton.count()) > 0) {
@@ -241,6 +266,8 @@ async function captureViewport(browser, viewport, fileName) {
     pageErrors,
     consoleErrors,
     failedRequests,
+    repairDetailFile:
+      repairDetailFile === null ? null : `${label}/${repairDetailFile}`,
     captureFiles,
     searchFile: searchFile === null ? null : `${label}/${searchFile}`,
   };

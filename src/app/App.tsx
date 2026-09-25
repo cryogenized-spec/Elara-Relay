@@ -285,9 +285,20 @@ function StatusBadge({ tone, children }: { tone: Tone; children: string }) {
   return <span className={`statusBadge statusBadge--${tone}`}>{children}</span>;
 }
 
-function Row({ row }: { row: WorkRow }) {
+function Row({
+  row,
+  onActivate,
+}: {
+  row: WorkRow;
+  onActivate?: () => void;
+}) {
   return (
-    <button className="workRow" type="button">
+    <button
+      className="workRow"
+      type="button"
+      onClick={onActivate}
+      aria-label={onActivate ? `Open ${row.title}` : undefined}
+    >
       <span className="workRow__body">
         <span className="workRow__eyebrow">{row.eyebrow}</span>
         <span className="workRow__title">{row.title}</span>
@@ -305,10 +316,12 @@ function Section({
   title,
   count,
   rows,
+  onActivateRow,
 }: {
   title: string;
   count: number;
   rows: WorkRow[];
+  onActivateRow?: (row: WorkRow) => void;
 }) {
   const id = sectionId(title);
 
@@ -320,14 +333,26 @@ function Section({
       </div>
       <div className="rowList">
         {rows.map((row) => (
-          <Row key={row.id} row={row} />
+          <Row
+            key={row.id}
+            row={row}
+            onActivate={
+              onActivateRow === undefined
+                ? undefined
+                : () => onActivateRow(row)
+            }
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function TodayView() {
+function TodayView({
+  onOpenRepair,
+}: {
+  onOpenRepair: () => void;
+}) {
   return (
     <>
       <section className="attentionSummary" aria-label="Today attention summary">
@@ -349,7 +374,14 @@ function TodayView() {
         </div>
       </section>
 
-      <Section title="Needs attention" count={2} rows={attentionRows} />
+      <Section
+        title="Needs attention"
+        count={2}
+        rows={attentionRows}
+        onActivateRow={(row) => {
+          if (row.id === 'repair-follow-up') onOpenRepair();
+        }}
+      />
       <Section title="Ready for collection" count={1} rows={readyRows} />
       <Section title="Next" count={2} rows={nextRows} />
     </>
@@ -371,7 +403,11 @@ function WorkView() {
   );
 }
 
-function RepairsView() {
+function RepairsView({
+  onOpenRepair,
+}: {
+  onOpenRepair: () => void;
+}) {
   return (
     <>
       {repairGroups.map((group) => (
@@ -380,6 +416,9 @@ function RepairsView() {
           title={group.label}
           count={group.rows.length}
           rows={group.rows}
+          onActivateRow={(row) => {
+            if (row.id === 'repair-follow-up') onOpenRepair();
+          }}
         />
       ))}
     </>
@@ -533,6 +572,174 @@ function SearchSurface({ onClose }: { onClose: () => void }) {
     </dialog>
   );
 }
+function RepairDetailSurface({ onClose }: { onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    titleRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (dialog.open) dialog.close();
+      previousFocus?.focus();
+    };
+  }, []);
+
+  return (
+    <dialog
+      className="overlaySurface detailSurface"
+      ref={dialogRef}
+      aria-labelledby="repair-detail-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="detailTopBar">
+        <button className="detailBackButton" type="button" onClick={onClose}>
+          <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
+          <span>Back</span>
+        </button>
+        <span className="previewState" role="status">
+          <span aria-hidden="true" />
+          Preview
+        </span>
+      </div>
+
+      <section className="repairSummary" aria-labelledby="repair-detail-title">
+        <span className="repairSummary__key">JOB-7A31C4F2 · REPAIR</span>
+        <div className="repairSummary__titleRow">
+          <div>
+            <h1 id="repair-detail-title" ref={titleRef} tabIndex={-1}>
+              Avenge X regulator
+            </h1>
+            <p>Demo workshop customer · PCP</p>
+          </div>
+          <StatusBadge tone="attention">Waiting</StatusBadge>
+        </div>
+        <p className="repairSummary__reason">
+          Awaiting transfer seal kit from supplier
+        </p>
+      </section>
+
+      <div className="detailActionBar" aria-label="Repair actions">
+        <button type="button" disabled>
+          Progress stage
+        </button>
+        <button type="button" disabled>
+          Record test
+        </button>
+        <span>Preview only</span>
+      </div>
+
+      <section className="detailSection" aria-labelledby="repair-current-state">
+        <div className="detailSection__heading">
+          <h2 id="repair-current-state">Current state</h2>
+        </div>
+        <dl className="detailFields">
+          <div>
+            <dt>Stage</dt>
+            <dd>Awaiting parts</dd>
+          </div>
+          <div>
+            <dt>Follow-up</dt>
+            <dd className="detailValue--attention">Overdue 42m</dd>
+          </div>
+          <div>
+            <dt>Reported fault</dt>
+            <dd>Pressure drops after refill</dd>
+          </div>
+          <div>
+            <dt>Current finding</dt>
+            <dd>Regulator transfer seal leaking under pressure</dd>
+          </div>
+          <div>
+            <dt>Serial</dt>
+            <dd className="detailValue--mono">AVX-240924</dd>
+          </div>
+          <div>
+            <dt>Storage</dt>
+            <dd>Workshop · regulator tray</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="detailSection" aria-labelledby="repair-linked-tasks">
+        <div className="detailSection__heading">
+          <h2 id="repair-linked-tasks">Linked tasks</h2>
+          <span>1</span>
+        </div>
+        <div className="detailCompactRows">
+          <div>
+            <span>
+              <strong>Pressure-test regulator block</strong>
+              <small>Started 09:04 · high priority</small>
+            </span>
+            <StatusBadge tone="info">Doing</StatusBadge>
+          </div>
+        </div>
+      </section>
+
+      <section className="detailSection" aria-labelledby="repair-schedule">
+        <div className="detailSection__heading">
+          <h2 id="repair-schedule">Scheduled actions</h2>
+          <span>1</span>
+        </div>
+        <div className="detailCompactRows">
+          <div>
+            <span>
+              <strong>Check supplier ETA</strong>
+              <small>Today · 14:00 · one time</small>
+            </span>
+            <StatusBadge tone="neutral">Scheduled</StatusBadge>
+          </div>
+        </div>
+      </section>
+
+      <section className="detailSection detailTimeline" aria-labelledby="repair-timeline">
+        <div className="detailSection__heading">
+          <h2 id="repair-timeline">Timeline</h2>
+        </div>
+        <ol>
+          <li>
+            <span className="detailTimeline__time">09:18</span>
+            <div>
+              <strong>Stage changed to Awaiting Parts</strong>
+              <p>Waiting on transfer seal kit · follow-up set</p>
+            </div>
+          </li>
+          <li>
+            <span className="detailTimeline__time">08:54</span>
+            <div>
+              <strong>Finding updated</strong>
+              <p>Regulator transfer seal leaking under pressure</p>
+            </div>
+          </li>
+          <li>
+            <span className="detailTimeline__time">08:21</span>
+            <div>
+              <strong>Repair received</strong>
+              <p>Reported pressure loss after refill</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+    </dialog>
+  );
+}
+
 function TaskCaptureForm() {
   return (
     <form className="captureForm" aria-describedby="capture-preview-note">
@@ -729,16 +936,17 @@ export function App() {
   const [activeView, setActiveView] = useState<ViewId>('today');
   const [searchOpen, setSearchOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [repairDetailOpen, setRepairDetailOpen] = useState(false);
   const context = viewContext[activeView];
 
   const view = (() => {
     switch (activeView) {
       case 'today':
-        return <TodayView />;
+        return <TodayView onOpenRepair={() => setRepairDetailOpen(true)} />;
       case 'work':
         return <WorkView />;
       case 'repairs':
-        return <RepairsView />;
+        return <RepairsView onOpenRepair={() => setRepairDetailOpen(true)} />;
       case 'schedule':
         return <ScheduleView />;
     }
@@ -811,6 +1019,9 @@ export function App() {
 
       {searchOpen ? <SearchSurface onClose={() => setSearchOpen(false)} /> : null}
       {captureOpen ? <CaptureSheet onClose={() => setCaptureOpen(false)} /> : null}
+      {repairDetailOpen ? (
+        <RepairDetailSurface onClose={() => setRepairDetailOpen(false)} />
+      ) : null}
     </main>
   );
 }
