@@ -178,8 +178,53 @@ async function captureViewport(browser, viewport, fileName) {
     path: join(outputDir, fileName.replace('.png', '-panel.png')),
   });
 
+  let captureFiles = null;
+  const captureButton = page.getByRole('button', { name: 'Capture' });
+  if ((await captureButton.count()) > 0) {
+    await captureButton.click();
+    const captureDialog = page.getByRole('dialog', { name: 'Capture' });
+    await captureDialog.waitFor({ state: 'visible' });
+
+    const menuFile = fileName.replace('.png', '-capture.png');
+    await page.screenshot({
+      path: join(outputDir, menuFile),
+      fullPage: false,
+    });
+
+    let repairFile = null;
+    const repairChoice = page.getByRole('button', { name: /Repair \/ Job/ });
+    if ((await repairChoice.count()) > 0) {
+      await repairChoice.click();
+      const repairHeading = page.getByRole('heading', {
+        name: 'New repair / Job',
+      });
+      try {
+        await repairHeading.waitFor({ state: 'visible', timeout: 1_500 });
+        repairFile = fileName.replace('.png', '-capture-repair.png');
+        await page.screenshot({
+          path: join(outputDir, repairFile),
+          fullPage: false,
+        });
+      } catch {
+        // Older comparison baselines may expose Capture without a focused form.
+      }
+    }
+
+    await page.keyboard.press('Escape');
+    captureFiles = {
+      menu: `${label}/${menuFile}`,
+      repair: repairFile === null ? null : `${label}/${repairFile}`,
+    };
+  }
+
   await context.close();
-  return { metrics, pageErrors, consoleErrors, failedRequests };
+  return {
+    metrics,
+    pageErrors,
+    consoleErrors,
+    failedRequests,
+    captureFiles,
+  };
 }
 
 await mkdir(outputDir, { recursive: true });
