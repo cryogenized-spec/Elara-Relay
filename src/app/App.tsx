@@ -1708,7 +1708,7 @@ function LiveTaskDetailSurface({
     <dialog
       className="overlaySurface detailSurface"
       ref={dialogRef}
-      aria-labelledby="live-task-detail-title"
+      aria-label={data?.task.title ?? 'Task detail'}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -1812,7 +1812,7 @@ function LiveJobDetailSurface({
     <dialog
       className="overlaySurface detailSurface"
       ref={dialogRef}
-      aria-labelledby="live-job-detail-title"
+      aria-label={data?.job.title ?? 'Job detail'}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -1862,6 +1862,35 @@ function LiveJobDetailSurface({
               <div><dt>Revision</dt><dd className="detailValue--mono">{data.job.revision}</dd></div>
             </dl>
           </section>
+          <section className="detailSection" aria-labelledby="live-job-repair">
+            <div className="detailSection__heading">
+              <h2 id="live-job-repair">Linked Repair</h2>
+              <span>{data.repair === null ? 0 : 1}</span>
+            </div>
+            {data.repair === null ? (
+              <p className="emptyRow">No linked Repair</p>
+            ) : (
+              <div className="detailCompactRows">
+                <div>
+                  <span>
+                    <strong>{data.repair.reportedFault}</strong>
+                    <small>
+                      {titleCase(data.repair.stage)}
+                      {data.repair.serialValue === null
+                        ? ''
+                        : ` · serial ${data.repair.serialValue}`}
+                      {data.repairWarnings.length === 0
+                        ? ''
+                        : ` · ${data.repairWarnings.map(titleCase).join(' · ')}`}
+                    </small>
+                  </span>
+                  <StatusBadge tone={toneForRepairStage(data.repair.stage)}>
+                    {titleCase(data.repair.stage)}
+                  </StatusBadge>
+                </div>
+              </div>
+            )}
+          </section>
           <section className="detailSection" aria-labelledby="live-job-tasks">
             <div className="detailSection__heading">
               <h2 id="live-job-tasks">Tasks</h2>
@@ -1884,6 +1913,36 @@ function LiveJobDetailSurface({
                 ))
               )}
             </div>
+          </section>
+          <section className="detailSection" aria-labelledby="live-job-schedule">
+            <div className="detailSection__heading">
+              <h2 id="live-job-schedule">Scheduled actions</h2>
+              <span>{data.scheduledActions.length}</span>
+            </div>
+            {data.scheduledActions.length === 0 ? (
+              <p className="emptyRow">No Scheduled Actions</p>
+            ) : (
+              <div className="detailCompactRows">
+                {data.scheduledActions.map((action) => (
+                  <div key={action.id}>
+                    <span>
+                      <strong>{action.title}</strong>
+                      <small>
+                        {titleCase(action.actionType)} · {formatTimestamp(action.nextRunAt)}
+                        {action.recurrenceRule === null
+                          ? ' · one time'
+                          : ` · ${action.recurrenceRule}`}
+                      </small>
+                    </span>
+                    <StatusBadge
+                      tone={action.status === 'PAUSED' ? 'neutral' : 'info'}
+                    >
+                      {titleCase(action.status)}
+                    </StatusBadge>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
           <section className="detailSection detailTimeline" aria-labelledby="live-job-timeline">
             <div className="detailSection__heading">
@@ -1960,7 +2019,7 @@ function LiveRepairDetailSurface({
     <dialog
       className="overlaySurface detailSurface"
       ref={dialogRef}
-      aria-labelledby="live-repair-detail-title"
+      aria-label={job?.job.title ?? 'Repair detail'}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -2054,10 +2113,14 @@ function LiveSearchSurface({
     const currentRequest = ++requestId.current;
 
     if (normalized.length < 2) {
+      setGroups([]);
+      setError(null);
+      setState('idle');
       return undefined;
     }
 
     const timer = window.setTimeout(() => {
+      setGroups([]);
       setState('loading');
       setError(null);
       void runtime.api
@@ -2162,23 +2225,39 @@ function LiveSearchSurface({
                   <span>{group.rows.length}</span>
                 </div>
                 <div className="searchResultList">
-                  {group.rows.map((row) => (
-                    <button
-                      className="searchResultRow searchResultRow--button"
-                      type="button"
-                      key={row.id}
-                      onClick={() => {
-                        onClose();
-                        onActivate(row);
-                      }}
-                    >
-                      <span className="searchResultRow__eyebrow">
-                        {row.eyebrow}
-                      </span>
-                      <strong>{row.title}</strong>
-                      <span>{row.meta}</span>
-                    </button>
-                  ))}
+                  {group.rows.map((row) => {
+                    const content = (
+                      <>
+                        <span className="searchResultRow__eyebrow">
+                          {row.eyebrow}
+                        </span>
+                        <strong>{row.title}</strong>
+                        <span>{row.meta}</span>
+                      </>
+                    );
+                    const canOpen =
+                      row.entityType === 'JOB' ||
+                      row.entityType === 'TASK' ||
+                      row.entityType === 'REPAIR';
+
+                    return canOpen ? (
+                      <button
+                        className="searchResultRow searchResultRow--button"
+                        type="button"
+                        key={row.id}
+                        onClick={() => {
+                          onClose();
+                          onActivate(row);
+                        }}
+                      >
+                        {content}
+                      </button>
+                    ) : (
+                      <div className="searchResultRow" key={row.id}>
+                        {content}
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
             ))

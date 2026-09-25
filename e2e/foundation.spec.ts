@@ -32,6 +32,7 @@ test('authenticated mobile operations shell reads live domain state', async ({
 
   await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
   await expect(page.getByText('Needs attention')).toBeVisible();
+  await expect(page.getByText('Follow up seal supplier')).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Ready for collection' }),
   ).toBeVisible();
@@ -78,6 +79,14 @@ test('authenticated mobile operations shell reads live domain state', async ({
     name: 'Avenge X regulator repair',
   });
   await expect(jobDetail).toBeVisible();
+  await expect(
+    jobDetail.getByRole('heading', { name: 'Linked Repair' }),
+  ).toBeVisible();
+  await expect(jobDetail.getByText('Pressure drops after refill')).toBeVisible();
+  await expect(
+    jobDetail.getByRole('heading', { name: 'Scheduled actions' }),
+  ).toBeVisible();
+  await expect(jobDetail.getByText('Check supplier ETA')).toBeVisible();
   await expect(jobDetail.getByRole('heading', { name: 'Tasks' })).toBeVisible();
   await expect(jobDetail.getByRole('heading', { name: 'Timeline' })).toBeVisible();
   await jobDetail.getByRole('button', { name: 'Back', exact: true }).click();
@@ -122,6 +131,13 @@ test('authenticated mobile operations shell reads live domain state', async ({
     repairSearchGroup.getByText('Avenge X regulator repair', { exact: true }),
   ).toBeVisible();
   await expect(searchDialog.getByText('Results')).toBeVisible();
+  await expect(
+    searchDialog.getByRole('heading', { name: 'History' }),
+  ).toBeVisible();
+  await expect(searchDialog.getByText('Waiting on transfer seal kit')).toBeVisible();
+  await expect(
+    searchDialog.getByRole('button', { name: /Waiting on transfer seal kit/ }),
+  ).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(searchDialog).toBeHidden();
   await expect(searchButton).toBeFocused();
@@ -183,10 +199,8 @@ test('later authorization denial clears the cached operational shell', async ({
   await page.route('**/api-test/search*', async (route) => {
     await route.fulfill({
       status: 403,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        error: { code: 'FORBIDDEN', message: 'Access denied' },
-      }),
+      contentType: 'text/html',
+      body: '<html>forbidden</html>',
     });
   });
 
