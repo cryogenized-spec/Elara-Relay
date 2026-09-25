@@ -45,7 +45,9 @@ test('mobile operations shell renders and navigates without browser errors', asy
     repairDetail.getByText('Awaiting parts', { exact: true }),
   ).toBeVisible();
   await expect(
-    repairDetail.getByText('Regulator transfer seal leaking under pressure'),
+    repairDetail.getByText('Regulator transfer seal leaking under pressure', {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
     repairDetail.getByRole('heading', { name: 'Linked tasks' }),
