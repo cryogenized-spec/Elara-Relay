@@ -51,7 +51,9 @@ test('authenticated mobile operations shell reads live domain state', async ({
     repairDetail.getByRole('heading', { name: 'Avenge X regulator repair' }),
   ).toBeFocused();
   await expect(
-    repairDetail.getByText('Awaiting Parts', { exact: true }),
+    repairDetail
+      .locator('.detailFields')
+      .getByText('Awaiting Parts', { exact: true }),
   ).toBeVisible();
   await expect(
     repairDetail.getByText('Regulator transfer seal leaking under pressure', {
