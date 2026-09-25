@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  jobViewSchema,
   repairsResultSchema,
   scheduleResultSchema,
+  searchResultSchema,
   taskViewSchema,
+  todayResultSchema,
   workResultSchema,
 } from './read-model';
 
@@ -170,4 +173,245 @@ describe('read-model aggregate invariants', () => {
       }),
     ).toThrow('schedule must contain unique ids');
   });
+
+  it('rejects every invalid Task detail relationship shape', () => {
+    expect(() =>
+      taskViewSchema.parse({
+        task: { ...task, jobId: null },
+        job,
+      }),
+    ).toThrow('Standalone Task view cannot contain a Job');
+
+    expect(() =>
+      taskViewSchema.parse({
+        task,
+        job: null,
+      }),
+    ).toThrow('Task view Job must match task.jobId');
+  });
+
+  it('rejects malformed Job detail aggregates', () => {
+    const base = {
+      job,
+      party,
+      tasks: [task],
+      repair,
+      repairWarnings: [],
+      scheduledActions: [action()],
+      events: [],
+    };
+
+    expect(() =>
+      jobViewSchema.parse({
+        ...base,
+        job: { ...job, partyId: null },
+      }),
+    ).toThrow('Job without partyId cannot contain a Party');
+
+    expect(() =>
+      jobViewSchema.parse({
+        ...base,
+        party: { ...party, id: '10000000-0000-4000-8000-999999999999' },
+      }),
+    ).toThrow('Job view Party must match job.partyId');
+
+    expect(() =>
+      jobViewSchema.parse({
+        ...base,
+        tasks: [{ ...task, jobId: OTHER_JOB_ID }],
+      }),
+    ).toThrow('Job view Tasks must reference the viewed Job');
+
+    expect(() =>
+      jobViewSchema.parse({
+        ...base,
+        repair: { ...repair, jobId: OTHER_JOB_ID },
+      }),
+    ).toThrow('Job view Repair must reference the viewed Job');
+
+    expect(() =>
+      jobViewSchema.parse({
+        ...base,
+        scheduledActions: [action({ jobId: OTHER_JOB_ID })],
+      }),
+    ).toThrow('Job view Scheduled Actions must reference the viewed Job');
+
+    expect(() =>
+      jobViewSchema.parse({
+        ...base,
+        tasks: [task, task],
+      }),
+    ).toThrow('tasks must contain unique ids');
+
+    const repeatedAction = action();
+    expect(() =>
+      jobViewSchema.parse({
+        ...base,
+        scheduledActions: [repeatedAction, repeatedAction],
+      }),
+    ).toThrow('scheduledActions must contain unique ids');
+  });
+
+  it('rejects duplicate Today entities instead of double-counting attention', () => {
+    const base = {
+      asOf: '2026-09-25T09:00:00.000Z',
+      tasks: [task],
+      repairs: [repair],
+      scheduledActions: [action()],
+    };
+
+    expect(() =>
+      todayResultSchema.parse({
+        ...base,
+        tasks: [task, task],
+      }),
+    ).toThrow('tasks must contain unique ids');
+
+    expect(() =>
+      todayResultSchema.parse({
+        ...base,
+        repairs: [repair, repair],
+      }),
+    ).toThrow('repairs must contain unique ids');
+
+    const repeatedAction = action();
+    expect(() =>
+      todayResultSchema.parse({
+        ...base,
+        scheduledActions: [repeatedAction, repeatedAction],
+      }),
+    ).toThrow('scheduledActions must contain unique ids');
+  });
+
+  it('rejects duplicate Work and Repairs entity sets', () => {
+    expect(() =>
+      workResultSchema.parse({
+        parties: [party],
+        jobs: [job, job],
+        tasks: [task],
+      }),
+    ).toThrow('jobs must contain unique ids');
+
+    expect(() =>
+      workResultSchema.parse({
+        parties: [party],
+        jobs: [job],
+        tasks: [task, task],
+      }),
+    ).toThrow('tasks must contain unique ids');
+
+    expect(() =>
+      repairsResultSchema.parse({
+        parties: [party, party],
+        jobs: [job],
+        repairs: [repair],
+      }),
+    ).toThrow('parties must contain unique ids');
+
+    expect(() =>
+      repairsResultSchema.parse({
+        parties: [party],
+        jobs: [job, job],
+        repairs: [repair],
+      }),
+    ).toThrow('jobs must contain unique ids');
+
+    expect(() =>
+      repairsResultSchema.parse({
+        parties: [party],
+        jobs: [job],
+        repairs: [repair, repair],
+      }),
+    ).toThrow('repairs must contain unique ids');
+  });
+
+  it('rejects Repairs Jobs whose Party is absent', () => {
+    expect(() =>
+      repairsResultSchema.parse({
+        parties: [party],
+        jobs: [{ ...job, partyId: '10000000-0000-4000-8000-999999999999' }],
+        repairs: [repair],
+      }),
+    ).toThrow('Job partyId must reference a Party in the Repairs aggregate');
+  });
+
+  it('rejects every invalid active scheduler bucket condition', () => {
+    const asOf = '2026-09-25T09:00:00.000Z';
+
+    for (const invalidDue of [
+      action({ status: 'PAUSED', nextRunAt: '2026-09-25T08:00:00.000Z' }),
+      action({ nextRunAt: null }),
+      action({ nextRunAt: '2026-09-25T10:00:00.000Z' }),
+    ]) {
+      expect(() =>
+        scheduleResultSchema.parse({
+          asOf,
+          due: [invalidDue],
+          upcoming: [],
+          paused: [],
+        }),
+      ).toThrow('Due actions must be ACTIVE with nextRunAt at or before asOf');
+    }
+
+    for (const invalidUpcoming of [
+      action({ status: 'PAUSED', nextRunAt: '2026-09-25T10:00:00.000Z' }),
+      action({ nextRunAt: null }),
+      action({ nextRunAt: '2026-09-25T09:00:00.000Z' }),
+    ]) {
+      expect(() =>
+        scheduleResultSchema.parse({
+          asOf,
+          due: [],
+          upcoming: [invalidUpcoming],
+          paused: [],
+        }),
+      ).toThrow('Upcoming actions must be ACTIVE with nextRunAt after asOf');
+    }
+  });
+
+  it('accepts valid due, upcoming, and paused scheduler buckets together', () => {
+    expect(
+      scheduleResultSchema.parse({
+        asOf: '2026-09-25T09:00:00.000Z',
+        due: [action({ nextRunAt: '2026-09-25T08:00:00.000Z' })],
+        upcoming: [
+          action({
+            id: '10000000-0000-4000-8000-000000000007',
+            nextRunAt: '2026-09-25T10:00:00.000Z',
+          }),
+        ],
+        paused: [
+          action({
+            id: '10000000-0000-4000-8000-000000000008',
+            status: 'PAUSED',
+          }),
+        ],
+      }),
+    ).toBeTruthy();
+  });
+
+  it('rejects duplicate entities in Search results', () => {
+    expect(() =>
+      searchResultSchema.parse({
+        parties: [party, party],
+        jobs: [],
+        tasks: [],
+        repairs: [],
+        scheduledActions: [],
+        events: [],
+      }),
+    ).toThrow('parties must contain unique ids');
+
+    expect(() =>
+      searchResultSchema.parse({
+        parties: [],
+        jobs: [job, job],
+        tasks: [],
+        repairs: [],
+        scheduledActions: [],
+        events: [],
+      }),
+    ).toThrow('jobs must contain unique ids');
+  });
+
 });
