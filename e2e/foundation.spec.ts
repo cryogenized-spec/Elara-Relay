@@ -30,8 +30,6 @@ test('mobile operations shell renders and navigates without browser errors', asy
   ).toBeVisible();
   await expect(page.getByText('Preview')).toBeVisible();
 
-  await expect(page.getByText('Preview')).toBeVisible();
-
   const repairAttentionRow = page.getByRole('button', {
     name: /Open Avenge X regulator/,
   });
@@ -45,9 +43,11 @@ test('mobile operations shell renders and navigates without browser errors', asy
     repairDetail.getByText('Awaiting parts', { exact: true }),
   ).toBeVisible();
   await expect(
-    repairDetail.getByText('Regulator transfer seal leaking under pressure', {
-      exact: true,
-    }),
+    repairDetail
+      .locator('.detailFields')
+      .getByText('Regulator transfer seal leaking under pressure', {
+        exact: true,
+      }),
   ).toBeVisible();
   await expect(
     repairDetail.getByRole('heading', { name: 'Linked tasks' }),
