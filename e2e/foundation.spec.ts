@@ -291,6 +291,8 @@ test('denial from an obsolete signed-out Search session cannot clear a new sessi
     .fill('Avenge');
   await searchStarted;
 
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Search' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await signInOwner(page);
