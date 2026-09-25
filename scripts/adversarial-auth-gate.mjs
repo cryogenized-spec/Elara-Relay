@@ -138,6 +138,31 @@ mutate(
   'authenticated cross-user session reauthorization bypass',
 );
 
+
+mutate(
+  'src/app/authorization-policy.ts',
+  'if (requestAccessToken !== currentAccessToken) {',
+  'if (false) {',
+  () => runVitest('src/app/authorization-policy.test.ts'),
+  'stale-session authorization denial isolation bypass',
+);
+
+mutate(
+  'src/app/read-view-model.ts',
+  "meta: party ?? 'Job',",
+  "meta: `${party ?? 'Job'} · 0 open Tasks`,",
+  () => runVitest('src/app/read-view-model.test.ts'),
+  'partial Search Job task-count fabrication',
+);
+
+mutate(
+  'src/app/read-view-model.ts',
+  "action.status === 'COMPLETED'\n              ? 'Completed'",
+  "action.status === 'COMPLETED'\n              ? 'Upcoming'",
+  () => runVitest('src/app/read-view-model.test.ts'),
+  'Search Scheduled Action terminal-status corruption',
+);
+
 process.stdout.write(
-  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, strict read-model validation, and modern publishable-key controls resisted hostile mutations.\n',
+  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, stale-session denial isolation, Search truthfulness, strict read-model validation, and modern publishable-key controls resisted hostile mutations.\n',
 );

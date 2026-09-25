@@ -12,6 +12,7 @@ const persistent = read('src/runtime/node/persistent-api.ts');
 const browserAuth = read('src/app/auth-client.ts');
 const browserApi = read('src/app/operations-api.ts');
 const browserConfig = read('src/app/runtime-config.ts');
+const browserAuthorizationPolicy = read('src/app/authorization-policy.ts');
 
 for (const marker of [
   'AuthVerifier is required whenever domain routes are enabled',
@@ -106,6 +107,17 @@ for (const marker of [
 ]) {
   if (!browserConfig.includes(marker)) {
     findings.push(`Browser runtime config lost required control: ${marker}`);
+  }
+}
+
+for (const marker of [
+  'requestAccessToken !== currentAccessToken',
+  "'STALE_SESSION'",
+  "'FORBIDDEN'",
+  "'UNAUTHENTICATED'",
+]) {
+  if (!browserAuthorizationPolicy.includes(marker)) {
+    findings.push(`Browser authorization policy lost required control: ${marker}`);
   }
 }
 
