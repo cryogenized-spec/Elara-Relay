@@ -13,6 +13,13 @@ function runVitest(path) {
   );
 }
 
+function runNode(path) {
+  return spawnSync(process.execPath, [join(root, path)], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+}
+
 function mutate(path, search, replacement, runner, label) {
   const absolute = join(root, path);
   const original = readFileSync(absolute, 'utf8');
@@ -161,6 +168,30 @@ mutate(
   "action.status === 'COMPLETED'\n              ? 'Upcoming'",
   () => runVitest('src/app/read-view-model.test.ts'),
   'Search Scheduled Action terminal-status corruption',
+);
+
+mutate(
+  'src/app/App.tsx',
+  'authorizedUserId === null ||',
+  'authorizedUserId !== null &&',
+  () => runVitest('src/app/live-auth-lifecycle.test.tsx'),
+  'signed-out cross-tab session authorization bypass',
+);
+
+mutate(
+  'src/app/App.tsx',
+  'requestId.current += 1;',
+  'requestId.current += 0;',
+  () => runNode('scripts/auth-boundary-gate.mjs'),
+  'Search synchronous request invalidation removal',
+);
+
+mutate(
+  'src/app/App.tsx',
+  'runtime.api.dashboard(asOf)',
+  'runtime.api.today(asOf)',
+  () => runNode('scripts/auth-boundary-gate.mjs'),
+  'single Dashboard endpoint bypass',
 );
 
 process.stdout.write(

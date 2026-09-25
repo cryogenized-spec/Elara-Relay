@@ -62,23 +62,27 @@ describe('live authorization lifecycle', () => {
                 email: 'owner@example.com',
                 aal: 'aal1',
               }),
-        today: (asOf) =>
+        dashboard: (asOf) =>
           Promise.resolve({
-            asOf,
-            tasks: [],
-            repairs: [],
-            scheduledActions: [],
+            today: {
+              asOf,
+              tasks: [],
+              repairs: [],
+              scheduledActions: [],
+            },
+            work: { parties: [], jobs: [], tasks: [] },
+            repairs: { parties: [], jobs: [], repairs: [] },
+            schedule: {
+              asOf,
+              due: [],
+              upcoming: [],
+              paused: [],
+            },
           }),
-        work: () => Promise.resolve({ parties: [], jobs: [], tasks: [] }),
-        repairs: () =>
-          Promise.resolve({ parties: [], jobs: [], repairs: [] }),
-        schedule: (asOf) =>
-          Promise.resolve({
-            asOf,
-            due: [],
-            upcoming: [],
-            paused: [],
-          }),
+        today: () => Promise.reject(new Error('legacy dashboard read used')),
+        work: () => Promise.reject(new Error('legacy dashboard read used')),
+        repairs: () => Promise.reject(new Error('legacy dashboard read used')),
+        schedule: () => Promise.reject(new Error('legacy dashboard read used')),
         search: () =>
           Promise.resolve({
             parties: [],
@@ -119,4 +123,80 @@ describe('live authorization lifecycle', () => {
       root.unmount();
     });
   });
+  it('authorizes a non-null cross-tab session when no user is currently authorized', async () => {
+    let currentSession: BrowserAuthSession | null = null;
+    let listener: ((value: BrowserAuthSession | null) => void) | null = null;
+
+    const runtime: BrowserRuntime = {
+      auth: {
+        getAccessToken: () => currentSession?.accessToken ?? null,
+        restoreSession: () => Promise.resolve(null),
+        refreshSession: () => Promise.resolve(currentSession),
+        subscribe: (next) => {
+          listener = next;
+          return () => {
+            listener = null;
+          };
+        },
+        signIn: () => Promise.reject(new Error('not used')),
+        signOut: () => Promise.resolve(),
+      },
+      api: {
+        whoAmI: () =>
+          Promise.resolve({
+            userId: OWNER_ID,
+            sessionId: '30000000-0000-4000-8000-000000000002',
+            email: 'owner@example.com',
+            aal: 'aal1',
+          }),
+        dashboard: (asOf) =>
+          Promise.resolve({
+            today: { asOf, tasks: [], repairs: [], scheduledActions: [] },
+            work: { parties: [], jobs: [], tasks: [] },
+            repairs: { parties: [], jobs: [], repairs: [] },
+            schedule: { asOf, due: [], upcoming: [], paused: [] },
+          }),
+        today: () => Promise.reject(new Error('legacy dashboard read used')),
+        work: () => Promise.reject(new Error('legacy dashboard read used')),
+        repairs: () => Promise.reject(new Error('legacy dashboard read used')),
+        schedule: () => Promise.reject(new Error('legacy dashboard read used')),
+        search: () =>
+          Promise.resolve({
+            parties: [],
+            jobs: [],
+            tasks: [],
+            repairs: [],
+            scheduledActions: [],
+            events: [],
+          }),
+        task: () => Promise.reject(new Error('not used')),
+        job: () => Promise.reject(new Error('not used')),
+        repair: () => Promise.reject(new Error('not used')),
+      },
+    };
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<App runtime={runtime} />);
+      await flush();
+    });
+    expect(container.textContent).toContain('Sign in');
+
+    currentSession = session(OWNER_ID);
+    await act(async () => {
+      listener?.(currentSession);
+      await flush();
+    });
+
+    expect(container.textContent).toContain('Today');
+    expect(container.textContent).toContain('Online');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
 });

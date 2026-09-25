@@ -12,6 +12,7 @@ const persistent = read('src/runtime/node/persistent-api.ts');
 const browserAuth = read('src/app/auth-client.ts');
 const browserApi = read('src/app/operations-api.ts');
 const browserConfig = read('src/app/runtime-config.ts');
+const browserApp = read('src/app/App.tsx');
 const browserAuthorizationPolicy = read('src/app/authorization-policy.ts');
 
 for (const marker of [
@@ -118,6 +119,16 @@ for (const marker of [
 ]) {
   if (!browserAuthorizationPolicy.includes(marker)) {
     findings.push(`Browser authorization policy lost required control: ${marker}`);
+  }
+}
+
+for (const marker of [
+  'runtime.api.dashboard(asOf)',
+  'authorizedUserId === null ||',
+  'requestId.current += 1;',
+]) {
+  if (!browserApp.includes(marker)) {
+    findings.push(`Browser live shell lost required control: ${marker}`);
   }
 }
 
