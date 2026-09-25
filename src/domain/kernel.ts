@@ -22,6 +22,7 @@ import {
   recordRepairTestInputSchema,
   repairDetailsPatchSchema,
   repairSchema,
+  repairWarningsFor,
   type CreateRepairInput,
   type MoveRepairStageInput,
   type RecordRepairTestInput,
@@ -165,10 +166,6 @@ const REPAIR_STAGE_TRANSITIONS: Readonly<
   COLLECTED: [],
   CANCELLED: [],
 };
-
-function repairWarnings(repair: Repair): RepairWarning[] {
-  return repair.serialState === 'UNKNOWN' ? ['SERIAL_UNKNOWN'] : [];
-}
 
 function comparable(value: unknown): string {
   return canonicalJson(value);
@@ -856,7 +853,7 @@ export class DomainKernel {
       }
       return {
         repair,
-        warnings: repairWarnings(repair),
+        warnings: repairWarningsFor(repair),
       };
     });
   }

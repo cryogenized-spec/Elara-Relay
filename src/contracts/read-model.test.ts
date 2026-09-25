@@ -212,7 +212,7 @@ describe('read-model aggregate invariants', () => {
       party,
       tasks: [task],
       repair,
-      repairWarnings: [],
+      repairWarnings: ['SERIAL_UNKNOWN'],
       scheduledActions: [action()],
       events: [],
     };
@@ -268,6 +268,97 @@ describe('read-model aggregate invariants', () => {
         scheduledActions: [repeatedAction, repeatedAction],
       }),
     ).toThrow('scheduledActions must contain unique ids');
+  });
+
+  it('rejects suppressed or fabricated Repair warnings', () => {
+    expect(() =>
+      repairViewSchema.parse({
+        repair,
+        warnings: [],
+      }),
+    ).toThrow('Repair view warnings must match the Repair state');
+
+    expect(
+      repairViewSchema.parse({
+        repair,
+        warnings: ['SERIAL_UNKNOWN'],
+      }),
+    ).toBeTruthy();
+
+    const knownRepair = {
+      ...repair,
+      serialState: 'KNOWN' as const,
+      serialValue: 'AVX-240924',
+    };
+
+    expect(() =>
+      repairViewSchema.parse({
+        repair: knownRepair,
+        warnings: ['SERIAL_UNKNOWN'],
+      }),
+    ).toThrow('Repair view warnings must match the Repair state');
+
+    expect(() =>
+      jobViewSchema.parse({
+        job,
+        party,
+        tasks: [task],
+        repair,
+        repairWarnings: [],
+        scheduledActions: [action()],
+        events: [],
+      }),
+    ).toThrow('Job Repair warnings must match the Repair state');
+
+    expect(() =>
+      jobViewSchema.parse({
+        job,
+        party,
+        tasks: [task],
+        repair: null,
+        repairWarnings: ['SERIAL_UNKNOWN'],
+        scheduledActions: [action()],
+        events: [],
+      }),
+    ).toThrow('Job without a Repair cannot contain Repair warnings');
+  });
+
+  it('rejects event types that contradict their entity type', () => {
+    expect(() =>
+      jobViewSchema.parse({
+        job,
+        party,
+        tasks: [task],
+        repair,
+        repairWarnings: ['SERIAL_UNKNOWN'],
+        scheduledActions: [action()],
+        events: [
+          event({
+            entityType: 'JOB',
+            entityId: JOB_ID,
+            eventType: 'TASK_COMPLETED',
+          }),
+        ],
+      }),
+    ).toThrow('TASK_COMPLETED is not valid for JOB events');
+
+    expect(() =>
+      jobViewSchema.parse({
+        job,
+        party,
+        tasks: [task],
+        repair,
+        repairWarnings: ['SERIAL_UNKNOWN'],
+        scheduledActions: [action()],
+        events: [
+          event({
+            entityType: 'TASK',
+            entityId: TASK_ID,
+            eventType: 'REPAIR_STAGE_CHANGED',
+          }),
+        ],
+      }),
+    ).toThrow('REPAIR_STAGE_CHANGED is not valid for TASK events');
   });
 
   it('rejects duplicate Today entities instead of double-counting attention', () => {
@@ -461,7 +552,7 @@ describe('read-model aggregate invariants', () => {
       party,
       tasks: [task],
       repair,
-      repairWarnings: [],
+      repairWarnings: ['SERIAL_UNKNOWN'],
       scheduledActions: [action()],
     };
 

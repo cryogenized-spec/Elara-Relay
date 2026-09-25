@@ -2,7 +2,11 @@ import { z } from 'zod';
 import { eventSchema } from './event';
 import { jobSchema } from './job';
 import { partySchema } from './party';
-import { repairSchema, repairWarningSchema } from './repair';
+import {
+  repairSchema,
+  repairWarningSchema,
+  repairWarningsFor,
+} from './repair';
 import { scheduledActionSchema } from './scheduler';
 import { timestampSchema } from './shared';
 import { taskSchema } from './task';
@@ -58,7 +62,20 @@ export const repairViewSchema = z
     repair: repairSchema,
     warnings: z.array(repairWarningSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((view, context) => {
+    const expectedWarnings = repairWarningsFor(view.repair);
+    if (
+      view.warnings.length !== expectedWarnings.length ||
+      !view.warnings.every((warning) => expectedWarnings.includes(warning))
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['warnings'],
+        message: 'Repair view warnings must match the Repair state',
+      });
+    }
+  });
 
 export const jobViewSchema = z
   .object({
@@ -126,6 +143,30 @@ export const jobViewSchema = z
         path: ['repair', 'jobId'],
         message: 'Job view Repair must reference the viewed Job',
       });
+    }
+
+    if (view.repair === null) {
+      if (view.repairWarnings.length !== 0) {
+        context.addIssue({
+          code: 'custom',
+          path: ['repairWarnings'],
+          message: 'Job without a Repair cannot contain Repair warnings',
+        });
+      }
+    } else {
+      const expectedWarnings = repairWarningsFor(view.repair);
+      if (
+        view.repairWarnings.length !== expectedWarnings.length ||
+        !view.repairWarnings.every((warning) =>
+          expectedWarnings.includes(warning),
+        )
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['repairWarnings'],
+          message: 'Job Repair warnings must match the Repair state',
+        });
+      }
     }
 
     const taskIds = new Set(view.tasks.map((task) => task.id));
