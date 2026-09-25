@@ -1,7 +1,7 @@
 import {
-  createClient,
-  type Session,
-} from '@supabase/supabase-js';
+  createRawSupabaseClient,
+  type RawSession,
+} from './supabase-runtime.mjs';
 import type { BrowserRuntimeConfig } from './runtime-config';
 
 export interface BrowserAuthSession {
@@ -22,7 +22,7 @@ export interface BrowserAuthClient {
 }
 
 export function toBrowserAuthSession(
-  session: Session | null,
+  session: RawSession | null,
 ): BrowserAuthSession | null {
   if (session === null) return null;
 
@@ -37,7 +37,7 @@ export function createSupabaseBrowserAuth(
   config: BrowserRuntimeConfig,
 ): BrowserAuthClient {
   let currentSession: BrowserAuthSession | null = null;
-  const client = createClient(
+  const client = createRawSupabaseClient(
     config.supabaseUrl,
     config.publishableKey,
     {

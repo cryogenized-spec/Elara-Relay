@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Session } from '@supabase/supabase-js';
+import type { RawSession } from './supabase-runtime.mjs';
 import { toBrowserAuthSession } from './auth-client';
 
 describe('browser auth session mapping', () => {
@@ -10,7 +10,7 @@ describe('browser auth session mapping', () => {
         id: '30000000-0000-4000-8000-000000000001',
         email: 'owner@example.com',
       },
-    } as Session;
+    } satisfies RawSession;
 
     expect(toBrowserAuthSession(session)).toEqual({
       accessToken: 'access-token',
