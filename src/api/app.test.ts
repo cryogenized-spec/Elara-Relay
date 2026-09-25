@@ -387,6 +387,27 @@ describe('API foundation', () => {
     const searchResult = (await search.json()) as { events: unknown[] };
     expect(searchResult.events).toHaveLength(1);
 
+    const dashboard = await app.request(
+      '/dashboard?asOf=2026-09-24T09%3A00%3A00.000Z',
+      { headers: authorizationHeaders() },
+    );
+    expect(dashboard.status).toBe(200);
+    const dashboardResult = (await dashboard.json()) as {
+      today: { asOf: string; tasks: unknown[] };
+      work: { parties: unknown[]; jobs: unknown[]; tasks: unknown[] };
+      repairs: { parties: unknown[]; jobs: unknown[]; repairs: unknown[] };
+      schedule: {
+        asOf: string;
+        due: unknown[];
+        upcoming: unknown[];
+        paused: unknown[];
+      };
+    };
+    expect(dashboardResult.today.asOf).toBe('2026-09-24T09:00:00.000Z');
+    expect(dashboardResult.schedule.asOf).toBe(dashboardResult.today.asOf);
+    expect(dashboardResult.work.jobs).toHaveLength(1);
+    expect(dashboardResult.repairs.jobs).toHaveLength(1);
+
     const work = await app.request('/work', {
       headers: authorizationHeaders(),
     });

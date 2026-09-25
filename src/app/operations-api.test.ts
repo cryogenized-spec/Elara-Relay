@@ -54,6 +54,36 @@ describe('Operations API browser client', () => {
     );
   });
 
+  it('validates the coherent Dashboard payload through one endpoint', async () => {
+    const asOf = '2026-09-25T02:30:00.000Z';
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          today: { asOf, tasks: [], repairs: [], scheduledActions: [] },
+          work: { parties: [], jobs: [], tasks: [] },
+          repairs: { parties: [], jobs: [], repairs: [] },
+          schedule: { asOf, due: [], upcoming: [], paused: [] },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const api = createOperationsApi({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'session-token',
+      fetchImpl,
+    });
+
+    await expect(api.dashboard(asOf)).resolves.toMatchObject({
+      today: { asOf },
+      schedule: { asOf },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/dashboard?asOf=2026-09-25T02%3A30%3A00.000Z',
+    );
+  });
+
   it('fails closed before a request when no session token exists', async () => {
     const fetchImpl = vi.fn<typeof fetch>();
     const api = createOperationsApi({

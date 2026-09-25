@@ -351,31 +351,28 @@ async function installLiveVisualRoutes(page) {
       );
       return;
     }
-    if (path === '/today') {
+    if (path === '/dashboard') {
       await route.fulfill(
         jsonResponse({
-          asOf,
-          tasks: [],
-          repairs: [repairs[0]],
-          scheduledActions: schedule.due,
+          today: {
+            asOf,
+            tasks: [],
+            repairs: [repairs[0]],
+            scheduledActions: schedule.due,
+          },
+          work: {
+            parties: [liveParty()],
+            jobs,
+            tasks,
+          },
+          repairs: {
+            parties: [liveParty()],
+            jobs,
+            repairs,
+          },
+          schedule: { asOf, ...schedule },
         }),
       );
-      return;
-    }
-    if (path === '/work') {
-      await route.fulfill(
-        jsonResponse({ parties: [liveParty()], jobs, tasks }),
-      );
-      return;
-    }
-    if (path === '/repairs') {
-      await route.fulfill(
-        jsonResponse({ parties: [liveParty()], jobs, repairs }),
-      );
-      return;
-    }
-    if (path === '/schedule') {
-      await route.fulfill(jsonResponse({ asOf, ...schedule }));
       return;
     }
     if (path === '/search') {

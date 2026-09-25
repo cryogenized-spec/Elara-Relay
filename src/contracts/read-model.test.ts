@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dashboardResultSchema,
   jobViewSchema,
   repairViewSchema,
   repairsResultSchema,
@@ -683,6 +684,75 @@ describe('read-model aggregate invariants', () => {
         'Today Scheduled Actions must be ACTIVE with nextRunAt at or before asOf',
       );
     }
+  });
+
+  it('rejects internally inconsistent Dashboard snapshots', () => {
+    const asOf = '2026-09-25T09:00:00.000Z';
+    const dueTask = { ...task, dueAt: '2026-09-25T08:00:00.000Z' };
+    const dueAction = action({ nextRunAt: '2026-09-25T08:00:00.000Z' });
+    const dashboard = {
+      today: {
+        asOf,
+        tasks: [dueTask],
+        repairs: [],
+        scheduledActions: [dueAction],
+      },
+      work: {
+        parties: [party],
+        jobs: [job],
+        tasks: [dueTask],
+      },
+      repairs: {
+        parties: [party],
+        jobs: [job],
+        repairs: [],
+      },
+      schedule: {
+        asOf,
+        due: [dueAction],
+        upcoming: [],
+        paused: [],
+      },
+    };
+
+    expect(dashboardResultSchema.parse(dashboard)).toBeTruthy();
+
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        schedule: { ...dashboard.schedule, asOf: '2026-09-25T09:01:00.000Z' },
+      }),
+    ).toThrow('Dashboard Today and Schedule must share one asOf timestamp');
+
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        repairs: {
+          ...dashboard.repairs,
+          jobs: [{ ...job, revision: 2 }],
+        },
+      }),
+    ).toThrow('Dashboard Work and Repairs must share Job versions');
+
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        today: {
+          ...dashboard.today,
+          tasks: [{ ...dueTask, revision: 2 }],
+        },
+      }),
+    ).toThrow('Dashboard Today Tasks must match Work Task versions');
+
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        today: {
+          ...dashboard.today,
+          scheduledActions: [],
+        },
+      }),
+    ).toThrow('Dashboard Today Scheduled Actions must equal Schedule due actions');
   });
 
   it('rejects duplicate entities in Search results', () => {

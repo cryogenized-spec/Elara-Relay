@@ -370,52 +370,32 @@ export async function installLiveHarness(
       return;
     }
 
-    if (path === '/today') {
-      await route.fulfill(
-        json({
-          asOf,
-          tasks: [allTasks[0]],
-          repairs: [allRepairs[0]],
-          scheduledActions: schedule.due,
-        }),
-      );
-      return;
-    }
-
-    if (path === '/work') {
+    if (path === '/dashboard') {
+      const work = {
+        parties: [baseParty()],
+        jobs: allJobs,
+        tasks: allTasks,
+      };
       if (options.malformedWork === true) {
-        await route.fulfill(
-          json({
-            parties: [baseParty()],
-            jobs: [allJobs[0]],
-            tasks: [{ ...allTasks[1], jobId: IDS.jobWebsite }],
-          }),
-        );
-        return;
+        work.tasks = [{ ...allTasks[1], jobId: IDS.jobWebsite }];
       }
       await route.fulfill(
         json({
-          parties: [baseParty()],
-          jobs: allJobs,
-          tasks: allTasks,
+          today: {
+            asOf,
+            tasks: [allTasks[0]],
+            repairs: [allRepairs[0]],
+            scheduledActions: schedule.due,
+          },
+          work,
+          repairs: {
+            parties: [baseParty()],
+            jobs: allJobs,
+            repairs: allRepairs,
+          },
+          schedule: { asOf, ...schedule },
         }),
       );
-      return;
-    }
-
-    if (path === '/repairs') {
-      await route.fulfill(
-        json({
-          parties: [baseParty()],
-          jobs: allJobs,
-          repairs: allRepairs,
-        }),
-      );
-      return;
-    }
-
-    if (path === '/schedule') {
-      await route.fulfill(json({ asOf, ...schedule }));
       return;
     }
 
