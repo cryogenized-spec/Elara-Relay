@@ -2026,9 +2026,6 @@ function LiveSearchSurface({
     const currentRequest = ++requestId.current;
 
     if (normalized.length < 2) {
-      setGroups([]);
-      setError(null);
-      setState('idle');
       return undefined;
     }
 

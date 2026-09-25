@@ -17,18 +17,14 @@ function duplicateIds(values: readonly { id: string }[]): string[] {
   return [...duplicates];
 }
 
-function addDuplicateIssue(
+function duplicateMessage(
   values: readonly { id: string }[],
   path: string,
-  context: z.core.$RefinementCtx<unknown>,
-): void {
+): string | null {
   const duplicates = duplicateIds(values);
-  if (duplicates.length === 0) return;
-  context.addIssue({
-    code: 'custom',
-    path: [path],
-    message: `${path} must contain unique ids; duplicates: ${duplicates.join(', ')}`,
-  });
+  return duplicates.length === 0
+    ? null
+    : `${path} must contain unique ids; duplicates: ${duplicates.join(', ')}`;
 }
 
 export const taskViewSchema = z
@@ -76,9 +72,25 @@ export const jobViewSchema = z
   })
   .strict()
   .superRefine((view, context) => {
-    addDuplicateIssue(view.tasks, 'tasks', context);
-    addDuplicateIssue(view.scheduledActions, 'scheduledActions', context);
-    addDuplicateIssue(view.events, 'events', context);
+    const taskDuplicates = duplicateMessage(view.tasks, 'tasks');
+    if (taskDuplicates !== null) {
+      context.addIssue({ code: 'custom', path: ['tasks'], message: taskDuplicates });
+    }
+    const actionDuplicates = duplicateMessage(
+      view.scheduledActions,
+      'scheduledActions',
+    );
+    if (actionDuplicates !== null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['scheduledActions'],
+        message: actionDuplicates,
+      });
+    }
+    const eventDuplicates = duplicateMessage(view.events, 'events');
+    if (eventDuplicates !== null) {
+      context.addIssue({ code: 'custom', path: ['events'], message: eventDuplicates });
+    }
 
     if (view.job.partyId === null && view.party !== null) {
       context.addIssue({
@@ -136,9 +148,25 @@ export const todayResultSchema = z
   })
   .strict()
   .superRefine((result, context) => {
-    addDuplicateIssue(result.tasks, 'tasks', context);
-    addDuplicateIssue(result.repairs, 'repairs', context);
-    addDuplicateIssue(result.scheduledActions, 'scheduledActions', context);
+    const taskDuplicates = duplicateMessage(result.tasks, 'tasks');
+    if (taskDuplicates !== null) {
+      context.addIssue({ code: 'custom', path: ['tasks'], message: taskDuplicates });
+    }
+    const repairDuplicates = duplicateMessage(result.repairs, 'repairs');
+    if (repairDuplicates !== null) {
+      context.addIssue({ code: 'custom', path: ['repairs'], message: repairDuplicates });
+    }
+    const actionDuplicates = duplicateMessage(
+      result.scheduledActions,
+      'scheduledActions',
+    );
+    if (actionDuplicates !== null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['scheduledActions'],
+        message: actionDuplicates,
+      });
+    }
   });
 
 export const workResultSchema = z
@@ -149,9 +177,18 @@ export const workResultSchema = z
   })
   .strict()
   .superRefine((result, context) => {
-    addDuplicateIssue(result.parties, 'parties', context);
-    addDuplicateIssue(result.jobs, 'jobs', context);
-    addDuplicateIssue(result.tasks, 'tasks', context);
+    const partyDuplicates = duplicateMessage(result.parties, 'parties');
+    if (partyDuplicates !== null) {
+      context.addIssue({ code: 'custom', path: ['parties'], message: partyDuplicates });
+    }
+    const jobDuplicates = duplicateMessage(result.jobs, 'jobs');
+    if (jobDuplicates !== null) {
+      context.addIssue({ code: 'custom', path: ['jobs'], message: jobDuplicates });
+    }
+    const taskDuplicates = duplicateMessage(result.tasks, 'tasks');
+    if (taskDuplicates !== null) {
+      context.addIssue({ code: 'custom', path: ['tasks'], message: taskDuplicates });
+    }
 
     const partyIds = new Set(result.parties.map((party) => party.id));
     const jobIds = new Set(result.jobs.map((job) => job.id));
@@ -185,9 +222,18 @@ export const repairsResultSchema = z
   })
   .strict()
   .superRefine((result, context) => {
-    addDuplicateIssue(result.parties, 'parties', context);
-    addDuplicateIssue(result.jobs, 'jobs', context);
-    addDuplicateIssue(result.repairs, 'repairs', context);
+    const partyDuplicates = duplicateMessage(result.parties, 'parties');
+    if (partyDuplicates !== null) {
+      context.addIssue({ code: 'custom', path: ['parties'], message: partyDuplicates });
+    }
+    const jobDuplicates = duplicateMessage(result.jobs, 'jobs');
+    if (jobDuplicates !== null) {
+      context.addIssue({ code: 'custom', path: ['jobs'], message: jobDuplicates });
+    }
+    const repairDuplicates = duplicateMessage(result.repairs, 'repairs');
+    if (repairDuplicates !== null) {
+      context.addIssue({ code: 'custom', path: ['repairs'], message: repairDuplicates });
+    }
 
     const partyIds = new Set(result.parties.map((party) => party.id));
     const jobIds = new Set(result.jobs.map((job) => job.id));
@@ -223,7 +269,14 @@ export const scheduleResultSchema = z
   .strict()
   .superRefine((result, context) => {
     const all = [...result.due, ...result.upcoming, ...result.paused];
-    addDuplicateIssue(all, 'schedule', context);
+    const scheduleDuplicates = duplicateMessage(all, 'schedule');
+    if (scheduleDuplicates !== null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['schedule'],
+        message: scheduleDuplicates,
+      });
+    }
     const asOf = Date.parse(result.asOf);
 
     for (const [index, action] of result.due.entries()) {
@@ -276,12 +329,19 @@ export const searchResultSchema = z
   })
   .strict()
   .superRefine((result, context) => {
-    addDuplicateIssue(result.parties, 'parties', context);
-    addDuplicateIssue(result.jobs, 'jobs', context);
-    addDuplicateIssue(result.tasks, 'tasks', context);
-    addDuplicateIssue(result.repairs, 'repairs', context);
-    addDuplicateIssue(result.scheduledActions, 'scheduledActions', context);
-    addDuplicateIssue(result.events, 'events', context);
+    for (const [path, values] of [
+      ['parties', result.parties],
+      ['jobs', result.jobs],
+      ['tasks', result.tasks],
+      ['repairs', result.repairs],
+      ['scheduledActions', result.scheduledActions],
+      ['events', result.events],
+    ] as const) {
+      const message = duplicateMessage(values, path);
+      if (message !== null) {
+        context.addIssue({ code: 'custom', path: [path], message });
+      }
+    }
   });
 
 export type TaskViewPayload = z.infer<typeof taskViewSchema>;
