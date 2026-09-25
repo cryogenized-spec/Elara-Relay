@@ -217,6 +217,24 @@ async function captureViewport(browser, viewport, fileName) {
     };
   }
 
+  let searchFile = null;
+  const searchButton = page.getByRole('button', { name: 'Search' });
+  if ((await searchButton.count()) > 0) {
+    await searchButton.click();
+    const searchDialog = page.getByRole('dialog', { name: 'Search' });
+    await searchDialog.waitFor({ state: 'visible' });
+    const searchInput = page.getByPlaceholder('Job, serial, task, customer…');
+    if ((await searchInput.count()) > 0) {
+      await searchInput.fill('Avenge');
+    }
+    searchFile = fileName.replace('.png', '-search.png');
+    await page.screenshot({
+      path: join(outputDir, searchFile),
+      fullPage: false,
+    });
+    await page.keyboard.press('Escape');
+  }
+
   await context.close();
   return {
     metrics,
@@ -224,6 +242,7 @@ async function captureViewport(browser, viewport, fileName) {
     consoleErrors,
     failedRequests,
     captureFiles,
+    searchFile: searchFile === null ? null : `${label}/${searchFile}`,
   };
 }
 
