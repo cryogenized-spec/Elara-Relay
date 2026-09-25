@@ -35,6 +35,7 @@ const expectedScripts = {
   'adversarial:domain': 'node scripts/adversarial-domain-gate.mjs',
   'schema:check': 'node scripts/migration-contract-gate.mjs',
   'auth:check': 'node scripts/auth-boundary-gate.mjs',
+  'docs:check': 'node scripts/documentation-contract-gate.mjs',
   'adversarial:auth': 'node scripts/adversarial-auth-gate.mjs',
   'test:postgres': 'vitest run --config vitest.postgres.config.mjs',
 };
@@ -167,6 +168,7 @@ for (const required of [
   'npm run secrets:check',
   'npm run security:check',
   'npm run auth:check',
+  'npm run docs:check',
   'npm audit signatures',
   'npm audit --audit-level=high',
   'npm run supply-chain:check',
@@ -228,5 +230,5 @@ if (errors.length > 0) {
 }
 
 process.stdout.write(
-  'Verification integrity passed: Node/npm pins, TS6+TS7 gates, strict compiler flags, Playwright desktop/mobile proof, CI anti-bypass controls, skill mirror, and suppression policy are intact.\n',
+  'Verification integrity passed: Node/npm pins, TS6+TS7 gates, strict compiler flags, Playwright desktop/mobile proof, CI anti-bypass controls, documentation authority, skill mirror, and suppression policy are intact.\n',
 );
