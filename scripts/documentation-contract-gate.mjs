@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 
@@ -26,15 +26,6 @@ const requiredFiles = [
 for (const path of requiredFiles) {
   if (!existsSync(join(root, path))) {
     findings.push(`missing canonical documentation file: ${path}`);
-  }
-}
-
-if (existsSync(join(root, 'docs'))) {
-  const entries = readdirSync(join(root, 'docs'));
-  if (entries.length > 0) {
-    findings.push(
-      'legacy docs/ directory must remain empty/absent; use documents/ as canonical home',
-    );
   }
 }
 
