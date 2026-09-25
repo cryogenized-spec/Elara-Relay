@@ -467,6 +467,12 @@ function SearchSurface({ onClose }: { onClose: () => void }) {
           ref={inputRef}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onClose();
+            }
+          }}
           placeholder="Job, serial, task, customer…"
           type="search"
         />
