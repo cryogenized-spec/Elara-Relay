@@ -165,7 +165,7 @@ async function captureViewport(browser, viewport, fileName) {
           }
         : null,
       iconSvgCount: globalThis.document.querySelectorAll('svg').length,
-      background: globalThis.getComputedStyle(document.body).backgroundColor,
+      background: globalThis.getComputedStyle(globalThis.document.body).backgroundColor,
       colorScheme: globalThis.getComputedStyle(globalThis.document.documentElement).colorScheme,
     };
   });
