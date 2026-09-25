@@ -76,8 +76,21 @@ export interface RepairView {
   warnings: RepairWarning[];
 }
 
+export interface WorkResult {
+  parties: Party[];
+  jobs: Job[];
+  tasks: Task[];
+}
+
+export interface RepairsResult {
+  parties: Party[];
+  jobs: Job[];
+  repairs: Repair[];
+}
+
 export interface JobView {
   job: Job;
+  party: Party | null;
   tasks: Task[];
   repair: Repair | null;
   repairWarnings: RepairWarning[];
@@ -1432,8 +1445,11 @@ export class DomainKernel {
         throw new DomainNotFoundError('Job', id);
       }
 
-      const [tasks, repair, allScheduledActions, allEvents] =
+      const [party, tasks, repair, allScheduledActions, allEvents] =
         await Promise.all([
+          job.partyId === null
+            ? Promise.resolve(undefined)
+            : read.getParty(job.partyId),
           read.listTasks(),
           read.getRepairByJobId(id),
           read.listScheduledActions(),
@@ -1462,6 +1478,7 @@ export class DomainKernel {
 
       return {
         job,
+        party: party ?? null,
         tasks: jobTasks,
         repair: repair ?? null,
         repairWarnings:
@@ -1469,6 +1486,28 @@ export class DomainKernel {
         scheduledActions,
         events,
       };
+    });
+  }
+
+  public async getWork(): Promise<WorkResult> {
+    return this.store.read(async (read) => {
+      const [parties, jobs, tasks] = await Promise.all([
+        read.listParties(),
+        read.listJobs(),
+        read.listTasks(),
+      ]);
+      return { parties, jobs, tasks };
+    });
+  }
+
+  public async getRepairs(): Promise<RepairsResult> {
+    return this.store.read(async (read) => {
+      const [parties, jobs, repairs] = await Promise.all([
+        read.listParties(),
+        read.listJobs(),
+        read.listRepairs(),
+      ]);
+      return { parties, jobs, repairs };
     });
   }
 

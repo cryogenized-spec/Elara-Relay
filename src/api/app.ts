@@ -266,6 +266,10 @@ function registerDomainRoutes(
     );
   });
 
+  app.get('/repairs', async (context) =>
+    context.json(await kernel.getRepairs()),
+  );
+
   app.get('/repairs/:repairId', async (context) =>
     context.json(await kernel.getRepair(context.req.param('repairId'))),
   );
@@ -387,6 +391,10 @@ function registerDomainRoutes(
 
   app.get('/jobs/:jobId', async (context) =>
     context.json(await kernel.getJob(context.req.param('jobId'))),
+  );
+
+  app.get('/work', async (context) =>
+    context.json(await kernel.getWork()),
   );
 
   app.get('/today', async (context) => {

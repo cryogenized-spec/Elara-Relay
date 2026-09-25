@@ -298,7 +298,19 @@ describe('API foundation', () => {
       headers: authorizationHeaders(),
     });
     expect(jobView.status).toBe(200);
-    const view = (await jobView.json()) as { tasks: unknown[]; events: unknown[] };
+    const view = (await jobView.json()) as {
+      party: { id: string; name: string };
+      tasks: unknown[];
+      events: unknown[];
+    };
+    expect(view.party).toEqual({
+      id: party.id,
+      name: 'Niven Naiker',
+      kind: 'CUSTOMER',
+      createdAt: '2026-09-24T09:00:00.000Z',
+      updatedAt: '2026-09-24T09:00:00.000Z',
+      revision: 1,
+    });
     expect(view.tasks).toHaveLength(2);
     const events = (
       view as {
@@ -324,6 +336,49 @@ describe('API foundation', () => {
     expect(search.status).toBe(200);
     const searchResult = (await search.json()) as { events: unknown[] };
     expect(searchResult.events).toHaveLength(1);
+
+    const work = await app.request('/work', {
+      headers: authorizationHeaders(),
+    });
+    expect(work.status).toBe(200);
+    const workResult = (await work.json()) as {
+      parties: unknown[];
+      jobs: unknown[];
+      tasks: unknown[];
+    };
+    expect(workResult.parties).toHaveLength(1);
+    expect(workResult.jobs).toHaveLength(1);
+    expect(workResult.tasks).toHaveLength(2);
+
+    const repairs = await app.request('/repairs', {
+      headers: authorizationHeaders(),
+    });
+    expect(repairs.status).toBe(200);
+    await expect(repairs.json()).resolves.toEqual({
+      parties: [
+        {
+          id: party.id,
+          name: 'Niven Naiker',
+          kind: 'CUSTOMER',
+          createdAt: '2026-09-24T09:00:00.000Z',
+          updatedAt: '2026-09-24T09:00:00.000Z',
+          revision: 1,
+        },
+      ],
+      jobs: [
+        {
+          id: job.id,
+          key: expect.stringMatching(/^JOB-[A-F0-9]{8}$/),
+          title: 'Avenge-X regulator repair',
+          category: 'ACTIVE',
+          partyId: party.id,
+          createdAt: '2026-09-24T09:00:00.000Z',
+          updatedAt: '2026-09-24T09:00:00.000Z',
+          revision: 2,
+        },
+      ],
+      repairs: [],
+    });
   });
 
   it('maps domain conflicts, missing entities, and malformed requests safely', async () => {
