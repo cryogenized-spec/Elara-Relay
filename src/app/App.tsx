@@ -1376,6 +1376,8 @@ type LiveDetail =
   | { type: 'TASK'; id: string }
   | { type: 'REPAIR'; id: string };
 
+type AuthorizationFailureHandler = (error: unknown) => boolean;
+
 function readableError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return 'Unexpected error';
@@ -1667,10 +1669,12 @@ function LiveTaskDetailSurface({
   runtime,
   taskId,
   onClose,
+  onAuthorizationFailure,
 }: {
   runtime: BrowserRuntime;
   taskId: string;
   onClose: () => void;
+  onAuthorizationFailure: AuthorizationFailureHandler;
 }) {
   const [data, setData] = useState<TaskViewPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1691,12 +1695,14 @@ function LiveTaskDetailSurface({
         if (active) setData(result);
       })
       .catch((caught: unknown) => {
-        if (active) setError(readableError(caught));
+        if (!active) return;
+        if (onAuthorizationFailure(caught)) return;
+        setError(readableError(caught));
       });
     return () => {
       active = false;
     };
-  }, [runtime, taskId]);
+  }, [onAuthorizationFailure, runtime, taskId]);
 
   return (
     <dialog
@@ -1767,10 +1773,12 @@ function LiveJobDetailSurface({
   runtime,
   jobId,
   onClose,
+  onAuthorizationFailure,
 }: {
   runtime: BrowserRuntime;
   jobId: string;
   onClose: () => void;
+  onAuthorizationFailure: AuthorizationFailureHandler;
 }) {
   const [data, setData] = useState<JobViewPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1791,12 +1799,14 @@ function LiveJobDetailSurface({
         if (active) setData(result);
       })
       .catch((caught: unknown) => {
-        if (active) setError(readableError(caught));
+        if (!active) return;
+        if (onAuthorizationFailure(caught)) return;
+        setError(readableError(caught));
       });
     return () => {
       active = false;
     };
-  }, [runtime, jobId]);
+  }, [jobId, onAuthorizationFailure, runtime]);
 
   return (
     <dialog
@@ -1907,10 +1917,12 @@ function LiveRepairDetailSurface({
   runtime,
   repairId,
   onClose,
+  onAuthorizationFailure,
 }: {
   runtime: BrowserRuntime;
   repairId: string;
   onClose: () => void;
+  onAuthorizationFailure: AuthorizationFailureHandler;
 }) {
   const [data, setData] = useState<RepairViewPayload | null>(null);
   const [job, setJob] = useState<JobViewPayload | null>(null);
@@ -1935,12 +1947,14 @@ function LiveRepairDetailSurface({
         if (active) setJob(jobResult);
       })
       .catch((caught: unknown) => {
-        if (active) setError(readableError(caught));
+        if (!active) return;
+        if (onAuthorizationFailure(caught)) return;
+        setError(readableError(caught));
       });
     return () => {
       active = false;
     };
-  }, [runtime, repairId]);
+  }, [onAuthorizationFailure, repairId, runtime]);
 
   return (
     <dialog
@@ -2016,10 +2030,12 @@ function LiveSearchSurface({
   runtime,
   onClose,
   onActivate,
+  onAuthorizationFailure,
 }: {
   runtime: BrowserRuntime;
   onClose: () => void;
   onActivate: (row: UiRow) => void;
+  onAuthorizationFailure: AuthorizationFailureHandler;
 }) {
   const [query, setQuery] = useState('');
   const [groups, setGroups] = useState<SearchGroupViewModel[]>([]);
@@ -2053,6 +2069,7 @@ function LiveSearchSurface({
         })
         .catch((caught: unknown) => {
           if (requestId.current !== currentRequest) return;
+          if (onAuthorizationFailure(caught)) return;
           setGroups([]);
           setError(readableError(caught));
           setState('error');
@@ -2060,7 +2077,7 @@ function LiveSearchSurface({
     }, 180);
 
     return () => window.clearTimeout(timer);
-  }, [query, runtime]);
+  }, [onAuthorizationFailure, query, runtime]);
 
   const resultCount = groups.reduce(
     (count, group) => count + group.rows.length,
@@ -2183,6 +2200,16 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [detail, setDetail] = useState<LiveDetail | null>(null);
   const loadSequence = useRef(0);
+  const authorizedUserIdRef = useRef<string | null>(null);
+
+  const clearOperationalState = useCallback(() => {
+    authorizedUserIdRef.current = null;
+    setIdentity(null);
+    setReadState(null);
+    setSearchOpen(false);
+    setCaptureOpen(false);
+    setDetail(null);
+  }, []);
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
@@ -2193,6 +2220,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
       try {
         const verifiedIdentity = await runtime.api.whoAmI();
         if (sequence !== loadSequence.current) return;
+        authorizedUserIdRef.current = verifiedIdentity.userId;
         setIdentity(verifiedIdentity);
         setPhase('loading');
 
@@ -2227,8 +2255,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
           }
         }
 
-        setIdentity(null);
-        setReadState(null);
+        clearOperationalState();
 
         if (caught instanceof OperationsApiError && caught.status === 403) {
           setPhase('forbidden');
@@ -2245,16 +2272,50 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
     };
 
     await attempt(true);
-  }, [runtime]);
+  }, [clearOperationalState, runtime]);
+
+  const handleAuthorizationFailure = useCallback(
+    (caught: unknown): boolean => {
+      if (
+        !(caught instanceof OperationsApiError) ||
+        (caught.status !== 401 && caught.status !== 403)
+      ) {
+        return false;
+      }
+
+      clearOperationalState();
+
+      if (caught.status === 403) {
+        loadSequence.current += 1;
+        setPhase('forbidden');
+      } else {
+        void load();
+      }
+      return true;
+    },
+    [clearOperationalState, load],
+  );
 
   useEffect(() => {
     let active = true;
     const unsubscribe = runtime.auth.subscribe((session) => {
-      if (!active || session !== null) return;
-      loadSequence.current += 1;
-      setIdentity(null);
-      setReadState(null);
-      setPhase('signed-out');
+      if (!active) return;
+
+      if (session === null) {
+        loadSequence.current += 1;
+        clearOperationalState();
+        setPhase('signed-out');
+        return;
+      }
+
+      const authorizedUserId = authorizedUserIdRef.current;
+      if (
+        authorizedUserId !== null &&
+        session.userId !== authorizedUserId
+      ) {
+        clearOperationalState();
+        void load();
+      }
     });
 
     void runtime.auth
@@ -2278,7 +2339,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
       loadSequence.current += 1;
       unsubscribe();
     };
-  }, [load, runtime]);
+  }, [clearOperationalState, load, runtime]);
 
   const signIn = async (email: string, password: string) => {
     setAuthError(null);
@@ -2287,17 +2348,20 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
       await runtime.auth.signIn(email, password);
       await load();
     } catch (caught: unknown) {
+      clearOperationalState();
       setAuthError(readableError(caught));
       setPhase('signed-out');
     }
   };
 
   const signOut = async () => {
+    loadSequence.current += 1;
+    clearOperationalState();
+    setPhase('signed-out');
     try {
       await runtime.auth.signOut();
     } catch (caught: unknown) {
-      setLoadError(readableError(caught));
-      setPhase('error');
+      setAuthError(readableError(caught));
     }
   };
 
@@ -2458,6 +2522,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
           runtime={runtime}
           onClose={() => setSearchOpen(false)}
           onActivate={activate}
+          onAuthorizationFailure={handleAuthorizationFailure}
         />
       ) : null}
       {captureOpen ? <CaptureSheet onClose={() => setCaptureOpen(false)} /> : null}
@@ -2466,6 +2531,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
           runtime={runtime}
           jobId={detail.id}
           onClose={() => setDetail(null)}
+          onAuthorizationFailure={handleAuthorizationFailure}
         />
       ) : null}
       {detail?.type === 'TASK' ? (
@@ -2473,6 +2539,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
           runtime={runtime}
           taskId={detail.id}
           onClose={() => setDetail(null)}
+          onAuthorizationFailure={handleAuthorizationFailure}
         />
       ) : null}
       {detail?.type === 'REPAIR' ? (
@@ -2480,6 +2547,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
           runtime={runtime}
           repairId={detail.id}
           onClose={() => setDetail(null)}
+          onAuthorizationFailure={handleAuthorizationFailure}
         />
       ) : null}
     </main>
