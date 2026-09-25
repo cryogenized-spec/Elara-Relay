@@ -122,6 +122,14 @@ mutate(
   'upcoming scheduler bucket semantic bypass',
 );
 
+mutate(
+  'src/app/App.tsx',
+  'session.userId !== authorizedUserId',
+  'false',
+  () => runVitest('src/app/live-auth-lifecycle.test.tsx'),
+  'authenticated cross-user session reauthorization bypass',
+);
+
 process.stdout.write(
   'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, strict read-model validation, and modern publishable-key controls resisted hostile mutations.\n',
 );

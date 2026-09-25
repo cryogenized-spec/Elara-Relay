@@ -171,6 +171,37 @@ test('shell stays gated when the server rejects authorization', async ({
   await expect(page.getByRole('heading', { name: 'Today' })).toHaveCount(0);
 });
 
+test('later authorization denial clears the cached operational shell', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  await page.route('**/api-test/search*', async (route) => {
+    await route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: { code: 'FORBIDDEN', message: 'Access denied' },
+      }),
+    });
+  });
+
+  await page.getByRole('button', { name: 'Search' }).click();
+  await page
+    .getByPlaceholder('Job, serial, task, customer…')
+    .fill('Avenge');
+
+  await expect(
+    page.getByRole('heading', { name: 'Access not authorized' }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Search' })).toHaveCount(0);
+});
+
 test('stale bearer gets one refresh and server authorization retry', async ({
   page,
 }) => {
