@@ -220,6 +220,35 @@ async function captureViewport(browser, viewport, fileName) {
     });
     surfaceFiles[suffix] = `${label}/${surfaceFile}`;
   }
+  let jobDetailFile = null;
+  const workButton = page.getByRole('button', { name: 'Work', exact: true });
+  if ((await workButton.count()) > 0) {
+    await workButton.click();
+    const jobRow = page.getByRole('button', {
+      name: /Open Avenge X regulator repair/,
+    });
+    if ((await jobRow.count()) > 0) {
+      await jobRow.click();
+      const jobDetail = page.getByRole('dialog', {
+        name: 'Avenge X regulator repair',
+      });
+      try {
+        await jobDetail.waitFor({ state: 'visible', timeout: 1_500 });
+        jobDetailFile = fileName.replace('.png', '-job-detail.png');
+        await page.screenshot({
+          path: join(outputDir, jobDetailFile),
+          fullPage: false,
+        });
+        await jobDetail.getByRole('button', {
+          name: 'Back',
+          exact: true,
+        }).click();
+      } catch {
+        // Older comparison baselines may not have a Job detail surface yet.
+      }
+    }
+  }
+
   const todayButton = page.getByRole('button', { name: 'Today', exact: true });
   if ((await todayButton.count()) > 0) {
     await todayButton.click();
@@ -291,6 +320,8 @@ async function captureViewport(browser, viewport, fileName) {
     repairDetailFile:
       repairDetailFile === null ? null : `${label}/${repairDetailFile}`,
     surfaceFiles,
+    jobDetailFile:
+      jobDetailFile === null ? null : `${label}/${jobDetailFile}`,
     captureFiles,
     searchFile: searchFile === null ? null : `${label}/${searchFile}`,
   };

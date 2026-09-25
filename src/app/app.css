@@ -791,6 +791,11 @@ button.workRow:active {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detailCompactRows > div:last-child {
+  border-bottom: 0;
 }
 
 .detailCompactRows > div > span:first-child {
