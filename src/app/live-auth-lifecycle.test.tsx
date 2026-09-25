@@ -39,60 +39,58 @@ describe('live authorization lifecycle', () => {
     const runtime: BrowserRuntime = {
       auth: {
         getAccessToken: () => currentSession.accessToken,
-        restoreSession: async () => currentSession,
-        refreshSession: async () => currentSession,
+        restoreSession: () => Promise.resolve(currentSession),
+        refreshSession: () => Promise.resolve(currentSession),
         subscribe: (next) => {
           listener = next;
           return () => {
             listener = null;
           };
         },
-        signIn: async () => currentSession,
-        signOut: async () => undefined,
+        signIn: () => Promise.resolve(currentSession),
+        signOut: () => Promise.resolve(),
       },
       api: {
-        whoAmI: async (): Promise<AuthIdentity> => {
-          if (currentSession.userId !== OWNER_ID) {
-            throw new OperationsApiError(403, 'FORBIDDEN', 'Access denied');
-          }
-          return {
-            userId: OWNER_ID,
-            sessionId: '30000000-0000-4000-8000-000000000002',
-            email: 'owner@example.com',
-            aal: 'aal1',
-          };
-        },
-        today: async (asOf) => ({
-          asOf,
-          tasks: [],
-          repairs: [],
-          scheduledActions: [],
-        }),
-        work: async () => ({ parties: [], jobs: [], tasks: [] }),
-        repairs: async () => ({ parties: [], jobs: [], repairs: [] }),
-        schedule: async (asOf) => ({
-          asOf,
-          due: [],
-          upcoming: [],
-          paused: [],
-        }),
-        search: async () => ({
-          parties: [],
-          jobs: [],
-          tasks: [],
-          repairs: [],
-          scheduledActions: [],
-          events: [],
-        }),
-        task: async () => {
-          throw new Error('not used');
-        },
-        job: async () => {
-          throw new Error('not used');
-        },
-        repair: async () => {
-          throw new Error('not used');
-        },
+        whoAmI: (): Promise<AuthIdentity> =>
+          currentSession.userId !== OWNER_ID
+            ? Promise.reject(
+                new OperationsApiError(403, 'FORBIDDEN', 'Access denied'),
+              )
+            : Promise.resolve({
+                userId: OWNER_ID,
+                sessionId: '30000000-0000-4000-8000-000000000002',
+                email: 'owner@example.com',
+                aal: 'aal1',
+              }),
+        today: (asOf) =>
+          Promise.resolve({
+            asOf,
+            tasks: [],
+            repairs: [],
+            scheduledActions: [],
+          }),
+        work: () => Promise.resolve({ parties: [], jobs: [], tasks: [] }),
+        repairs: () =>
+          Promise.resolve({ parties: [], jobs: [], repairs: [] }),
+        schedule: (asOf) =>
+          Promise.resolve({
+            asOf,
+            due: [],
+            upcoming: [],
+            paused: [],
+          }),
+        search: () =>
+          Promise.resolve({
+            parties: [],
+            jobs: [],
+            tasks: [],
+            repairs: [],
+            scheduledActions: [],
+            events: [],
+          }),
+        task: () => Promise.reject(new Error('not used')),
+        job: () => Promise.reject(new Error('not used')),
+        repair: () => Promise.reject(new Error('not used')),
       },
     };
 
@@ -117,7 +115,7 @@ describe('live authorization lifecycle', () => {
     expect(container.textContent).toContain('Access not authorized');
     expect(container.textContent).not.toContain('Needs attention');
 
-    await act(async () => {
+    act(() => {
       root.unmount();
     });
   });
