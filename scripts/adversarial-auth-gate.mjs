@@ -72,6 +72,39 @@ mutate(
   'legacy API key acceptance bypass',
 );
 
+
+mutate(
+  'src/app/operations-api.ts',
+  "if (token === null || token === '') {",
+  'if (false) {',
+  () => runVitest('src/app/operations-api.test.ts'),
+  'browser bearer fail-closed bypass',
+);
+
+mutate(
+  'src/app/operations-api.ts',
+  'authorization: `Bearer ${token}`',
+  'authorization: token',
+  () => runVitest('src/app/operations-api.test.ts'),
+  'browser bearer scheme corruption',
+);
+
+mutate(
+  'src/app/operations-api.ts',
+  'return schema.parse(raw);',
+  'return raw;',
+  () => runVitest('src/app/operations-api.test.ts'),
+  'browser read-model validation bypass',
+);
+
+mutate(
+  'src/app/runtime-config.ts',
+  "if (!parsed.VITE_SUPABASE_PUBLISHABLE_KEY.startsWith('sb_publishable_')) {",
+  'if (false) {',
+  () => runVitest('src/app/runtime-config.test.ts'),
+  'browser legacy publishable-key acceptance bypass',
+);
+
 process.stdout.write(
-  'Adversarial auth gate passed: fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, and modern publishable-key controls resisted hostile mutations.\n',
+  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, strict read-model validation, and modern publishable-key controls resisted hostile mutations.\n',
 );

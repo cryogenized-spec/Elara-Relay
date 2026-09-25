@@ -13,6 +13,7 @@ export interface BrowserAuthSession {
 export interface BrowserAuthClient {
   getAccessToken(): string | null;
   restoreSession(): Promise<BrowserAuthSession | null>;
+  refreshSession(): Promise<BrowserAuthSession | null>;
   subscribe(
     listener: (session: BrowserAuthSession | null) => void,
   ): () => void;
@@ -55,6 +56,13 @@ export function createSupabaseBrowserAuth(
 
     async restoreSession() {
       const { data, error } = await client.auth.getSession();
+      if (error !== null) throw error;
+      currentSession = toBrowserAuthSession(data.session);
+      return currentSession;
+    },
+
+    async refreshSession() {
+      const { data, error } = await client.auth.refreshSession();
       if (error !== null) throw error;
       currentSession = toBrowserAuthSession(data.session);
       return currentSession;

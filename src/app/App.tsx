@@ -2180,40 +2180,62 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
     setPhase('authorizing');
     setLoadError(null);
 
-    try {
-      const verifiedIdentity = await runtime.api.whoAmI();
-      if (sequence !== loadSequence.current) return;
-      setIdentity(verifiedIdentity);
-      setPhase('loading');
+    const attempt = async (allowRefresh: boolean): Promise<void> => {
+      try {
+        const verifiedIdentity = await runtime.api.whoAmI();
+        if (sequence !== loadSequence.current) return;
+        setIdentity(verifiedIdentity);
+        setPhase('loading');
 
-      const asOf = new Date().toISOString();
-      const [today, work, repairs, schedule] = await Promise.all([
-        runtime.api.today(asOf),
-        runtime.api.work(),
-        runtime.api.repairs(),
-        runtime.api.schedule(asOf),
-      ]);
-      if (sequence !== loadSequence.current) return;
+        const asOf = new Date().toISOString();
+        const [today, work, repairs, schedule] = await Promise.all([
+          runtime.api.today(asOf),
+          runtime.api.work(),
+          runtime.api.repairs(),
+          runtime.api.schedule(asOf),
+        ]);
+        if (sequence !== loadSequence.current) return;
 
-      setReadState({ today, work, repairs, schedule });
-      setPhase('ready');
-    } catch (caught: unknown) {
-      if (sequence !== loadSequence.current) return;
-      setIdentity(null);
-      setReadState(null);
+        setReadState({ today, work, repairs, schedule });
+        setPhase('ready');
+      } catch (caught: unknown) {
+        if (sequence !== loadSequence.current) return;
 
-      if (caught instanceof OperationsApiError && caught.status === 403) {
-        setPhase('forbidden');
-      } else if (
-        caught instanceof OperationsApiError &&
-        caught.status === 401
-      ) {
-        setPhase('signed-out');
-      } else {
-        setLoadError(readableError(caught));
-        setPhase('error');
+        if (
+          caught instanceof OperationsApiError &&
+          caught.status === 401 &&
+          allowRefresh
+        ) {
+          try {
+            const refreshed = await runtime.auth.refreshSession();
+            if (sequence !== loadSequence.current) return;
+            if (refreshed !== null) {
+              await attempt(false);
+              return;
+            }
+          } catch {
+            // Fall through to the signed-out state below.
+          }
+        }
+
+        setIdentity(null);
+        setReadState(null);
+
+        if (caught instanceof OperationsApiError && caught.status === 403) {
+          setPhase('forbidden');
+        } else if (
+          caught instanceof OperationsApiError &&
+          caught.status === 401
+        ) {
+          setPhase('signed-out');
+        } else {
+          setLoadError(readableError(caught));
+          setPhase('error');
+        }
       }
-    }
+    };
+
+    await attempt(true);
   }, [runtime]);
 
   useEffect(() => {
