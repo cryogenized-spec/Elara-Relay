@@ -70,7 +70,7 @@ Use the references in this directory selectively.
 - Information structure, navigation, labels, findability:
   `references/information-architecture.md`
 - Task paths, states, interruption, recovery:
-  `references/task-flows-and-state-models.md`
+  `references/task-state-models.md`
 - Interface behavior and responsive contracts:
   `references/interface-contracts-and-responsive-behavior.md`
 - Labels, errors, cognitive demand:
