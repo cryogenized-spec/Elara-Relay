@@ -450,21 +450,47 @@ export const scheduleResultSchema = z
     }
   });
 
-function sameEntityVersions(
-  left: readonly { id: string; revision: number }[],
-  right: readonly { id: string; revision: number }[],
-): boolean {
-  if (left.length !== right.length) return false;
-  const revisions = new Map(left.map((value) => [value.id, value.revision]));
-  return right.every((value) => revisions.get(value.id) === value.revision);
+function canonicalValue(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalValue(item)).join(',')}]`;
+  }
+
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map(
+      (key) =>
+        `${JSON.stringify(key)}:${canonicalValue(record[key])}`,
+    )
+    .join(',')}}`;
 }
 
-function subsetEntityVersions(
-  subset: readonly { id: string; revision: number }[],
-  superset: readonly { id: string; revision: number }[],
+function sameEntities(
+  left: readonly { id: string }[],
+  right: readonly { id: string }[],
 ): boolean {
-  const revisions = new Map(superset.map((value) => [value.id, value.revision]));
-  return subset.every((value) => revisions.get(value.id) === value.revision);
+  if (left.length !== right.length) return false;
+  const values = new Map(
+    left.map((value) => [value.id, canonicalValue(value)]),
+  );
+  return right.every(
+    (value) => values.get(value.id) === canonicalValue(value),
+  );
+}
+
+function subsetEntities(
+  subset: readonly { id: string }[],
+  superset: readonly { id: string }[],
+): boolean {
+  const values = new Map(
+    superset.map((value) => [value.id, canonicalValue(value)]),
+  );
+  return subset.every(
+    (value) => values.get(value.id) === canonicalValue(value),
+  );
 }
 
 export const dashboardResultSchema = z
@@ -484,35 +510,35 @@ export const dashboardResultSchema = z
       });
     }
 
-    if (!sameEntityVersions(dashboard.work.parties, dashboard.repairs.parties)) {
+    if (!sameEntities(dashboard.work.parties, dashboard.repairs.parties)) {
       context.addIssue({
         code: 'custom',
         path: ['repairs', 'parties'],
-        message: 'Dashboard Work and Repairs must share Party versions',
+        message: 'Dashboard Work and Repairs must share identical Party values',
       });
     }
-    if (!sameEntityVersions(dashboard.work.jobs, dashboard.repairs.jobs)) {
+    if (!sameEntities(dashboard.work.jobs, dashboard.repairs.jobs)) {
       context.addIssue({
         code: 'custom',
         path: ['repairs', 'jobs'],
-        message: 'Dashboard Work and Repairs must share Job versions',
+        message: 'Dashboard Work and Repairs must share identical Job values',
       });
     }
-    if (!subsetEntityVersions(dashboard.today.tasks, dashboard.work.tasks)) {
+    if (!subsetEntities(dashboard.today.tasks, dashboard.work.tasks)) {
       context.addIssue({
         code: 'custom',
         path: ['today', 'tasks'],
-        message: 'Dashboard Today Tasks must match Work Task versions',
+        message: 'Dashboard Today Tasks must match Work Task values',
       });
     }
-    if (!subsetEntityVersions(dashboard.today.repairs, dashboard.repairs.repairs)) {
+    if (!subsetEntities(dashboard.today.repairs, dashboard.repairs.repairs)) {
       context.addIssue({
         code: 'custom',
         path: ['today', 'repairs'],
-        message: 'Dashboard Today Repairs must match Repairs versions',
+        message: 'Dashboard Today Repairs must match Repairs values',
       });
     }
-    if (!sameEntityVersions(dashboard.today.scheduledActions, dashboard.schedule.due)) {
+    if (!sameEntities(dashboard.today.scheduledActions, dashboard.schedule.due)) {
       context.addIssue({
         code: 'custom',
         path: ['today', 'scheduledActions'],

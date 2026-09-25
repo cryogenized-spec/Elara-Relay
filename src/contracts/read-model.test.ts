@@ -732,7 +732,27 @@ describe('read-model aggregate invariants', () => {
           jobs: [{ ...job, revision: 2 }],
         },
       }),
-    ).toThrow('Dashboard Work and Repairs must share Job versions');
+    ).toThrow('Dashboard Work and Repairs must share identical Job values');
+
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        repairs: {
+          ...dashboard.repairs,
+          jobs: [{ ...job, title: 'Contradictory same-revision title' }],
+        },
+      }),
+    ).toThrow('Dashboard Work and Repairs must share identical Job values');
+
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        repairs: {
+          ...dashboard.repairs,
+          parties: [{ ...party, name: 'Contradictory same-revision Party' }],
+        },
+      }),
+    ).toThrow('Dashboard Work and Repairs must share identical Party values');
 
     expect(() =>
       dashboardResultSchema.parse({
@@ -742,7 +762,7 @@ describe('read-model aggregate invariants', () => {
           tasks: [{ ...dueTask, revision: 2 }],
         },
       }),
-    ).toThrow('Dashboard Today Tasks must match Work Task versions');
+    ).toThrow('Dashboard Today Tasks must match Work Task values');
 
     expect(() =>
       dashboardResultSchema.parse({
