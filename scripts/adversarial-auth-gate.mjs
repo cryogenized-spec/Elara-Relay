@@ -105,6 +105,23 @@ mutate(
   'browser legacy publishable-key acceptance bypass',
 );
 
+
+mutate(
+  'src/contracts/read-model.ts',
+  'if (!jobIds.has(repair.jobId)) {',
+  'if (false) {',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Repair-to-Job aggregate integrity bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  "action.status !== 'ACTIVE' ||\n        action.nextRunAt === null ||\n        Date.parse(action.nextRunAt) <= asOf",
+  "false",
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'upcoming scheduler bucket semantic bypass',
+);
+
 process.stdout.write(
   'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, strict read-model validation, and modern publishable-key controls resisted hostile mutations.\n',
 );

@@ -85,7 +85,7 @@ hostileMutation(
   const absolute = join(root, path);
   const original = readFileSync(absolute, 'utf8');
   const hostile = original.replace(
-    "test('mobile operations shell renders and navigates without browser errors'",
+    "test('authenticated mobile operations shell reads live domain state'",
     "test.only('mobile operations shell renders and navigates without browser errors'",
   );
   if (hostile === original) {
