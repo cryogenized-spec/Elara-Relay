@@ -56,7 +56,26 @@ test('mobile operations shell renders and navigates without browser errors', asy
   await captureButton.click();
   await expect(page.getByRole('dialog', { name: 'Capture' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Capture' })).toBeFocused();
-  await expect(page.getByRole('button', { name: /Repair \/ Job/ })).toBeVisible();
+
+  await page.getByRole('button', { name: /Repair \/ Job/ }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'New repair / Job' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'New repair / Job' }),
+  ).toBeFocused();
+  await expect(page.getByLabel('Customer')).toBeVisible();
+  await expect(page.getByLabel('Item / model')).toBeVisible();
+  await expect(page.getByLabel('Reported fault')).toBeVisible();
+  await expect(page.getByLabel('Serial')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Save unavailable in preview' }),
+  ).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Back' }).click();
+  await expect(page.getByRole('dialog', { name: 'Capture' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Capture' })).toBeFocused();
+
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Capture' })).toBeHidden();
   await expect(captureButton).toBeFocused();

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@iconify/react';
 import addCircleBold from '@iconify-icons/solar/add-circle-bold';
+import altArrowLeftLinear from '@iconify-icons/solar/alt-arrow-left-linear';
 import altArrowRightLinear from '@iconify-icons/solar/alt-arrow-right-linear';
 import calendarLinear from '@iconify-icons/solar/calendar-linear';
 import caseRoundLinear from '@iconify-icons/solar/case-round-linear';
@@ -11,6 +12,7 @@ import settingsLinear from '@iconify-icons/solar/settings-linear';
 
 type ViewId = 'today' | 'work' | 'repairs' | 'schedule';
 type Tone = 'danger' | 'attention' | 'success' | 'info' | 'neutral';
+type CaptureMode = 'menu' | 'task' | 'repair' | 'reminder';
 
 interface WorkRow {
   id: string;
@@ -160,23 +162,38 @@ const scheduleRows: WorkRow[] = [
   },
 ];
 
-const captureChoices = [
+const captureChoices: Array<{
+  mode: Exclude<CaptureMode, 'menu'>;
+  label: string;
+  description: string;
+  icon: typeof clipboardListLinear;
+}> = [
   {
+    mode: 'task',
     label: 'Task',
     description: 'Capture a concrete next action',
     icon: clipboardListLinear,
   },
   {
+    mode: 'repair',
     label: 'Repair / Job',
     description: 'Open workshop work with a durable timeline',
     icon: settingsLinear,
   },
   {
+    mode: 'reminder',
     label: 'Reminder',
     description: 'Schedule a one-time or recurring action',
     icon: calendarLinear,
   },
 ];
+
+const captureTitles: Record<CaptureMode, string> = {
+  menu: 'Capture',
+  task: 'New task',
+  repair: 'New repair / Job',
+  reminder: 'New reminder',
+};
 
 function workingDate(): string {
   return new Intl.DateTimeFormat('en-ZA', {
@@ -367,7 +384,97 @@ function SearchSurface({ onClose }: { onClose: () => void }) {
   );
 }
 
+function TaskCaptureForm() {
+  return (
+    <form className="captureForm" aria-describedby="capture-preview-note">
+      <label className="formField">
+        <span>Title</span>
+        <input name="task-title" placeholder="What needs doing?" required />
+      </label>
+      <label className="formField">
+        <span>Due</span>
+        <input name="task-due" type="datetime-local" />
+      </label>
+      <label className="formField">
+        <span>Linked Job</span>
+        <input name="task-job" placeholder="Optional Job key" />
+      </label>
+      <PreviewSave />
+    </form>
+  );
+}
+
+function RepairCaptureForm() {
+  return (
+    <form className="captureForm" aria-describedby="capture-preview-note">
+      <label className="formField">
+        <span>Customer</span>
+        <input name="repair-customer" placeholder="Customer or Party" required />
+      </label>
+      <label className="formField">
+        <span>Item / model</span>
+        <input name="repair-item" placeholder="What is being repaired?" required />
+      </label>
+      <label className="formField">
+        <span>Reported fault</span>
+        <textarea
+          name="repair-fault"
+          placeholder="Describe the reported problem"
+          required
+        />
+      </label>
+      <label className="formField">
+        <span>Serial</span>
+        <input name="repair-serial" placeholder="Optional serial number" />
+      </label>
+      <PreviewSave />
+    </form>
+  );
+}
+
+function ReminderCaptureForm() {
+  return (
+    <form className="captureForm" aria-describedby="capture-preview-note">
+      <label className="formField">
+        <span>Title</span>
+        <input name="reminder-title" placeholder="What should happen?" required />
+      </label>
+      <label className="formField">
+        <span>Run at</span>
+        <input name="reminder-run-at" type="datetime-local" required />
+      </label>
+      <label className="formField">
+        <span>Repeat</span>
+        <select name="reminder-repeat" defaultValue="once">
+          <option value="once">One time</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+        </select>
+      </label>
+      <label className="formField">
+        <span>Linked Job</span>
+        <input name="reminder-job" placeholder="Optional Job key" />
+      </label>
+      <PreviewSave />
+    </form>
+  );
+}
+
+function PreviewSave() {
+  return (
+    <div className="captureForm__footer">
+      <p id="capture-preview-note">
+        Preview only — nothing entered here is persisted yet.
+      </p>
+      <button className="previewSaveButton" type="button" disabled>
+        Save unavailable in preview
+      </button>
+    </div>
+  );
+}
+
 function CaptureSheet({ onClose }: { onClose: () => void }) {
+  const [mode, setMode] = useState<CaptureMode>('menu');
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -378,13 +485,29 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
     const previousOverflow = document.body.style.overflow;
     dialog.showModal();
     document.body.style.overflow = 'hidden';
-    titleRef.current?.focus();
 
     return () => {
       document.body.style.overflow = previousOverflow;
       if (dialog.open) dialog.close();
     };
   }, []);
+
+  useEffect(() => {
+    titleRef.current?.focus();
+  }, [mode]);
+
+  const form = (() => {
+    switch (mode) {
+      case 'task':
+        return <TaskCaptureForm />;
+      case 'repair':
+        return <RepairCaptureForm />;
+      case 'reminder':
+        return <ReminderCaptureForm />;
+      case 'menu':
+        return null;
+    }
+  })();
 
   return (
     <dialog
@@ -398,34 +521,55 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
     >
       <div className="sheetHandle" aria-hidden="true" />
       <div className="sheetHeader">
-        <h2 id="capture-title" ref={titleRef} tabIndex={-1}>
-          Capture
-        </h2>
+        <div className="sheetTitle">
+          {mode !== 'menu' ? (
+            <button
+              className="sheetBackButton"
+              type="button"
+              aria-label="Back"
+              onClick={() => setMode('menu')}
+            >
+              <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
+            </button>
+          ) : null}
+          <h2 id="capture-title" ref={titleRef} tabIndex={-1}>
+            {captureTitles[mode]}
+          </h2>
+        </div>
         <button className="textButton" type="button" onClick={onClose}>
           Cancel
         </button>
       </div>
-      <div className="captureChoices">
-        {captureChoices.map((choice) => (
-          <button className="captureChoice" type="button" key={choice.label}>
-            <Icon
-              className="captureChoice__icon"
-              icon={choice.icon}
-              width={22}
-              aria-hidden="true"
-            />
-            <span>
-              <strong>{choice.label}</strong>
-              <small>{choice.description}</small>
-            </span>
-            <Icon icon={altArrowRightLinear} width={18} aria-hidden="true" />
-          </button>
-        ))}
-      </div>
+
+      {mode === 'menu' ? (
+        <div className="captureChoices">
+          {captureChoices.map((choice) => (
+            <button
+              className="captureChoice"
+              type="button"
+              key={choice.mode}
+              onClick={() => setMode(choice.mode)}
+            >
+              <Icon
+                className="captureChoice__icon"
+                icon={choice.icon}
+                width={22}
+                aria-hidden="true"
+              />
+              <span>
+                <strong>{choice.label}</strong>
+                <small>{choice.description}</small>
+              </span>
+              <Icon icon={altArrowRightLinear} width={18} aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        form
+      )}
     </dialog>
   );
 }
-
 export function App() {
   const [activeView, setActiveView] = useState<ViewId>('today');
   const [searchOpen, setSearchOpen] = useState(false);
