@@ -354,31 +354,49 @@ describe('API foundation', () => {
       headers: authorizationHeaders(),
     });
     expect(repairs.status).toBe(200);
-    await expect(repairs.json()).resolves.toEqual({
-      parties: [
-        {
-          id: party.id,
-          name: 'Niven Naiker',
-          kind: 'CUSTOMER',
-          createdAt: '2026-09-24T09:00:00.000Z',
-          updatedAt: '2026-09-24T09:00:00.000Z',
-          revision: 1,
-        },
-      ],
-      jobs: [
-        {
-          id: job.id,
-          key: expect.stringMatching(/^JOB-[A-F0-9]{8}$/),
-          title: 'Avenge-X regulator repair',
-          category: 'ACTIVE',
-          partyId: party.id,
-          createdAt: '2026-09-24T09:00:00.000Z',
-          updatedAt: '2026-09-24T09:00:00.000Z',
-          revision: 2,
-        },
-      ],
-      repairs: [],
+    const repairsResult = (await repairs.json()) as {
+      parties: Array<{
+        id: string;
+        name: string;
+        kind: string;
+        createdAt: string;
+        updatedAt: string;
+        revision: number;
+      }>;
+      jobs: Array<{
+        id: string;
+        key: string;
+        title: string;
+        category: string;
+        partyId: string | null;
+        createdAt: string;
+        updatedAt: string;
+        revision: number;
+      }>;
+      repairs: unknown[];
+    };
+    expect(repairsResult.parties).toEqual([
+      {
+        id: party.id,
+        name: 'Niven Naiker',
+        kind: 'CUSTOMER',
+        createdAt: '2026-09-24T09:00:00.000Z',
+        updatedAt: '2026-09-24T09:00:00.000Z',
+        revision: 1,
+      },
+    ]);
+    expect(repairsResult.jobs).toHaveLength(1);
+    expect(repairsResult.jobs[0]).toMatchObject({
+      id: job.id,
+      title: 'Avenge-X regulator repair',
+      category: 'ACTIVE',
+      partyId: party.id,
+      createdAt: '2026-09-24T09:00:00.000Z',
+      updatedAt: '2026-09-24T09:00:00.000Z',
+      revision: 2,
     });
+    expect(repairsResult.jobs[0]?.key).toMatch(/^JOB-[A-F0-9]{8}$/);
+    expect(repairsResult.repairs).toEqual([]);
   });
 
   it('maps domain conflicts, missing entities, and malformed requests safely', async () => {

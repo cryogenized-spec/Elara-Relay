@@ -1,7 +1,6 @@
 import {
   createClient,
   type Session,
-  type SupabaseClient,
 } from '@supabase/supabase-js';
 import type { BrowserRuntimeConfig } from './runtime-config';
 
@@ -35,7 +34,7 @@ export function toBrowserAuthSession(
 export function createSupabaseBrowserAuth(
   config: BrowserRuntimeConfig,
 ): BrowserAuthClient {
-  const client: SupabaseClient = createClient(
+  const client = createClient(
     config.supabaseUrl,
     config.publishableKey,
     {
