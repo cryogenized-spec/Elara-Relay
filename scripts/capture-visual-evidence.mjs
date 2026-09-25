@@ -203,6 +203,28 @@ async function captureViewport(browser, viewport, fileName) {
     }
   }
 
+  const surfaceFiles = {};
+  const primaryNav = [
+    ['Work', 'work'],
+    ['Repairs', 'repairs'],
+    ['Schedule', 'schedule'],
+  ];
+  for (const [navLabel, suffix] of primaryNav) {
+    const navButton = page.getByRole('button', { name: navLabel, exact: true });
+    if ((await navButton.count()) === 0) continue;
+    await navButton.click();
+    const surfaceFile = fileName.replace('.png', `-${suffix}.png`);
+    await page.screenshot({
+      path: join(outputDir, surfaceFile),
+      fullPage: false,
+    });
+    surfaceFiles[suffix] = `${label}/${surfaceFile}`;
+  }
+  const todayButton = page.getByRole('button', { name: 'Today', exact: true });
+  if ((await todayButton.count()) > 0) {
+    await todayButton.click();
+  }
+
   let captureFiles = null;
   const captureButton = page.getByRole('button', { name: 'Capture' });
   if ((await captureButton.count()) > 0) {
@@ -268,6 +290,7 @@ async function captureViewport(browser, viewport, fileName) {
     failedRequests,
     repairDetailFile:
       repairDetailFile === null ? null : `${label}/${repairDetailFile}`,
+    surfaceFiles,
     captureFiles,
     searchFile: searchFile === null ? null : `${label}/${searchFile}`,
   };

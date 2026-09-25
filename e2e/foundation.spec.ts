@@ -58,6 +58,10 @@ test('mobile operations shell renders and navigates without browser errors', asy
   await page.getByRole('button', { name: 'Work' }).click();
   await expect(page.getByRole('heading', { name: 'Work' })).toBeVisible();
   await expect(page.getByText('Jobs & tasks')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Jobs' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible();
+  await expect(page.getByText('Avenge X regulator repair')).toBeVisible();
+  await expect(page.getByText('Inspect returned CO₂ pistol')).toBeVisible();
 
   await page.getByRole('button', { name: 'Repairs' }).click();
   await expect(page.getByRole('heading', { name: 'Repairs' })).toBeVisible();

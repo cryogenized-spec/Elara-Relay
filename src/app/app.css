@@ -326,9 +326,13 @@ h2 {
   border-bottom: 0;
 }
 
-.workRow:hover,
-.workRow:active {
+button.workRow:hover,
+button.workRow:active {
   background: var(--surface-2);
+}
+
+.workRow--static {
+  cursor: default;
 }
 
 .workRow__body {

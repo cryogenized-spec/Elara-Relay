@@ -98,35 +98,58 @@ const nextRows: WorkRow[] = [
   },
 ];
 
-const workGroups = [
+const jobRows: WorkRow[] = [
   {
-    label: 'Inbox',
-    rows: [
-      {
-        id: 'inbox-1',
-        eyebrow: 'TASK',
-        title: 'Inspect returned CO₂ pistol',
-        meta: 'No due date · captured 08:12',
-        badge: 'Inbox',
-        tone: 'neutral' as const,
-      },
-    ],
+    id: 'job-regulator',
+    eyebrow: 'JOB-7A31C4F2 · WORKSHOP',
+    title: 'Avenge X regulator repair',
+    meta: 'Demo workshop customer · linked Repair waiting on parts',
+    badge: 'Waiting',
+    tone: 'attention',
   },
-  { label: 'Next', rows: nextRows.slice(0, 1) },
   {
-    label: 'Doing',
-    rows: [
-      {
-        id: 'doing-1',
-        eyebrow: 'TASK · JOB-7A31C4F2',
-        title: 'Pressure-test regulator block',
-        meta: 'Started 09:04 · high priority',
-        badge: 'Doing',
-        tone: 'info' as const,
-      },
-    ],
+    id: 'job-website',
+    eyebrow: 'JOB-42D117A0 · INTERNAL',
+    title: 'Website product cleanup',
+    meta: '2 open Tasks · updated today 09:10',
+    badge: 'Active',
+    tone: 'info',
   },
-  { label: 'Waiting', rows: attentionRows.slice(0, 1) },
+];
+
+const taskRows: WorkRow[] = [
+  {
+    id: 'task-inbox',
+    eyebrow: 'TASK · INBOX',
+    title: 'Inspect returned CO₂ pistol',
+    meta: 'No due date · captured 08:12',
+    badge: 'Inbox',
+    tone: 'neutral',
+  },
+  {
+    id: 'task-next',
+    eyebrow: 'TASK · JOB-42D117A0',
+    title: 'Review product description queue',
+    meta: 'Today · 11:00',
+    badge: 'Next',
+    tone: 'info',
+  },
+  {
+    id: 'task-doing',
+    eyebrow: 'TASK · JOB-7A31C4F2',
+    title: 'Pressure-test regulator block',
+    meta: 'Started 09:04 · high priority',
+    badge: 'Doing',
+    tone: 'info',
+  },
+  {
+    id: 'task-waiting',
+    eyebrow: 'TASK · JOB-7A31C4F2',
+    title: 'Confirm supplier part availability',
+    meta: 'Waiting on supplier response · follow-up today 14:00',
+    badge: 'Waiting',
+    tone: 'attention',
+  },
 ];
 
 const repairGroups = [
@@ -292,13 +315,8 @@ function Row({
   row: WorkRow;
   onActivate?: (() => void) | undefined;
 }) {
-  return (
-    <button
-      className="workRow"
-      type="button"
-      onClick={onActivate}
-      aria-label={onActivate ? `Open ${row.title}` : undefined}
-    >
+  const body = (
+    <>
       <span className="workRow__body">
         <span className="workRow__eyebrow">{row.eyebrow}</span>
         <span className="workRow__title">{row.title}</span>
@@ -306,8 +324,25 @@ function Row({
       </span>
       <span className="workRow__aside">
         <StatusBadge tone={row.tone}>{row.badge}</StatusBadge>
-        <Icon icon={altArrowRightLinear} width={18} aria-hidden="true" />
+        {onActivate === undefined ? null : (
+          <Icon icon={altArrowRightLinear} width={18} aria-hidden="true" />
+        )}
       </span>
+    </>
+  );
+
+  if (onActivate === undefined) {
+    return <div className="workRow workRow--static">{body}</div>;
+  }
+
+  return (
+    <button
+      className="workRow"
+      type="button"
+      onClick={onActivate}
+      aria-label={`Open ${row.title}`}
+    >
+      {body}
     </button>
   );
 }
@@ -391,14 +426,8 @@ function TodayView({
 function WorkView() {
   return (
     <>
-      {workGroups.map((group) => (
-        <Section
-          key={group.label}
-          title={group.label}
-          count={group.rows.length}
-          rows={group.rows}
-        />
-      ))}
+      <Section title="Jobs" count={jobRows.length} rows={jobRows} />
+      <Section title="Tasks" count={taskRows.length} rows={taskRows} />
     </>
   );
 }
