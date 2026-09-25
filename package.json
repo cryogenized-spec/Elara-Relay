@@ -34,7 +34,7 @@
   "dependencies": {
     "@iconify-icons/solar": "2.0.3",
     "@iconify/react": "6.0.2",
-    "@supabase/supabase-js": "2.117.1",
+    "@supabase/supabase-js": "2.104.1",
     "hono": "4.13.8",
     "jose": "6.2.12",
     "pg": "8.23.0",

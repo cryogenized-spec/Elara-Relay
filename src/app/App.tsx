@@ -372,7 +372,7 @@ function Row({
   );
 }
 
-function Section({
+function Section<T extends WorkRow>({
   title,
   count,
   rows,
@@ -381,8 +381,8 @@ function Section({
 }: {
   title: string;
   count: number;
-  rows: WorkRow[];
-  onActivateRow?: (row: WorkRow) => void;
+  rows: T[];
+  onActivateRow?: ((row: T) => void) | undefined;
   emptyLabel?: string;
 }) {
   const id = sectionId(title);
@@ -2349,7 +2349,10 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
   );
   const workModel = buildWorkView(readState.work);
   const repairsModel = buildRepairsView(readState.repairs);
-  const scheduleModel = buildScheduleView(readState.schedule);
+  const scheduleModel = buildScheduleView(
+    readState.schedule,
+    readState.work,
+  );
   const context = viewContext[activeView];
 
   const view = (() => {
