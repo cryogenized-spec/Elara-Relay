@@ -123,10 +123,10 @@ async function captureViewport(browser, viewport, fileName) {
   await firstPanel.waitFor({ state: 'visible' });
 
   const metrics = await page.evaluate(() => {
-    const root = document.querySelector('#root');
-    const main = document.querySelector('main');
-    const bottomNav = document.querySelector('.bottomNav');
-    const topBar = document.querySelector('.topBar');
+    const root = globalThis.document.querySelector('#root');
+    const main = globalThis.document.querySelector('main');
+    const bottomNav = globalThis.document.querySelector('.bottomNav');
+    const topBar = globalThis.document.querySelector('.topBar');
     const rootBox = root?.getBoundingClientRect();
     const mainBox = main?.getBoundingClientRect();
     const bottomNavBox = bottomNav?.getBoundingClientRect();
@@ -137,8 +137,8 @@ async function captureViewport(browser, viewport, fileName) {
         height: globalThis.innerHeight,
       },
       document: {
-        scrollWidth: document.documentElement.scrollWidth,
-        scrollHeight: document.documentElement.scrollHeight,
+        scrollWidth: globalThis.document.documentElement.scrollWidth,
+        scrollHeight: globalThis.document.documentElement.scrollHeight,
       },
       root: rootBox
         ? {
@@ -164,9 +164,9 @@ async function captureViewport(browser, viewport, fileName) {
             height: Number(bottomNavBox.height.toFixed(2)),
           }
         : null,
-      iconSvgCount: document.querySelectorAll('svg').length,
-      background: getComputedStyle(document.body).backgroundColor,
-      colorScheme: getComputedStyle(document.documentElement).colorScheme,
+      iconSvgCount: globalThis.document.querySelectorAll('svg').length,
+      background: globalThis.getComputedStyle(document.body).backgroundColor,
+      colorScheme: globalThis.getComputedStyle(globalThis.document.documentElement).colorScheme,
     };
   });
 
