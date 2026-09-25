@@ -51,6 +51,58 @@ function parseAllowedUserIds(raw: string): ReadonlySet<string> {
   return unique;
 }
 
+function parseAllowedOrigins(raw: string): readonly string[] {
+  const values = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value !== '');
+
+  if (values.length === 0) {
+    throw new Error('ELARA_ALLOWED_ORIGINS must contain at least one origin');
+  }
+
+  const origins = values.map((value) => {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new Error('ELARA_ALLOWED_ORIGINS must contain valid origins');
+    }
+
+    const local =
+      url.hostname === '127.0.0.1' ||
+      url.hostname === 'localhost' ||
+      url.hostname === '[::1]';
+
+    if (
+      url.username !== '' ||
+      url.password !== '' ||
+      (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) ||
+      url.pathname !== '/' ||
+      url.search !== '' ||
+      url.hash !== ''
+    ) {
+      throw new Error(
+        'ELARA_ALLOWED_ORIGINS must contain exact HTTPS origins (HTTP is allowed only for local development)',
+      );
+    }
+
+    return url.origin;
+  });
+
+  if (new Set(origins).size !== origins.length) {
+    throw new Error('ELARA_ALLOWED_ORIGINS must not contain duplicates');
+  }
+
+  return origins;
+}
+
+export function readAllowedOrigins(
+  env: NodeJS.ProcessEnv,
+): readonly string[] {
+  return parseAllowedOrigins(requiredEnv(env, 'ELARA_ALLOWED_ORIGINS'));
+}
+
 export function readAuthRuntimeConfig(
   env: NodeJS.ProcessEnv,
 ): SupabaseAuthVerifierConfig {

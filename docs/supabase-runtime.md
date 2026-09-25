@@ -68,3 +68,22 @@ Mutation actor provenance is server-owned. Browser requests do not submit
 `actor`; the authenticated operator API records `operator-ui`. Future
 ChatGPT and embedded-AI adapters must receive separate authenticated server
 entry points rather than impersonating the operator route.
+
+## Browser CORS boundary
+
+The browser UI may run on a different origin from the Operations API. The API
+therefore enables CORS only for exact origins listed in
+`ELARA_ALLOWED_ORIGINS`.
+
+- Configure a comma-separated list of exact origins.
+- Production origins must use HTTPS.
+- HTTP is accepted only for loopback development origins such as
+  `http://127.0.0.1:4173`.
+- Paths, embedded credentials, query strings, fragments, and duplicate origins
+  are rejected.
+- Preflight permits the `Authorization` and `Content-Type` headers and only
+  the API methods used by Elara.
+- CORS runs before bearer verification so browser preflight never requires a
+  token.
+- A disallowed origin receives no CORS authorization; it does not expand the
+  server-side identity allowlist.

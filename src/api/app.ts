@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { cors } from 'hono/cors';
 import { z, ZodError } from 'zod';
 import type {
   AuthIdentity,
@@ -44,6 +45,10 @@ type ApiEnv = {
 };
 
 type ApiContext = Context<ApiEnv>;
+
+export interface ApiOptions {
+  allowedOrigins?: readonly string[] | undefined;
+}
 
 const mutationRequestSchema = z
   .object({
@@ -434,8 +439,22 @@ function registerProtectedDomainApi(
 export function createApi(
   kernel?: DomainKernel,
   authVerifier?: AuthVerifier,
+  options: ApiOptions = {},
 ): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
+  const allowedOrigins = [...(options.allowedOrigins ?? [])];
+
+  if (allowedOrigins.length > 0) {
+    app.use(
+      '*',
+      cors({
+        origin: allowedOrigins,
+        allowHeaders: ['Authorization', 'Content-Type'],
+        allowMethods: ['GET', 'HEAD', 'POST', 'PATCH', 'OPTIONS'],
+        maxAge: 600,
+      }),
+    );
+  }
 
   app.get('/health', (context) =>
     context.json({

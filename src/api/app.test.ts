@@ -45,7 +45,7 @@ const ids = [
   '10000000-0000-4000-8000-000000000016',
 ] as const;
 
-function makeApi() {
+function makeApi(options?: { allowedOrigins?: readonly string[] }) {
   let index = 0;
   const kernel = new DomainKernel(new MemoryDomainStore(), {
     clock: () => '2026-09-24T09:00:00.000Z',
@@ -56,7 +56,7 @@ function makeApi() {
       return id;
     },
   });
-  return createApi(kernel, new TestAuthVerifier());
+  return createApi(kernel, new TestAuthVerifier(), options);
 }
 
 function authorizationHeaders(): HeadersInit {
@@ -116,6 +116,39 @@ describe('API foundation', () => {
       { headers: { authorization: 'Bearer bad.token.value' } },
     );
     expect(invalid.status).toBe(401);
+  });
+
+
+  it('handles restricted browser CORS before bearer verification', async () => {
+    const app = makeApi({
+      allowedOrigins: ['http://127.0.0.1:4173'],
+    });
+
+    const allowed = await app.request('/work', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://127.0.0.1:4173',
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'authorization',
+      },
+    });
+    expect(allowed.status).toBe(204);
+    expect(allowed.headers.get('access-control-allow-origin')).toBe(
+      'http://127.0.0.1:4173',
+    );
+    expect(
+      allowed.headers.get('access-control-allow-headers')?.toLowerCase(),
+    ).toContain('authorization');
+
+    const denied = await app.request('/work', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://attacker.example',
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'authorization',
+      },
+    });
+    expect(denied.headers.get('access-control-allow-origin')).toBeNull();
   });
 
   it('exposes only the verified identity and never trusts caller actor claims', async () => {
