@@ -29,7 +29,7 @@ async function flush(): Promise<void> {
 
 describe('live authorization lifecycle', () => {
   afterEach(() => {
-    document.body.innerHTML = '';
+    document.body.replaceChildren();
   });
 
   it('clears the authorized shell and reauthorizes when the Supabase user changes', async () => {
