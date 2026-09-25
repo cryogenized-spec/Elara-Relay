@@ -96,6 +96,22 @@ function action(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function event(overrides: Record<string, unknown> = {}) {
+  return {
+    id: '10000000-0000-4000-8000-000000000009',
+    mutationId: 'MUT-read-model-test-0001',
+    entityType: 'JOB' as const,
+    entityId: JOB_ID,
+    eventType: 'JOB_NOTE' as const,
+    actor: 'operator-ui' as const,
+    occurredAt: '2026-09-25T08:00:00.000Z',
+    detail: 'Timeline note',
+    changes: {},
+    revisionAfter: 1,
+    ...overrides,
+  };
+}
+
 describe('read-model aggregate invariants', () => {
   it('rejects dangling Work relationships and duplicate ids', () => {
     expect(() =>
@@ -234,12 +250,14 @@ describe('read-model aggregate invariants', () => {
         ...base,
         scheduledActions: [action({ jobId: OTHER_JOB_ID })],
       }),
-    ).toThrow('Job view Scheduled Actions must reference the viewed Job');
+    ).toThrow(
+      'Job view Scheduled Actions must reference the viewed Job directly or through one of its Tasks',
+    );
 
     expect(() =>
       jobViewSchema.parse({
         ...base,
-        tasks: [task, task],
+        tasks: [base.tasks[0], base.tasks[0]],
       }),
     ).toThrow('tasks must contain unique ids');
 
@@ -255,9 +273,23 @@ describe('read-model aggregate invariants', () => {
   it('rejects duplicate Today entities instead of double-counting attention', () => {
     const base = {
       asOf: '2026-09-25T09:00:00.000Z',
-      tasks: [task],
-      repairs: [repair],
-      scheduledActions: [action()],
+      tasks: [
+        {
+          ...task,
+          dueAt: '2026-09-25T08:00:00.000Z',
+        },
+      ],
+      repairs: [
+        {
+          ...repair,
+          stage: 'AWAITING_PARTS' as const,
+          waitingOn: 'Seal kit',
+          followUpAt: '2026-09-25T08:00:00.000Z',
+        },
+      ],
+      scheduledActions: [
+        action({ nextRunAt: '2026-09-25T08:00:00.000Z' }),
+      ],
     };
 
     expect(() =>
@@ -270,11 +302,11 @@ describe('read-model aggregate invariants', () => {
     expect(() =>
       todayResultSchema.parse({
         ...base,
-        repairs: [repair, repair],
+        repairs: [base.repairs[0], base.repairs[0]],
       }),
     ).toThrow('repairs must contain unique ids');
 
-    const repeatedAction = action();
+    const repeatedAction = base.scheduledActions[0];
     expect(() =>
       todayResultSchema.parse({
         ...base,
@@ -388,6 +420,177 @@ describe('read-model aggregate invariants', () => {
         ],
       }),
     ).toBeTruthy();
+  });
+
+  it('accepts Job actions linked only through one of the Job Tasks', () => {
+    expect(
+      jobViewSchema.parse({
+        job,
+        party,
+        tasks: [task],
+        repair,
+        repairWarnings: [],
+        scheduledActions: [action({ jobId: null, taskId: TASK_ID })],
+        events: [],
+      }),
+    ).toBeTruthy();
+
+    expect(() =>
+      jobViewSchema.parse({
+        job,
+        party,
+        tasks: [task],
+        repair,
+        repairWarnings: [],
+        scheduledActions: [
+          action({
+            jobId: null,
+            taskId: '10000000-0000-4000-8000-999999999999',
+          }),
+        ],
+        events: [],
+      }),
+    ).toThrow(
+      'Job view Scheduled Actions must reference the viewed Job directly or through one of its Tasks',
+    );
+  });
+
+  it('rejects events that are not members of the viewed Job aggregate', () => {
+    const valid = {
+      job,
+      party,
+      tasks: [task],
+      repair,
+      repairWarnings: [],
+      scheduledActions: [action()],
+    };
+
+    expect(
+      jobViewSchema.parse({
+        ...valid,
+        events: [
+          event(),
+          event({
+            id: '10000000-0000-4000-8000-000000000010',
+            entityType: 'TASK',
+            entityId: TASK_ID,
+            eventType: 'TASK_UPDATED',
+          }),
+          event({
+            id: '10000000-0000-4000-8000-000000000011',
+            entityType: 'REPAIR',
+            entityId: REPAIR_ID,
+            eventType: 'REPAIR_DETAILS_UPDATED',
+          }),
+          event({
+            id: '10000000-0000-4000-8000-000000000012',
+            entityType: 'SCHEDULED_ACTION',
+            entityId: ACTION_ID,
+            eventType: 'SCHEDULED_ACTION_UPDATED',
+          }),
+        ],
+      }),
+    ).toBeTruthy();
+
+    expect(() =>
+      jobViewSchema.parse({
+        ...valid,
+        events: [
+          event({
+            entityType: 'PARTY',
+            entityId: PARTY_ID,
+            eventType: 'PARTY_CREATED',
+          }),
+        ],
+      }),
+    ).toThrow('Job view Events must reference the viewed Job aggregate');
+
+    expect(() =>
+      jobViewSchema.parse({
+        ...valid,
+        events: [
+          event({
+            entityId: OTHER_JOB_ID,
+          }),
+        ],
+      }),
+    ).toThrow('Job view Events must reference the viewed Job aggregate');
+  });
+
+  it('enforces Today membership semantics from the domain query', () => {
+    const asOf = '2026-09-25T09:00:00.000Z';
+    const dueTask = { ...task, dueAt: '2026-09-25T08:00:00.000Z' };
+    const waitingRepair = {
+      ...repair,
+      stage: 'AWAITING_CUSTOMER' as const,
+      waitingOn: 'Customer',
+      followUpAt: '2026-09-25T08:00:00.000Z',
+    };
+    const dueAction = action({ nextRunAt: '2026-09-25T08:00:00.000Z' });
+
+    expect(
+      todayResultSchema.parse({
+        asOf,
+        tasks: [dueTask],
+        repairs: [waitingRepair],
+        scheduledActions: [dueAction],
+      }),
+    ).toBeTruthy();
+
+    for (const invalidTask of [
+      { ...dueTask, status: 'DONE' as const },
+      { ...task, dueAt: '2026-09-25T10:00:00.000Z' },
+      { ...task, dueAt: null, followUpAt: null },
+    ]) {
+      expect(() =>
+        todayResultSchema.parse({
+          asOf,
+          tasks: [invalidTask],
+          repairs: [],
+          scheduledActions: [],
+        }),
+      ).toThrow(
+        'Today Tasks must be non-terminal with dueAt or followUpAt at or before asOf',
+      );
+    }
+
+    for (const invalidRepair of [
+      repair,
+      {
+        ...waitingRepair,
+        followUpAt: '2026-09-25T10:00:00.000Z',
+      },
+    ]) {
+      expect(() =>
+        todayResultSchema.parse({
+          asOf,
+          tasks: [],
+          repairs: [invalidRepair],
+          scheduledActions: [],
+        }),
+      ).toThrow(
+        'Today Repairs must be waiting with followUpAt at or before asOf',
+      );
+    }
+
+    for (const invalidAction of [
+      action({
+        status: 'PAUSED',
+        nextRunAt: '2026-09-25T08:00:00.000Z',
+      }),
+      action({ nextRunAt: '2026-09-25T10:00:00.000Z' }),
+    ]) {
+      expect(() =>
+        todayResultSchema.parse({
+          asOf,
+          tasks: [],
+          repairs: [],
+          scheduledActions: [invalidAction],
+        }),
+      ).toThrow(
+        'Today Scheduled Actions must be ACTIVE with nextRunAt at or before asOf',
+      );
+    }
   });
 
   it('rejects duplicate entities in Search results', () => {

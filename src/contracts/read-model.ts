@@ -128,12 +128,50 @@ export const jobViewSchema = z
       });
     }
 
+    const taskIds = new Set(view.tasks.map((task) => task.id));
+    const actionIds = new Set(
+      view.scheduledActions.map((action) => action.id),
+    );
+
     for (const [index, action] of view.scheduledActions.entries()) {
-      if (action.jobId !== view.job.id) {
+      const directJobMatch = action.jobId === view.job.id;
+      const taskMatch =
+        action.taskId !== null && taskIds.has(action.taskId);
+      const jobReferenceValid =
+        action.jobId === null || action.jobId === view.job.id;
+      const taskReferenceValid =
+        action.taskId === null || taskIds.has(action.taskId);
+
+      if (
+        (!directJobMatch && !taskMatch) ||
+        !jobReferenceValid ||
+        !taskReferenceValid
+      ) {
         context.addIssue({
           code: 'custom',
-          path: ['scheduledActions', index, 'jobId'],
-          message: 'Job view Scheduled Actions must reference the viewed Job',
+          path: ['scheduledActions', index],
+          message:
+            'Job view Scheduled Actions must reference the viewed Job directly or through one of its Tasks',
+        });
+      }
+    }
+
+    for (const [index, event] of view.events.entries()) {
+      const belongsToAggregate =
+        (event.entityType === 'JOB' && event.entityId === view.job.id) ||
+        (event.entityType === 'TASK' && taskIds.has(event.entityId)) ||
+        (event.entityType === 'REPAIR' &&
+          view.repair !== null &&
+          event.entityId === view.repair.id) ||
+        (event.entityType === 'SCHEDULED_ACTION' &&
+          actionIds.has(event.entityId));
+
+      if (!belongsToAggregate) {
+        context.addIssue({
+          code: 'custom',
+          path: ['events', index],
+          message:
+            'Job view Events must reference the viewed Job aggregate',
         });
       }
     }
@@ -166,6 +204,59 @@ export const todayResultSchema = z
         path: ['scheduledActions'],
         message: actionDuplicates,
       });
+    }
+
+    const asOf = Date.parse(result.asOf);
+
+    for (const [index, task] of result.tasks.entries()) {
+      const active =
+        task.status !== 'DONE' && task.status !== 'CANCELLED';
+      const due =
+        (task.dueAt !== null && Date.parse(task.dueAt) <= asOf) ||
+        (task.followUpAt !== null &&
+          Date.parse(task.followUpAt) <= asOf);
+
+      if (!active || !due) {
+        context.addIssue({
+          code: 'custom',
+          path: ['tasks', index],
+          message:
+            'Today Tasks must be non-terminal with dueAt or followUpAt at or before asOf',
+        });
+      }
+    }
+
+    for (const [index, repair] of result.repairs.entries()) {
+      const waiting =
+        repair.stage === 'AWAITING_PARTS' ||
+        repair.stage === 'AWAITING_CUSTOMER';
+      if (
+        !waiting ||
+        repair.followUpAt === null ||
+        Date.parse(repair.followUpAt) > asOf
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['repairs', index],
+          message:
+            'Today Repairs must be waiting with followUpAt at or before asOf',
+        });
+      }
+    }
+
+    for (const [index, action] of result.scheduledActions.entries()) {
+      if (
+        action.status !== 'ACTIVE' ||
+        action.nextRunAt === null ||
+        Date.parse(action.nextRunAt) > asOf
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['scheduledActions', index],
+          message:
+            'Today Scheduled Actions must be ACTIVE with nextRunAt at or before asOf',
+        });
+      }
     }
   });
 
