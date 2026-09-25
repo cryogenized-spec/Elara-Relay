@@ -134,7 +134,9 @@ test('authenticated mobile operations shell reads live domain state', async ({
   await expect(
     searchDialog.getByRole('heading', { name: 'History' }),
   ).toBeVisible();
-  await expect(searchDialog.getByText('Waiting on transfer seal kit')).toBeVisible();
+  await expect(
+    searchDialog.getByText('Waiting on transfer seal kit', { exact: true }),
+  ).toBeVisible();
   await expect(
     searchDialog.getByRole('button', { name: /Waiting on transfer seal kit/ }),
   ).toHaveCount(0);
