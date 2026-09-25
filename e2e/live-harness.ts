@@ -371,14 +371,18 @@ export async function installLiveHarness(
     }
 
     if (path === '/dashboard') {
-      const work = {
-        parties: [baseParty()],
-        jobs: allJobs,
-        tasks: allTasks,
-      };
-      if (options.malformedWork === true) {
-        work.tasks = [{ ...allTasks[1], jobId: IDS.jobWebsite }];
-      }
+      const work =
+        options.malformedWork === true
+          ? {
+              parties: [baseParty()],
+              jobs: allJobs,
+              tasks: [{ ...allTasks[1]!, jobId: IDS.jobWebsite }],
+            }
+          : {
+              parties: [baseParty()],
+              jobs: allJobs,
+              tasks: allTasks,
+            };
       await route.fulfill(
         json({
           today: {
