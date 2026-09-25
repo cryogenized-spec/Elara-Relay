@@ -115,7 +115,12 @@ test('authenticated mobile operations shell reads live domain state', async ({
   await expect(
     searchDialog.getByRole('heading', { name: 'Repairs' }),
   ).toBeVisible();
-  await expect(searchDialog.getByText('Avenge X regulator repair')).toBeVisible();
+  const repairSearchGroup = searchDialog
+    .locator('.searchResultGroup')
+    .filter({ hasText: 'Repairs' });
+  await expect(
+    repairSearchGroup.getByText('Avenge X regulator repair', { exact: true }),
+  ).toBeVisible();
   await expect(searchDialog.getByText('Results')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(searchDialog).toBeHidden();
