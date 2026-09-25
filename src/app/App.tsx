@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '@iconify/react';
 import addCircleBold from '@iconify-icons/solar/add-circle-bold';
 import altArrowLeftLinear from '@iconify-icons/solar/alt-arrow-left-linear';
@@ -9,6 +9,31 @@ import clipboardListLinear from '@iconify-icons/solar/clipboard-list-linear';
 import home2Linear from '@iconify-icons/solar/home-2-linear';
 import magniferLinear from '@iconify-icons/solar/magnifer-linear';
 import settingsLinear from '@iconify-icons/solar/settings-linear';
+import type { AuthIdentity } from '../auth/auth-verifier';
+import type {
+  JobViewPayload,
+  RepairViewPayload,
+  RepairsResultPayload,
+  ScheduleResultPayload,
+  TaskViewPayload,
+  TodayResultPayload,
+  WorkResultPayload,
+} from '../contracts/read-model';
+import type { BrowserRuntime } from './browser-runtime';
+import { OperationsApiError } from './operations-api';
+import {
+  buildRepairsView,
+  buildScheduleView,
+  buildSearchGroups,
+  buildTodayView,
+  buildWorkView,
+  type SearchGroupViewModel,
+  type ScheduleViewModel,
+  type TodayViewModel,
+  type UiRow,
+  type WorkViewModel,
+  type RepairsViewModel,
+} from './read-view-model';
 
 type ViewId = 'today' | 'work' | 'repairs' | 'schedule';
 type Tone = 'danger' | 'attention' | 'success' | 'info' | 'neutral';
@@ -352,11 +377,13 @@ function Section({
   count,
   rows,
   onActivateRow,
+  emptyLabel = 'Nothing here',
 }: {
   title: string;
   count: number;
   rows: WorkRow[];
   onActivateRow?: (row: WorkRow) => void;
+  emptyLabel?: string;
 }) {
   const id = sectionId(title);
 
@@ -367,17 +394,21 @@ function Section({
         <span aria-label={`${count} items`}>{count}</span>
       </div>
       <div className="rowList">
-        {rows.map((row) => (
-          <Row
-            key={row.id}
-            row={row}
-            onActivate={
-              onActivateRow === undefined
-                ? undefined
-                : () => onActivateRow(row)
-            }
-          />
-        ))}
+        {rows.length === 0 ? (
+          <p className="emptyRow">{emptyLabel}</p>
+        ) : (
+          rows.map((row) => (
+            <Row
+              key={row.id}
+              row={row}
+              onActivate={
+                onActivateRow === undefined
+                  ? undefined
+                  : () => onActivateRow(row)
+              }
+            />
+          ))
+        )}
       </div>
     </section>
   );
@@ -1323,7 +1354,1105 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
     </dialog>
   );
 }
-export function App() {
+
+interface LiveReadState {
+  today: TodayResultPayload;
+  work: WorkResultPayload;
+  repairs: RepairsResultPayload;
+  schedule: ScheduleResultPayload;
+}
+
+type LivePhase =
+  | 'restoring'
+  | 'signed-out'
+  | 'authorizing'
+  | 'loading'
+  | 'ready'
+  | 'forbidden'
+  | 'error';
+
+type LiveDetail =
+  | { type: 'JOB'; id: string }
+  | { type: 'TASK'; id: string }
+  | { type: 'REPAIR'; id: string };
+
+function readableError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return 'Unexpected error';
+}
+
+function formatTimestamp(value: string | null): string {
+  if (value === null) return 'None';
+  return new Intl.DateTimeFormat('en-ZA', {
+    timeZone: 'Africa/Johannesburg',
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value));
+}
+
+function titleCase(value: string): string {
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function toneForTaskStatus(status: TaskViewPayload['task']['status']): Tone {
+  if (status === 'WAITING') return 'attention';
+  if (status === 'NEXT' || status === 'DOING') return 'info';
+  return 'neutral';
+}
+
+function toneForJobCategory(category: JobViewPayload['job']['category']): Tone {
+  if (category === 'WAITING') return 'attention';
+  if (category === 'ACTIVE') return 'info';
+  return 'neutral';
+}
+
+function toneForRepairStage(stage: RepairViewPayload['repair']['stage']): Tone {
+  if (stage === 'AWAITING_PARTS' || stage === 'AWAITING_CUSTOMER') {
+    return 'attention';
+  }
+  if (stage === 'READY') return 'success';
+  if (stage === 'DIAGNOSING' || stage === 'REPAIRING' || stage === 'TESTING') {
+    return 'info';
+  }
+  return 'neutral';
+}
+
+function LiveTodayView({
+  model,
+  onActivate,
+}: {
+  model: TodayViewModel;
+  onActivate: (row: UiRow) => void;
+}) {
+  return (
+    <>
+      <section className="attentionSummary" aria-label="Today attention summary">
+        <div>
+          <strong className="summaryValue summaryValue--danger">
+            {model.summary.overdue}
+          </strong>
+          <span>Overdue</span>
+        </div>
+        <div>
+          <strong>{model.summary.today}</strong>
+          <span>Today</span>
+        </div>
+        <div>
+          <strong className="summaryValue summaryValue--attention">
+            {model.summary.waiting}
+          </strong>
+          <span>Waiting</span>
+        </div>
+        <div>
+          <strong className="summaryValue summaryValue--success">
+            {model.summary.ready}
+          </strong>
+          <span>Ready</span>
+        </div>
+      </section>
+
+      <Section
+        title="Needs attention"
+        count={model.attention.length}
+        rows={model.attention}
+        onActivateRow={onActivate}
+        emptyLabel="Nothing needs attention"
+      />
+      <Section
+        title="Ready for collection"
+        count={model.ready.length}
+        rows={model.ready}
+        onActivateRow={onActivate}
+        emptyLabel="Nothing ready for collection"
+      />
+      <Section
+        title="Next"
+        count={model.next.length}
+        rows={model.next}
+        emptyLabel="Nothing scheduled next"
+      />
+    </>
+  );
+}
+
+function LiveWorkView({
+  model,
+  onActivate,
+}: {
+  model: WorkViewModel;
+  onActivate: (row: UiRow) => void;
+}) {
+  return (
+    <>
+      <Section
+        title="Jobs"
+        count={model.jobs.length}
+        rows={model.jobs}
+        onActivateRow={onActivate}
+        emptyLabel="No active Jobs"
+      />
+      <Section
+        title="Tasks"
+        count={model.tasks.length}
+        rows={model.tasks}
+        onActivateRow={onActivate}
+        emptyLabel="No active Tasks"
+      />
+    </>
+  );
+}
+
+function LiveRepairsView({
+  model,
+  onActivate,
+}: {
+  model: RepairsViewModel;
+  onActivate: (row: UiRow) => void;
+}) {
+  if (model.groups.length === 0) {
+    return (
+      <section className="systemState">
+        <strong>No active Repairs</strong>
+        <span>Workshop work will appear here when it exists.</span>
+      </section>
+    );
+  }
+
+  return (
+    <>
+      {model.groups.map((group) => (
+        <Section
+          key={group.label}
+          title={group.label}
+          count={group.rows.length}
+          rows={group.rows}
+          onActivateRow={onActivate}
+        />
+      ))}
+    </>
+  );
+}
+
+function LiveScheduleView({ model }: { model: ScheduleViewModel }) {
+  return (
+    <Section
+      title="Due & upcoming"
+      count={model.rows.length}
+      rows={model.rows}
+      emptyLabel="No Scheduled Actions"
+    />
+  );
+}
+
+function SystemState({
+  title,
+  detail,
+  action,
+}: {
+  title: string;
+  detail: string;
+  action?: { label: string; run: () => void };
+}) {
+  return (
+    <main className="authShell">
+      <section className="authPanel systemPanel">
+        <span className="authEyebrow">ELARA RELAY</span>
+        <h1>{title}</h1>
+        <p>{detail}</p>
+        {action === undefined ? null : (
+          <button className="primaryButton" type="button" onClick={action.run}>
+            {action.label}
+          </button>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function SignInSurface({
+  error,
+  onSignIn,
+}: {
+  error: string | null;
+  onSignIn: (email: string, password: string) => Promise<void>;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  return (
+    <main className="authShell">
+      <section className="authPanel" aria-labelledby="sign-in-title">
+        <span className="authEyebrow">ELARA RELAY</span>
+        <h1 id="sign-in-title">Sign in</h1>
+        <p>Use the owner account authorized for this operations workspace.</p>
+        <form
+          className="authForm"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onSignIn(email, password);
+          }}
+        >
+          <label className="formField">
+            <span>Email</span>
+            <input
+              autoComplete="email"
+              inputMode="email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
+          <label className="formField">
+            <span>Password</span>
+            <input
+              autoComplete="current-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </label>
+          {error === null ? null : (
+            <p className="authError" role="alert">
+              {error}
+            </p>
+          )}
+          <button className="primaryButton" type="submit">
+            Sign in
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function useLiveDialog(
+  open: boolean,
+  dialogRef: React.RefObject<HTMLDialogElement | null>,
+  focusRef: React.RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const dialog = dialogRef.current;
+    if (dialog === null) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    focusRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (dialog.open) dialog.close();
+      previousFocus?.focus();
+    };
+  }, [open, dialogRef, focusRef]);
+}
+
+function LiveTaskDetailSurface({
+  runtime,
+  taskId,
+  onClose,
+}: {
+  runtime: BrowserRuntime;
+  taskId: string;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<TaskViewPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
+  useLiveDialog(true, dialogRef, titleRef);
+
+  useEffect(() => {
+    let active = true;
+    void runtime.api
+      .task(taskId)
+      .then((result) => {
+        if (active) setData(result);
+      })
+      .catch((caught: unknown) => {
+        if (active) setError(readableError(caught));
+      });
+    return () => {
+      active = false;
+    };
+  }, [runtime, taskId]);
+
+  return (
+    <dialog
+      className="overlaySurface detailSurface"
+      ref={dialogRef}
+      aria-labelledby="live-task-detail-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="detailTopBar">
+        <button className="detailBackButton" type="button" onClick={onClose}>
+          <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
+          <span>Back</span>
+        </button>
+        <span className="liveReadState">Read only · 1G</span>
+      </div>
+      {error !== null ? (
+        <section className="systemState">
+          <strong>Task unavailable</strong>
+          <span>{error}</span>
+        </section>
+      ) : data === null ? (
+        <section className="systemState">
+          <strong>Loading Task</strong>
+          <span>Reading current state…</span>
+        </section>
+      ) : (
+        <>
+          <section className="repairSummary" aria-labelledby="live-task-detail-title">
+            <span className="repairSummary__key">
+              TASK{data.job === null ? '' : ` · ${data.job.key}`}
+            </span>
+            <div className="repairSummary__titleRow">
+              <div>
+                <h1 id="live-task-detail-title" ref={titleRef} tabIndex={-1}>
+                  {data.task.title}
+                </h1>
+                <p>{data.job?.title ?? 'Standalone Task'}</p>
+              </div>
+              <StatusBadge tone={toneForTaskStatus(data.task.status)}>
+                {titleCase(data.task.status)}
+              </StatusBadge>
+            </div>
+          </section>
+          <section className="detailSection" aria-labelledby="live-task-state">
+            <div className="detailSection__heading">
+              <h2 id="live-task-state">Current state</h2>
+            </div>
+            <dl className="detailFields">
+              <div><dt>Status</dt><dd>{titleCase(data.task.status)}</dd></div>
+              <div><dt>Priority</dt><dd>{titleCase(data.task.priority)}</dd></div>
+              <div><dt>Due</dt><dd>{formatTimestamp(data.task.dueAt)}</dd></div>
+              <div><dt>Follow-up</dt><dd>{formatTimestamp(data.task.followUpAt)}</dd></div>
+              <div><dt>Waiting on</dt><dd>{data.task.waitingOn ?? 'None'}</dd></div>
+              <div><dt>Updated</dt><dd>{formatTimestamp(data.task.updatedAt)}</dd></div>
+              <div><dt>Revision</dt><dd className="detailValue--mono">{data.task.revision}</dd></div>
+            </dl>
+          </section>
+        </>
+      )}
+    </dialog>
+  );
+}
+
+function LiveJobDetailSurface({
+  runtime,
+  jobId,
+  onClose,
+}: {
+  runtime: BrowserRuntime;
+  jobId: string;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<JobViewPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
+  useLiveDialog(true, dialogRef, titleRef);
+
+  useEffect(() => {
+    let active = true;
+    void runtime.api
+      .job(jobId)
+      .then((result) => {
+        if (active) setData(result);
+      })
+      .catch((caught: unknown) => {
+        if (active) setError(readableError(caught));
+      });
+    return () => {
+      active = false;
+    };
+  }, [runtime, jobId]);
+
+  return (
+    <dialog
+      className="overlaySurface detailSurface"
+      ref={dialogRef}
+      aria-labelledby="live-job-detail-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="detailTopBar">
+        <button className="detailBackButton" type="button" onClick={onClose}>
+          <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
+          <span>Back</span>
+        </button>
+        <span className="liveReadState">Read only · 1G</span>
+      </div>
+      {error !== null ? (
+        <section className="systemState">
+          <strong>Job unavailable</strong>
+          <span>{error}</span>
+        </section>
+      ) : data === null ? (
+        <section className="systemState">
+          <strong>Loading Job</strong>
+          <span>Reading current state and history…</span>
+        </section>
+      ) : (
+        <>
+          <section className="repairSummary" aria-labelledby="live-job-detail-title">
+            <span className="repairSummary__key">{data.job.key}</span>
+            <div className="repairSummary__titleRow">
+              <div>
+                <h1 id="live-job-detail-title" ref={titleRef} tabIndex={-1}>
+                  {data.job.title}
+                </h1>
+                <p>{data.party?.name ?? 'No linked Party'}</p>
+              </div>
+              <StatusBadge tone={toneForJobCategory(data.job.category)}>
+                {titleCase(data.job.category)}
+              </StatusBadge>
+            </div>
+          </section>
+          <section className="detailSection" aria-labelledby="live-job-state">
+            <div className="detailSection__heading">
+              <h2 id="live-job-state">Current state</h2>
+            </div>
+            <dl className="detailFields">
+              <div><dt>Category</dt><dd>{titleCase(data.job.category)}</dd></div>
+              <div><dt>Party</dt><dd>{data.party?.name ?? 'None'}</dd></div>
+              <div><dt>Updated</dt><dd>{formatTimestamp(data.job.updatedAt)}</dd></div>
+              <div><dt>Revision</dt><dd className="detailValue--mono">{data.job.revision}</dd></div>
+            </dl>
+          </section>
+          <section className="detailSection" aria-labelledby="live-job-tasks">
+            <div className="detailSection__heading">
+              <h2 id="live-job-tasks">Tasks</h2>
+              <span>{data.tasks.length}</span>
+            </div>
+            <div className="detailCompactRows">
+              {data.tasks.length === 0 ? (
+                <p className="emptyRow">No linked Tasks</p>
+              ) : (
+                data.tasks.map((task) => (
+                  <div key={task.id}>
+                    <span>
+                      <strong>{task.title}</strong>
+                      <small>{formatTimestamp(task.updatedAt)}</small>
+                    </span>
+                    <StatusBadge tone={toneForTaskStatus(task.status)}>
+                      {titleCase(task.status)}
+                    </StatusBadge>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+          <section className="detailSection detailTimeline" aria-labelledby="live-job-timeline">
+            <div className="detailSection__heading">
+              <h2 id="live-job-timeline">Timeline</h2>
+              <span>{data.events.length}</span>
+            </div>
+            <ol>
+              {data.events
+                .slice()
+                .reverse()
+                .map((event) => (
+                  <li key={event.id}>
+                    <span className="detailTimeline__time">
+                      {formatTimestamp(event.occurredAt)}
+                    </span>
+                    <div>
+                      <strong>{titleCase(event.eventType)}</strong>
+                      <p>{event.detail ?? event.entityType}</p>
+                    </div>
+                  </li>
+                ))}
+            </ol>
+          </section>
+        </>
+      )}
+    </dialog>
+  );
+}
+
+function LiveRepairDetailSurface({
+  runtime,
+  repairId,
+  onClose,
+}: {
+  runtime: BrowserRuntime;
+  repairId: string;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<RepairViewPayload | null>(null);
+  const [job, setJob] = useState<JobViewPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
+  useLiveDialog(true, dialogRef, titleRef);
+
+  useEffect(() => {
+    let active = true;
+    void runtime.api
+      .repair(repairId)
+      .then(async (result) => {
+        if (!active) return;
+        setData(result);
+        const jobResult = await runtime.api.job(result.repair.jobId);
+        if (active) setJob(jobResult);
+      })
+      .catch((caught: unknown) => {
+        if (active) setError(readableError(caught));
+      });
+    return () => {
+      active = false;
+    };
+  }, [runtime, repairId]);
+
+  return (
+    <dialog
+      className="overlaySurface detailSurface"
+      ref={dialogRef}
+      aria-labelledby="live-repair-detail-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="detailTopBar">
+        <button className="detailBackButton" type="button" onClick={onClose}>
+          <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
+          <span>Back</span>
+        </button>
+        <span className="liveReadState">Read only · 1G</span>
+      </div>
+      {error !== null ? (
+        <section className="systemState">
+          <strong>Repair unavailable</strong>
+          <span>{error}</span>
+        </section>
+      ) : data === null || job === null ? (
+        <section className="systemState">
+          <strong>Loading Repair</strong>
+          <span>Reading workshop state…</span>
+        </section>
+      ) : (
+        <>
+          <section className="repairSummary" aria-labelledby="live-repair-detail-title">
+            <span className="repairSummary__key">{job.job.key} · REPAIR</span>
+            <div className="repairSummary__titleRow">
+              <div>
+                <h1 id="live-repair-detail-title" ref={titleRef} tabIndex={-1}>
+                  {job.job.title}
+                </h1>
+                <p>{job.party?.name ?? 'No linked Party'}</p>
+              </div>
+              <StatusBadge tone={toneForRepairStage(data.repair.stage)}>
+                {titleCase(data.repair.stage)}
+              </StatusBadge>
+            </div>
+            {data.warnings.length === 0 ? null : (
+              <p className="repairSummary__reason">
+                {data.warnings.map(titleCase).join(' · ')}
+              </p>
+            )}
+          </section>
+          <section className="detailSection" aria-labelledby="live-repair-state">
+            <div className="detailSection__heading">
+              <h2 id="live-repair-state">Current state</h2>
+            </div>
+            <dl className="detailFields">
+              <div><dt>Stage</dt><dd>{titleCase(data.repair.stage)}</dd></div>
+              <div><dt>Reported fault</dt><dd>{data.repair.reportedFault}</dd></div>
+              <div><dt>Diagnosis</dt><dd>{data.repair.diagnosis ?? 'None'}</dd></div>
+              <div><dt>Current finding</dt><dd>{data.repair.currentFinding ?? 'None'}</dd></div>
+              <div><dt>Serial</dt><dd className="detailValue--mono">{data.repair.serialValue ?? titleCase(data.repair.serialState)}</dd></div>
+              <div><dt>Storage</dt><dd>{data.repair.storageLocation ?? 'None'}</dd></div>
+              <div><dt>Waiting on</dt><dd>{data.repair.waitingOn ?? 'None'}</dd></div>
+              <div><dt>Follow-up</dt><dd>{formatTimestamp(data.repair.followUpAt)}</dd></div>
+              <div><dt>Revision</dt><dd className="detailValue--mono">{data.repair.revision}</dd></div>
+            </dl>
+          </section>
+        </>
+      )}
+    </dialog>
+  );
+}
+
+function LiveSearchSurface({
+  runtime,
+  onClose,
+  onActivate,
+}: {
+  runtime: BrowserRuntime;
+  onClose: () => void;
+  onActivate: (row: UiRow) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [groups, setGroups] = useState<SearchGroupViewModel[]>([]);
+  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>(
+    'idle',
+  );
+  const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useLiveDialog(true, dialogRef, inputRef);
+
+  useEffect(() => {
+    const normalized = query.trim();
+    const currentRequest = ++requestId.current;
+
+    if (normalized.length < 2) {
+      setGroups([]);
+      setError(null);
+      setState('idle');
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setState('loading');
+      setError(null);
+      void runtime.api
+        .search(normalized)
+        .then((result) => {
+          if (requestId.current !== currentRequest) return;
+          setGroups(buildSearchGroups(result));
+          setState('ready');
+        })
+        .catch((caught: unknown) => {
+          if (requestId.current !== currentRequest) return;
+          setGroups([]);
+          setError(readableError(caught));
+          setState('error');
+        });
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [query, runtime]);
+
+  const resultCount = groups.reduce(
+    (count, group) => count + group.rows.length,
+    0,
+  );
+
+  return (
+    <dialog
+      className="overlaySurface"
+      ref={dialogRef}
+      aria-label="Search"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="overlayHeader">
+        <div>
+          <h1>Search</h1>
+          <p>Jobs, repairs, tasks and history</p>
+        </div>
+        <button className="textButton" type="button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <label className="searchField">
+        <Icon icon={magniferLinear} width={20} aria-hidden="true" />
+        <span className="srOnly">Search Elara</span>
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onClose();
+            }
+          }}
+          placeholder="Job, serial, task, customer…"
+          type="search"
+        />
+      </label>
+
+      {query.trim().length < 2 ? (
+        <div className="searchHint">
+          <Icon icon={magniferLinear} width={20} aria-hidden="true" />
+          <span>Enter at least two characters to search operational history.</span>
+        </div>
+      ) : (
+        <div className="searchResults" aria-label="Search results">
+          <div className="searchResultSummary" role="status">
+            <span>
+              {state === 'loading'
+                ? 'Searching…'
+                : state === 'error'
+                  ? 'Search failed'
+                  : 'Results'}
+            </span>
+            <strong>{resultCount}</strong>
+          </div>
+          {state === 'error' ? (
+            <div className="searchNoResults">
+              <strong>Search unavailable</strong>
+              <span>{error}</span>
+            </div>
+          ) : state === 'ready' && resultCount === 0 ? (
+            <div className="searchNoResults">
+              <strong>No results</strong>
+              <span>No operational records matched this query.</span>
+            </div>
+          ) : (
+            groups.map((group) => (
+              <section
+                className="searchResultGroup"
+                key={group.label}
+                aria-labelledby={`live-search-${group.label.toLowerCase()}`}
+              >
+                <div className="searchGroupHeading">
+                  <h2 id={`live-search-${group.label.toLowerCase()}`}>
+                    {group.label}
+                  </h2>
+                  <span>{group.rows.length}</span>
+                </div>
+                <div className="searchResultList">
+                  {group.rows.map((row) => (
+                    <button
+                      className="searchResultRow searchResultRow--button"
+                      type="button"
+                      key={row.id}
+                      onClick={() => {
+                        onClose();
+                        onActivate(row);
+                      }}
+                    >
+                      <span className="searchResultRow__eyebrow">
+                        {row.eyebrow}
+                      </span>
+                      <strong>{row.title}</strong>
+                      <span>{row.meta}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
+        </div>
+      )}
+    </dialog>
+  );
+}
+
+function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
+  const [phase, setPhase] = useState<LivePhase>('restoring');
+  const [identity, setIdentity] = useState<AuthIdentity | null>(null);
+  const [readState, setReadState] = useState<LiveReadState | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<ViewId>('today');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [detail, setDetail] = useState<LiveDetail | null>(null);
+  const loadSequence = useRef(0);
+
+  const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    setPhase('authorizing');
+    setLoadError(null);
+
+    try {
+      const verifiedIdentity = await runtime.api.whoAmI();
+      if (sequence !== loadSequence.current) return;
+      setIdentity(verifiedIdentity);
+      setPhase('loading');
+
+      const asOf = new Date().toISOString();
+      const [today, work, repairs, schedule] = await Promise.all([
+        runtime.api.today(asOf),
+        runtime.api.work(),
+        runtime.api.repairs(),
+        runtime.api.schedule(asOf),
+      ]);
+      if (sequence !== loadSequence.current) return;
+
+      setReadState({ today, work, repairs, schedule });
+      setPhase('ready');
+    } catch (caught: unknown) {
+      if (sequence !== loadSequence.current) return;
+      setIdentity(null);
+      setReadState(null);
+
+      if (caught instanceof OperationsApiError && caught.status === 403) {
+        setPhase('forbidden');
+      } else if (
+        caught instanceof OperationsApiError &&
+        caught.status === 401
+      ) {
+        setPhase('signed-out');
+      } else {
+        setLoadError(readableError(caught));
+        setPhase('error');
+      }
+    }
+  }, [runtime]);
+
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = runtime.auth.subscribe((session) => {
+      if (!active || session !== null) return;
+      loadSequence.current += 1;
+      setIdentity(null);
+      setReadState(null);
+      setPhase('signed-out');
+    });
+
+    void runtime.auth
+      .restoreSession()
+      .then((session) => {
+        if (!active) return;
+        if (session === null) {
+          setPhase('signed-out');
+          return;
+        }
+        void load();
+      })
+      .catch((caught: unknown) => {
+        if (!active) return;
+        setAuthError(readableError(caught));
+        setPhase('signed-out');
+      });
+
+    return () => {
+      active = false;
+      loadSequence.current += 1;
+      unsubscribe();
+    };
+  }, [load, runtime]);
+
+  const signIn = async (email: string, password: string) => {
+    setAuthError(null);
+    setPhase('authorizing');
+    try {
+      await runtime.auth.signIn(email, password);
+      await load();
+    } catch (caught: unknown) {
+      setAuthError(readableError(caught));
+      setPhase('signed-out');
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      await runtime.auth.signOut();
+    } catch (caught: unknown) {
+      setLoadError(readableError(caught));
+      setPhase('error');
+    }
+  };
+
+  const activate = (row: UiRow) => {
+    if (
+      row.entityType === 'JOB' ||
+      row.entityType === 'TASK' ||
+      row.entityType === 'REPAIR'
+    ) {
+      setDetail({ type: row.entityType, id: row.id });
+    }
+  };
+
+  if (phase === 'restoring' || phase === 'authorizing' || phase === 'loading') {
+    return (
+      <SystemState
+        title={phase === 'restoring' ? 'Restoring session' : 'Loading workspace'}
+        detail="Checking identity and reading current operational state…"
+      />
+    );
+  }
+
+  if (phase === 'signed-out') {
+    return <SignInSurface error={authError} onSignIn={signIn} />;
+  }
+
+  if (phase === 'forbidden') {
+    return (
+      <SystemState
+        title="Access not authorized"
+        detail="This Supabase account is valid, but it is not in Elara's server-side owner allowlist."
+        action={{
+          label: 'Sign out',
+          run: () => {
+            void signOut();
+          },
+        }}
+      />
+    );
+  }
+
+  if (phase === 'error' || readState === null) {
+    return (
+      <SystemState
+        title="Workspace unavailable"
+        detail={loadError ?? 'Operational data could not be loaded.'}
+        action={{
+          label: 'Retry',
+          run: () => {
+            void load();
+          },
+        }}
+      />
+    );
+  }
+
+  const todayModel = buildTodayView(
+    readState.today,
+    readState.repairs,
+    readState.schedule,
+  );
+  const workModel = buildWorkView(readState.work);
+  const repairsModel = buildRepairsView(readState.repairs);
+  const scheduleModel = buildScheduleView(readState.schedule);
+  const context = viewContext[activeView];
+
+  const view = (() => {
+    switch (activeView) {
+      case 'today':
+        return <LiveTodayView model={todayModel} onActivate={activate} />;
+      case 'work':
+        return <LiveWorkView model={workModel} onActivate={activate} />;
+      case 'repairs':
+        return <LiveRepairsView model={repairsModel} onActivate={activate} />;
+      case 'schedule':
+        return <LiveScheduleView model={scheduleModel} />;
+    }
+  })();
+
+  return (
+    <main className="appShell">
+      <header className="topBar">
+        <div className="topContext">
+          <h1>{context.title}</h1>
+          <span>{context.meta}</span>
+        </div>
+        <div className="topActions">
+          <button
+            className="onlineState"
+            type="button"
+            aria-label="Sign out"
+            title={identity?.email ?? 'Signed in'}
+            onClick={() => {
+              void signOut();
+            }}
+          >
+            <span aria-hidden="true" />
+            Online
+          </button>
+          <button
+            className="iconButton"
+            type="button"
+            aria-label="Search"
+            onClick={() => setSearchOpen(true)}
+          >
+            <Icon icon={magniferLinear} width={20} aria-hidden="true" />
+          </button>
+        </div>
+      </header>
+
+      <div className="contentViewport">{view}</div>
+
+      <nav className="bottomNav" aria-label="Primary">
+        {navItems.slice(0, 2).map((item) => (
+          <button
+            className={activeView === item.id ? 'navItem navItem--active' : 'navItem'}
+            type="button"
+            key={item.id}
+            aria-current={activeView === item.id ? 'page' : undefined}
+            onClick={() => setActiveView(item.id)}
+          >
+            <Icon icon={item.icon} width={21} aria-hidden="true" />
+            <span>{item.label}</span>
+          </button>
+        ))}
+
+        <button
+          className="captureButton"
+          type="button"
+          aria-label="Capture"
+          onClick={() => setCaptureOpen(true)}
+        >
+          <span>
+            <Icon icon={addCircleBold} width={24} aria-hidden="true" />
+          </span>
+          <small>Capture</small>
+        </button>
+
+        {navItems.slice(2).map((item) => (
+          <button
+            className={activeView === item.id ? 'navItem navItem--active' : 'navItem'}
+            type="button"
+            key={item.id}
+            aria-current={activeView === item.id ? 'page' : undefined}
+            onClick={() => setActiveView(item.id)}
+          >
+            <Icon icon={item.icon} width={21} aria-hidden="true" />
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {searchOpen ? (
+        <LiveSearchSurface
+          runtime={runtime}
+          onClose={() => setSearchOpen(false)}
+          onActivate={activate}
+        />
+      ) : null}
+      {captureOpen ? <CaptureSheet onClose={() => setCaptureOpen(false)} /> : null}
+      {detail?.type === 'JOB' ? (
+        <LiveJobDetailSurface
+          runtime={runtime}
+          jobId={detail.id}
+          onClose={() => setDetail(null)}
+        />
+      ) : null}
+      {detail?.type === 'TASK' ? (
+        <LiveTaskDetailSurface
+          runtime={runtime}
+          taskId={detail.id}
+          onClose={() => setDetail(null)}
+        />
+      ) : null}
+      {detail?.type === 'REPAIR' ? (
+        <LiveRepairDetailSurface
+          runtime={runtime}
+          repairId={detail.id}
+          onClose={() => setDetail(null)}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function PreviewApp() {
   const [activeView, setActiveView] = useState<ViewId>('today');
   const [searchOpen, setSearchOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
@@ -1428,4 +2557,23 @@ export function App() {
       ) : null}
     </main>
   );
+}
+
+export function App({
+  runtime,
+  configurationError,
+}: {
+  runtime?: BrowserRuntime | undefined;
+  configurationError?: string | undefined;
+}) {
+  if (configurationError !== undefined) {
+    return (
+      <SystemState
+        title="Configuration required"
+        detail={configurationError}
+      />
+    );
+  }
+
+  return runtime === undefined ? <PreviewApp /> : <LiveApp runtime={runtime} />;
 }
