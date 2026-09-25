@@ -6,6 +6,7 @@ import {
   repairsResultSchema,
   scheduleResultSchema,
   searchResultSchema,
+  taskViewSchema,
   todayResultSchema,
   workResultSchema,
   type JobViewPayload,
@@ -13,6 +14,7 @@ import {
   type RepairsResultPayload,
   type ScheduleResultPayload,
   type SearchResultPayload,
+  type TaskViewPayload,
   type TodayResultPayload,
   type WorkResultPayload,
 } from '../contracts/read-model';
@@ -46,6 +48,7 @@ export interface OperationsApi {
   repairs(): Promise<RepairsResultPayload>;
   schedule(asOf: string): Promise<ScheduleResultPayload>;
   search(query: string): Promise<SearchResultPayload>;
+  task(taskId: string): Promise<TaskViewPayload>;
   job(jobId: string): Promise<JobViewPayload>;
   repair(repairId: string): Promise<RepairViewPayload>;
 }
@@ -116,6 +119,8 @@ export function createOperationsApi(
       ),
     search: (query) =>
       request(`/search?q=${encodeURIComponent(query)}`, searchResultSchema),
+    task: (taskId) =>
+      request(`/tasks/${encodeURIComponent(taskId)}`, taskViewSchema),
     job: (jobId) =>
       request(`/jobs/${encodeURIComponent(jobId)}`, jobViewSchema),
     repair: (repairId) =>
