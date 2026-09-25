@@ -290,7 +290,7 @@ function Row({
   onActivate,
 }: {
   row: WorkRow;
-  onActivate?: () => void;
+  onActivate?: (() => void) | undefined;
 }) {
   return (
     <button
