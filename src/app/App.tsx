@@ -585,13 +585,7 @@ function SearchSurface({ onClose }: { onClose: () => void }) {
         <input
           ref={inputRef}
           value={query}
-          onChange={(event) => {
-            const nextQuery = event.target.value;
-            setQuery(nextQuery);
-            setGroups([]);
-            setError(null);
-            setState(nextQuery.trim().length < 2 ? 'idle' : 'loading');
-          }}
+          onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault();
@@ -2174,7 +2168,13 @@ function LiveSearchSurface({
         <input
           ref={inputRef}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            const nextQuery = event.target.value;
+            setQuery(nextQuery);
+            setGroups([]);
+            setError(null);
+            setState(nextQuery.trim().length < 2 ? 'idle' : 'loading');
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault();
