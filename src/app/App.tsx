@@ -23,6 +23,18 @@ interface WorkRow {
   tone: Tone;
 }
 
+interface SearchPreviewRow {
+  id: string;
+  eyebrow: string;
+  title: string;
+  meta: string;
+}
+
+interface SearchPreviewGroup {
+  label: string;
+  rows: SearchPreviewRow[];
+}
+
 const navItems = [
   { id: 'today' as const, label: 'Today', icon: home2Linear },
   { id: 'work' as const, label: 'Work', icon: caseRoundLinear },
@@ -195,6 +207,64 @@ const captureTitles: Record<CaptureMode, string> = {
   reminder: 'New reminder',
 };
 
+const searchPreviewGroups: SearchPreviewGroup[] = [
+  {
+    label: 'Repairs',
+    rows: [
+      {
+        id: 'search-repair-avenge',
+        eyebrow: 'REPAIR · JOB-7A31C4F2',
+        title: 'Avenge X regulator',
+        meta: 'Waiting on transfer seal kit · serial AVX-240924',
+      },
+    ],
+  },
+  {
+    label: 'Jobs',
+    rows: [
+      {
+        id: 'search-job-baredda',
+        eyebrow: 'JOB-18E92B11 · WORKSHOP',
+        title: 'Baredda S56 final check',
+        meta: 'Final test passed · ready for collection',
+      },
+    ],
+  },
+  {
+    label: 'Tasks',
+    rows: [
+      {
+        id: 'search-task-stock',
+        eyebrow: 'TASK · INVENTORY',
+        title: 'Confirm incoming PCP seal stock',
+        meta: 'Due today 08:30 · high priority',
+      },
+    ],
+  },
+  {
+    label: 'Schedule',
+    rows: [
+      {
+        id: 'search-schedule-supplier',
+        eyebrow: 'REMINDER · 14:00',
+        title: 'Check supplier ETA',
+        meta: 'One time · linked to JOB-7A31C4F2',
+      },
+    ],
+  },
+  {
+    label: 'Parties',
+    rows: [
+      {
+        id: 'search-party-customer',
+        eyebrow: 'CUSTOMER',
+        title: 'Demo workshop customer',
+        meta: 'Linked to one active Repair',
+      },
+    ],
+  },
+];
+
 function workingDate(): string {
   return new Intl.DateTimeFormat('en-ZA', {
     timeZone: 'Africa/Johannesburg',
@@ -327,6 +397,7 @@ function ScheduleView() {
 }
 
 function SearchSurface({ onClose }: { onClose: () => void }) {
+  const [query, setQuery] = useState('');
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -350,6 +421,25 @@ function SearchSurface({ onClose }: { onClose: () => void }) {
       previousFocus?.focus();
     };
   }, []);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const groups =
+    normalizedQuery === ''
+      ? []
+      : searchPreviewGroups
+          .map((group) => ({
+            ...group,
+            rows: group.rows.filter((row) =>
+              `${row.eyebrow} ${row.title} ${row.meta}`
+                .toLowerCase()
+                .includes(normalizedQuery),
+            ),
+          }))
+          .filter((group) => group.rows.length > 0);
+  const resultCount = groups.reduce(
+    (count, group) => count + group.rows.length,
+    0,
+  );
 
   return (
     <dialog
@@ -375,21 +465,68 @@ function SearchSurface({ onClose }: { onClose: () => void }) {
         <span className="srOnly">Search Elara</span>
         <input
           ref={inputRef}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
           placeholder="Job, serial, task, customer…"
           type="search"
         />
       </label>
-      <div className="searchHint">
-        <Icon icon={magniferLinear} width={20} aria-hidden="true" />
-        <span>
-          Search customers, Job keys, repair serials, faults, schedules and
-          event detail.
-        </span>
-      </div>
+
+      {normalizedQuery === '' ? (
+        <div className="searchHint">
+          <Icon icon={magniferLinear} width={20} aria-hidden="true" />
+          <span>
+            Search customers, Job keys, repair serials, faults, schedules and
+            event detail.
+          </span>
+        </div>
+      ) : (
+        <div className="searchResults" aria-label="Preview search results">
+          <div className="searchResultSummary" role="status">
+            <span>Preview results</span>
+            <strong>{resultCount}</strong>
+          </div>
+
+          {resultCount === 0 ? (
+            <div className="searchNoResults">
+              <strong>No preview results</strong>
+              <span>
+                Live operational search will replace these fixtures when the API
+                is wired.
+              </span>
+            </div>
+          ) : (
+            groups.map((group) => (
+              <section
+                className="searchResultGroup"
+                key={group.label}
+                aria-labelledby={`search-group-${group.label.toLowerCase()}`}
+              >
+                <div className="searchGroupHeading">
+                  <h2 id={`search-group-${group.label.toLowerCase()}`}>
+                    {group.label}
+                  </h2>
+                  <span>{group.rows.length}</span>
+                </div>
+                <div className="searchResultList">
+                  {group.rows.map((row) => (
+                    <div className="searchResultRow" key={row.id}>
+                      <span className="searchResultRow__eyebrow">
+                        {row.eyebrow}
+                      </span>
+                      <strong>{row.title}</strong>
+                      <span>{row.meta}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
+        </div>
+      )}
     </dialog>
   );
 }
-
 function TaskCaptureForm() {
   return (
     <form className="captureForm" aria-describedby="capture-preview-note">

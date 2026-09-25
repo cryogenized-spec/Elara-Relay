@@ -44,12 +44,20 @@ test('mobile operations shell renders and navigates without browser errors', asy
 
   const searchButton = page.getByRole('button', { name: 'Search' });
   await searchButton.click();
-  await expect(page.getByRole('dialog', { name: 'Search' })).toBeVisible();
+  const searchDialog = page.getByRole('dialog', { name: 'Search' });
+  await expect(searchDialog).toBeVisible();
+  const searchInput = page.getByPlaceholder('Job, serial, task, customer…');
+  await expect(searchInput).toBeFocused();
+  await searchInput.fill('Avenge');
   await expect(
-    page.getByPlaceholder('Job, serial, task, customer…'),
-  ).toBeFocused();
+    searchDialog.getByRole('heading', { name: 'Repairs' }),
+  ).toBeVisible();
+  await expect(searchDialog.getByText('Avenge X regulator')).toBeVisible();
+  await expect(searchDialog.getByText('Preview results')).toBeVisible();
+  await searchInput.fill('no-such-preview-item');
+  await expect(searchDialog.getByText('No preview results')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'Search' })).toBeHidden();
+  await expect(searchDialog).toBeHidden();
   await expect(searchButton).toBeFocused();
 
   const captureButton = page.getByRole('button', { name: 'Capture' });
