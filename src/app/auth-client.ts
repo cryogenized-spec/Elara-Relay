@@ -69,9 +69,11 @@ export function createSupabaseBrowserAuth(
     },
 
     subscribe(listener) {
-      const { data } = client.auth.onAuthStateChange((_event, session) => {
+      const { data } = client.auth.onAuthStateChange((event, session) => {
         currentSession = toBrowserAuthSession(session);
-        listener(currentSession);
+        if (event !== 'INITIAL_SESSION') {
+          listener(currentSession);
+        }
       });
       return () => data.subscription.unsubscribe();
     },

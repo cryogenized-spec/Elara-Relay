@@ -68,7 +68,7 @@ for (const marker of [
 for (const marker of [
   'new SupabaseAuthVerifier',
   'readAuthRuntimeConfig(env)',
-  'createApi(kernel, authVerifier)',
+  'app: createApi(kernel, authVerifier, { allowedOrigins })',
 ]) {
   if (!persistent.includes(marker)) {
     findings.push(`Persistent runtime lost auth wiring: ${marker}`);

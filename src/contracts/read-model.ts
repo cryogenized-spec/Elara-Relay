@@ -7,12 +7,55 @@ import { scheduledActionSchema } from './scheduler';
 import { timestampSchema } from './shared';
 import { taskSchema } from './task';
 
+function duplicateIds(values: readonly { id: string }[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value.id)) duplicates.add(value.id);
+    seen.add(value.id);
+  }
+  return [...duplicates];
+}
+
+function addDuplicateIssue(
+  values: readonly { id: string }[],
+  path: string,
+  context: z.core.$RefinementCtx<unknown>,
+): void {
+  const duplicates = duplicateIds(values);
+  if (duplicates.length === 0) return;
+  context.addIssue({
+    code: 'custom',
+    path: [path],
+    message: `${path} must contain unique ids; duplicates: ${duplicates.join(', ')}`,
+  });
+}
+
 export const taskViewSchema = z
   .object({
     task: taskSchema,
     job: jobSchema.nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((view, context) => {
+    if (view.task.jobId === null && view.job !== null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['job'],
+        message: 'Standalone Task view cannot contain a Job',
+      });
+    }
+    if (
+      view.task.jobId !== null &&
+      (view.job === null || view.job.id !== view.task.jobId)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['job'],
+        message: 'Task view Job must match task.jobId',
+      });
+    }
+  });
 
 export const repairViewSchema = z
   .object({
@@ -31,7 +74,58 @@ export const jobViewSchema = z
     scheduledActions: z.array(scheduledActionSchema),
     events: z.array(eventSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((view, context) => {
+    addDuplicateIssue(view.tasks, 'tasks', context);
+    addDuplicateIssue(view.scheduledActions, 'scheduledActions', context);
+    addDuplicateIssue(view.events, 'events', context);
+
+    if (view.job.partyId === null && view.party !== null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['party'],
+        message: 'Job without partyId cannot contain a Party',
+      });
+    }
+    if (
+      view.job.partyId !== null &&
+      (view.party === null || view.party.id !== view.job.partyId)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['party'],
+        message: 'Job view Party must match job.partyId',
+      });
+    }
+
+    for (const [index, task] of view.tasks.entries()) {
+      if (task.jobId !== view.job.id) {
+        context.addIssue({
+          code: 'custom',
+          path: ['tasks', index, 'jobId'],
+          message: 'Job view Tasks must reference the viewed Job',
+        });
+      }
+    }
+
+    if (view.repair !== null && view.repair.jobId !== view.job.id) {
+      context.addIssue({
+        code: 'custom',
+        path: ['repair', 'jobId'],
+        message: 'Job view Repair must reference the viewed Job',
+      });
+    }
+
+    for (const [index, action] of view.scheduledActions.entries()) {
+      if (action.jobId !== view.job.id) {
+        context.addIssue({
+          code: 'custom',
+          path: ['scheduledActions', index, 'jobId'],
+          message: 'Job view Scheduled Actions must reference the viewed Job',
+        });
+      }
+    }
+  });
 
 export const todayResultSchema = z
   .object({
@@ -40,7 +134,12 @@ export const todayResultSchema = z
     repairs: z.array(repairSchema),
     scheduledActions: z.array(scheduledActionSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    addDuplicateIssue(result.tasks, 'tasks', context);
+    addDuplicateIssue(result.repairs, 'repairs', context);
+    addDuplicateIssue(result.scheduledActions, 'scheduledActions', context);
+  });
 
 export const workResultSchema = z
   .object({
@@ -48,7 +147,35 @@ export const workResultSchema = z
     jobs: z.array(jobSchema),
     tasks: z.array(taskSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    addDuplicateIssue(result.parties, 'parties', context);
+    addDuplicateIssue(result.jobs, 'jobs', context);
+    addDuplicateIssue(result.tasks, 'tasks', context);
+
+    const partyIds = new Set(result.parties.map((party) => party.id));
+    const jobIds = new Set(result.jobs.map((job) => job.id));
+
+    for (const [index, job] of result.jobs.entries()) {
+      if (job.partyId !== null && !partyIds.has(job.partyId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['jobs', index, 'partyId'],
+          message: 'Job partyId must reference a Party in the Work aggregate',
+        });
+      }
+    }
+
+    for (const [index, task] of result.tasks.entries()) {
+      if (task.jobId !== null && !jobIds.has(task.jobId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['tasks', index, 'jobId'],
+          message: 'Task jobId must reference a Job in the Work aggregate',
+        });
+      }
+    }
+  });
 
 export const repairsResultSchema = z
   .object({
@@ -56,7 +183,35 @@ export const repairsResultSchema = z
     jobs: z.array(jobSchema),
     repairs: z.array(repairSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    addDuplicateIssue(result.parties, 'parties', context);
+    addDuplicateIssue(result.jobs, 'jobs', context);
+    addDuplicateIssue(result.repairs, 'repairs', context);
+
+    const partyIds = new Set(result.parties.map((party) => party.id));
+    const jobIds = new Set(result.jobs.map((job) => job.id));
+
+    for (const [index, job] of result.jobs.entries()) {
+      if (job.partyId !== null && !partyIds.has(job.partyId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['jobs', index, 'partyId'],
+          message: 'Job partyId must reference a Party in the Repairs aggregate',
+        });
+      }
+    }
+
+    for (const [index, repair] of result.repairs.entries()) {
+      if (!jobIds.has(repair.jobId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['repairs', index, 'jobId'],
+          message: 'Repair jobId must reference a Job in the Repairs aggregate',
+        });
+      }
+    }
+  });
 
 export const scheduleResultSchema = z
   .object({
@@ -65,7 +220,50 @@ export const scheduleResultSchema = z
     upcoming: z.array(scheduledActionSchema),
     paused: z.array(scheduledActionSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    const all = [...result.due, ...result.upcoming, ...result.paused];
+    addDuplicateIssue(all, 'schedule', context);
+    const asOf = Date.parse(result.asOf);
+
+    for (const [index, action] of result.due.entries()) {
+      if (
+        action.status !== 'ACTIVE' ||
+        action.nextRunAt === null ||
+        Date.parse(action.nextRunAt) > asOf
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['due', index],
+          message: 'Due actions must be ACTIVE with nextRunAt at or before asOf',
+        });
+      }
+    }
+
+    for (const [index, action] of result.upcoming.entries()) {
+      if (
+        action.status !== 'ACTIVE' ||
+        action.nextRunAt === null ||
+        Date.parse(action.nextRunAt) <= asOf
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['upcoming', index],
+          message: 'Upcoming actions must be ACTIVE with nextRunAt after asOf',
+        });
+      }
+    }
+
+    for (const [index, action] of result.paused.entries()) {
+      if (action.status !== 'PAUSED') {
+        context.addIssue({
+          code: 'custom',
+          path: ['paused', index, 'status'],
+          message: 'Paused bucket may contain only PAUSED actions',
+        });
+      }
+    }
+  });
 
 export const searchResultSchema = z
   .object({
@@ -76,7 +274,15 @@ export const searchResultSchema = z
     scheduledActions: z.array(scheduledActionSchema),
     events: z.array(eventSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    addDuplicateIssue(result.parties, 'parties', context);
+    addDuplicateIssue(result.jobs, 'jobs', context);
+    addDuplicateIssue(result.tasks, 'tasks', context);
+    addDuplicateIssue(result.repairs, 'repairs', context);
+    addDuplicateIssue(result.scheduledActions, 'scheduledActions', context);
+    addDuplicateIssue(result.events, 'events', context);
+  });
 
 export type TaskViewPayload = z.infer<typeof taskViewSchema>;
 export type RepairViewPayload = z.infer<typeof repairViewSchema>;
