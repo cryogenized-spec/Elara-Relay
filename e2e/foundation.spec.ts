@@ -153,11 +153,13 @@ test('authenticated mobile operations shell reads live domain state', async ({
   const captureDialog = page.getByRole('dialog', { name: 'Capture' });
   await expect(captureDialog).toBeVisible();
   await captureDialog.getByRole('button', { name: /^Task/ }).click();
-  await page.getByLabel('Title').fill('Count incoming repair seals');
-  await page.getByLabel('Priority').selectOption('HIGH');
-  await page.getByRole('button', { name: 'Save Task' }).click();
+  const taskCaptureDialog = page.getByRole('dialog', { name: 'New task' });
+  await taskCaptureDialog.getByLabel('Title').fill('Count incoming repair seals');
+  await taskCaptureDialog.getByLabel('Priority').selectOption('HIGH');
+  await taskCaptureDialog.getByRole('button', { name: 'Save Task' }).click();
 
-  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await expect(taskCaptureDialog).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
   await page.getByRole('button', { name: 'Work' }).click();
   await expect(
     page.getByText('Count incoming repair seals', { exact: true }),
@@ -353,22 +355,23 @@ test('Task Capture retries one unchanged durable mutation intent', async ({
   await page.getByRole('button', { name: 'Capture' }).click();
   const capture = page.getByRole('dialog', { name: 'Capture' });
   await capture.getByRole('button', { name: /^Task/ }).click();
+  const taskCapture = page.getByRole('dialog', { name: 'New task' });
 
-  await page.getByLabel('Title').fill('Retry-safe captured Task');
-  await page.getByLabel('Priority').selectOption('URGENT');
-  await page.getByRole('button', { name: 'Save Task' }).click();
+  await taskCapture.getByLabel('Title').fill('Retry-safe captured Task');
+  await taskCapture.getByLabel('Priority').selectOption('URGENT');
+  await taskCapture.getByRole('button', { name: 'Save Task' }).click();
 
   await expect(
-    capture.getByRole('alert'),
+    taskCapture.getByRole('alert'),
   ).toContainText('Temporary Task save failure');
-  await expect(page.getByLabel('Title')).toHaveValue(
+  await expect(taskCapture.getByLabel('Title')).toHaveValue(
     'Retry-safe captured Task',
   );
   await expect(
-    page.getByRole('button', { name: 'Retry save' }),
+    taskCapture.getByRole('button', { name: 'Retry save' }),
   ).toBeVisible();
 
-  await page.getByRole('button', { name: 'Retry save' }).click();
+  await taskCapture.getByRole('button', { name: 'Retry save' }).click();
 
   await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
   await page.getByRole('button', { name: 'Work' }).click();
