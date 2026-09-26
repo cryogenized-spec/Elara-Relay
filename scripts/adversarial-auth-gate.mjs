@@ -194,6 +194,44 @@ mutate(
   'single Dashboard endpoint bypass',
 );
 
+mutate(
+  'src/app/operations-api.ts',
+  `  try {
+    text = await response.text();
+  } catch {
+    return { parsed: false };
+  }`,
+  `  text = await response.text();`,
+  () => runVitest('src/app/operations-api.test.ts'),
+  'authorization response-body stream failure classification bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  `const duplicateJobKeys = duplicateStrings(
+      result.jobs.map((job) => job.key),
+    );`,
+  `const duplicateJobKeys = [];`,
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Work duplicate Job-key validation bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  'if (duplicateMutationIds.length > 0) {',
+  'if (false) {',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Job Event mutation-id uniqueness bypass',
+);
+
+mutate(
+  'src/app/read-view-model.ts',
+  'const linkedKey = jobKey(action.jobId ?? taskJobId, jobs);',
+  'const linkedKey = jobKey(action.jobId, jobs);',
+  () => runVitest('src/app/read-view-model.test.ts'),
+  'task-only Scheduled Action Job-context bypass',
+);
+
 process.stdout.write(
-  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, stale-session denial isolation, Search truthfulness, strict read-model validation, and modern publishable-key controls resisted hostile mutations.\n',
+  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, stale-session denial isolation, Search truthfulness, strict read-model validation, authorization body-read failures, duplicate durable identifiers, task-only scheduler relationships, and modern publishable-key controls resisted hostile mutations.\n',
 );
