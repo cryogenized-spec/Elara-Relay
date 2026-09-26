@@ -21,13 +21,34 @@ export function resolveMutationAttempt(
 }
 
 export function johannesburgLocalDateTimeToIso(value: string): string | null {
-  if (value.trim() === '') return null;
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
+  const normalized = value.trim();
+  if (normalized === '') return null;
+
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(normalized);
+  if (match === null) {
     throw new Error('Date and time must use YYYY-MM-DDTHH:mm');
   }
-  const parsed = new Date(`${value}:00+02:00`);
-  if (Number.isNaN(parsed.getTime())) {
+
+  const [, yearRaw, monthRaw, dayRaw, hourRaw, minuteRaw] = match;
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  const hour = Number(hourRaw);
+  const minute = Number(minuteRaw);
+
+  const utcMillis = Date.UTC(year, month - 1, day, hour - 2, minute);
+  const localCheck = new Date(utcMillis + 2 * 60 * 60 * 1000);
+
+  if (
+    localCheck.getUTCFullYear() !== year ||
+    localCheck.getUTCMonth() !== month - 1 ||
+    localCheck.getUTCDate() !== day ||
+    localCheck.getUTCHours() !== hour ||
+    localCheck.getUTCMinutes() !== minute
+  ) {
     throw new Error('Date and time is invalid');
   }
-  return parsed.toISOString();
+
+  return new Date(utcMillis).toISOString();
 }
