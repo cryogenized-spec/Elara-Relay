@@ -44,6 +44,14 @@ export const fieldChangeSchema = z
 type EventEntityTypeValue = z.infer<typeof eventEntityTypeSchema>;
 type EventTypeValue = z.infer<typeof eventTypeSchema>;
 
+const creationEventTypes = new Set<EventTypeValue>([
+  'PARTY_CREATED',
+  'JOB_CREATED',
+  'TASK_CREATED',
+  'REPAIR_CREATED',
+  'SCHEDULED_ACTION_CREATED',
+]);
+
 const eventTypesByEntity: Record<
   EventEntityTypeValue,
   readonly EventTypeValue[]
@@ -97,6 +105,17 @@ export const eventSchema = z
         code: 'custom',
         path: ['eventType'],
         message: `${eventValue.eventType} is not valid for ${eventValue.entityType} events`,
+      });
+    }
+
+    if (
+      creationEventTypes.has(eventValue.eventType) &&
+      eventValue.revisionAfter !== 1
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['revisionAfter'],
+        message: 'Creation Events must record revisionAfter 1',
       });
     }
   });

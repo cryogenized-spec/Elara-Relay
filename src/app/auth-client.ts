@@ -49,6 +49,16 @@ export function toBrowserAuthSession(
   };
 }
 
+export function toBrowserAuthEventSession(
+  session: RawSession | null,
+): BrowserAuthSession | null {
+  try {
+    return toBrowserAuthSession(session);
+  } catch {
+    return null;
+  }
+}
+
 export function createSupabaseBrowserAuth(
   config: BrowserRuntimeConfig,
 ): BrowserAuthClient {
@@ -86,7 +96,7 @@ export function createSupabaseBrowserAuth(
 
     subscribe(listener) {
       const { data } = client.auth.onAuthStateChange((event, session) => {
-        currentSession = toBrowserAuthSession(session);
+        currentSession = toBrowserAuthEventSession(session);
         if (event !== 'INITIAL_SESSION') {
           listener(currentSession);
         }
