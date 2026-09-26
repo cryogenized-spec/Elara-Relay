@@ -29,7 +29,24 @@ function isoOffset(asOf: string, minutes: number): string {
   return new Date(Date.parse(asOf) + minutes * 60_000).toISOString();
 }
 
-function sessionPayload(accessToken = 'test-access-token') {
+function base64Url(value: unknown): string {
+  return Buffer.from(JSON.stringify(value))
+    .toString('base64url');
+}
+
+function testAccessToken(grant: number): string {
+  const header = base64Url({ alg: 'none', typ: 'JWT' });
+  const payload = base64Url({
+    sub: IDS.user,
+    session_id: IDS.session,
+    role: 'authenticated',
+    aal: 'aal1',
+    jti: `playwright-${grant}`,
+  });
+  return `${header}.${payload}.fixture`;
+}
+
+function sessionPayload(accessToken = testAccessToken(0)) {
   return {
     access_token: accessToken,
     token_type: 'bearer',
@@ -321,7 +338,7 @@ export async function installLiveHarness(
       url.pathname.endsWith('/token/')
     ) {
       tokenGrantCount += 1;
-      await route.fulfill(json(sessionPayload(`test-access-token-${tokenGrantCount}`)));
+      await route.fulfill(json(sessionPayload(testAccessToken(tokenGrantCount))));
       return;
     }
 
