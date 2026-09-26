@@ -193,6 +193,7 @@ describe('read model view adapter', () => {
         upcoming: [],
         paused: [],
       },
+      { parties: [party], jobs: [job], tasks: [task] },
     );
 
     expect(view.summary.today).toBe(1);
@@ -227,6 +228,7 @@ describe('read model view adapter', () => {
         upcoming: [],
         paused: [],
       },
+      { parties: [party], jobs: [job], tasks: [followUpTask] },
     );
 
     expect(view.summary.overdue).toBe(1);
