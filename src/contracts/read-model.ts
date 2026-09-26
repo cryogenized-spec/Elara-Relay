@@ -197,7 +197,6 @@ export const jobViewSchema = z
       view.scheduledActions.map((action) => [action.id, action]),
     );
     const taskIds = new Set(tasksById.keys());
-    const actionIds = new Set(actionsById.keys());
 
     for (const [index, action] of view.scheduledActions.entries()) {
       const directJobMatch = action.jobId === view.job.id;
