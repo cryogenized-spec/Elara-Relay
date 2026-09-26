@@ -172,8 +172,8 @@ mutate(
 
 mutate(
   'src/app/App.tsx',
-  'authorizedUserId === null ||',
-  'authorizedUserId !== null &&',
+  "authorizedUserId === null ||\n        session.userId !== authorizedUserId ||\n        session.sessionId !== authorizedSessionId",
+  "authorizedUserId !== null &&\n        session.userId !== authorizedUserId",
   () => runVitest('src/app/live-auth-lifecycle.test.tsx'),
   'signed-out cross-tab session authorization bypass',
 );
