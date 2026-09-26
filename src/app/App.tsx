@@ -2580,6 +2580,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
     readState.today,
     readState.repairs,
     readState.schedule,
+    readState.work,
   );
   const workModel = buildWorkView(readState.work);
   const repairsModel = buildRepairsView(readState.repairs);

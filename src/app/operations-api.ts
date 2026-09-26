@@ -125,7 +125,13 @@ type ParsedResponseBody =
   | { parsed: false };
 
 async function readResponseBody(response: Response): Promise<ParsedResponseBody> {
-  const text = await response.text();
+  let text: string;
+  try {
+    text = await response.text();
+  } catch {
+    return { parsed: false };
+  }
+
   if (text.trim() === '') return { parsed: false };
 
   try {

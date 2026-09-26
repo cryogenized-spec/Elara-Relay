@@ -158,6 +158,7 @@ describe('read model view adapter', () => {
         upcoming: [action],
         paused: [],
       },
+      { parties: [party], jobs: [job], tasks: [task] },
     );
 
     expect(view.summary).toEqual({
@@ -371,5 +372,27 @@ describe('read model view adapter', () => {
       'Upcoming',
       'Paused',
     ]);
+  });
+});
+
+describe('scheduled relationship presentation', () => {
+  it('resolves task-only Scheduled Action Job context', () => {
+    const taskOnlyAction = {
+      ...action,
+      jobId: null,
+      taskId: task.id,
+      id: '10000000-0000-4000-8000-000000000099',
+    };
+    const view = buildScheduleView(
+      {
+        asOf: '2026-09-25T03:00:00.000Z',
+        due: [],
+        upcoming: [taskOnlyAction],
+        paused: [],
+      },
+      { parties: [party], jobs: [job], tasks: [task] },
+    );
+
+    expect(view.rows[0]?.meta).toContain(job.key);
   });
 });
