@@ -169,6 +169,52 @@ describe('Operations API browser client', () => {
     );
   });
 
+  it('classifies a body-stream failure on 401 before callers can retain stale state', async () => {
+    const brokenResponse = {
+      status: 401,
+      ok: false,
+      text: vi.fn().mockRejectedValue(new Error('stream aborted')),
+    } as unknown as Response;
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(brokenResponse);
+
+    const api = createOperationsApi({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'expired-token',
+      fetchImpl,
+    });
+
+    await expect(api.work()).rejects.toEqual(
+      new OperationsApiError(
+        401,
+        'UNAUTHENTICATED',
+        'Operations API returned HTTP 401',
+      ),
+    );
+  });
+
+  it('classifies a body-stream failure on 403 before callers can retain stale state', async () => {
+    const brokenResponse = {
+      status: 403,
+      ok: false,
+      text: vi.fn().mockRejectedValue(new Error('stream aborted')),
+    } as unknown as Response;
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(brokenResponse);
+
+    const api = createOperationsApi({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'session-token',
+      fetchImpl,
+    });
+
+    await expect(api.work()).rejects.toEqual(
+      new OperationsApiError(
+        403,
+        'FORBIDDEN',
+        'Operations API returned HTTP 403',
+      ),
+    );
+  });
+
   it('rejects malformed success payloads instead of trusting the server shape', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ jobs: [] }), {

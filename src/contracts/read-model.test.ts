@@ -918,3 +918,77 @@ describe('read-model aggregate invariants', () => {
   });
 
 });
+
+describe('read-model uniqueness hardening', () => {
+  it('rejects duplicate Job keys even when ids differ', () => {
+    const baseJob = {
+      id: '10000000-0000-4000-8000-000000000101',
+      key: 'JOB-AABBCCDD',
+      title: 'First',
+      category: 'ACTIVE' as const,
+      partyId: null,
+      createdAt: '2026-09-26T03:00:00.000Z',
+      updatedAt: '2026-09-26T03:00:00.000Z',
+      revision: 1,
+    };
+    expect(() =>
+      workResultSchema.parse({
+        parties: [],
+        jobs: [
+          baseJob,
+          {
+            ...baseJob,
+            id: '10000000-0000-4000-8000-000000000102',
+            title: 'Second',
+          },
+        ],
+        tasks: [],
+      }),
+    ).toThrow(/unique Job keys/);
+  });
+
+  it('rejects repeated mutationIds in Job aggregate history', () => {
+    const job = {
+      id: '10000000-0000-4000-8000-000000000201',
+      key: 'JOB-11223344',
+      title: 'History job',
+      category: 'ACTIVE' as const,
+      partyId: null,
+      createdAt: '2026-09-26T03:00:00.000Z',
+      updatedAt: '2026-09-26T03:00:00.000Z',
+      revision: 1,
+    };
+    const baseEvent = {
+      id: '10000000-0000-4000-8000-000000000211',
+      mutationId: 'MUT-duplicate-history-0001',
+      actor: 'operator-ui' as const,
+      entityType: 'JOB' as const,
+      entityId: job.id,
+      eventType: 'JOB_CREATED' as const,
+      occurredAt: '2026-09-26T03:00:00.000Z',
+      detail: null,
+      changes: {},
+      revisionAfter: 1,
+    };
+
+    expect(() =>
+      jobViewSchema.parse({
+        job,
+        party: null,
+        tasks: [],
+        repair: null,
+        repairWarnings: [],
+        scheduledActions: [],
+        events: [
+          baseEvent,
+          {
+            ...baseEvent,
+            id: '10000000-0000-4000-8000-000000000212',
+            eventType: 'JOB_NOTE',
+            detail: 'Duplicate mutation identity',
+          },
+        ],
+      }),
+    ).toThrow(/unique mutationIds/);
+  });
+});

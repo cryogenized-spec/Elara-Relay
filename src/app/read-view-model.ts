@@ -294,8 +294,11 @@ function scheduleRow(
   action: ScheduledAction,
   state: 'Due' | 'Upcoming' | 'Paused' | 'Completed' | 'Cancelled',
   jobs: Map<string, Job>,
+  tasks: Map<string, Task> = new Map(),
 ): UiRow {
-  const linkedKey = jobKey(action.jobId, jobs);
+  const taskJobId =
+    action.taskId === null ? null : (tasks.get(action.taskId)?.jobId ?? null);
+  const linkedKey = jobKey(action.jobId ?? taskJobId, jobs);
   return {
     id: action.id,
     entityType: 'SCHEDULED_ACTION',
@@ -321,18 +324,20 @@ export function buildTodayView(
   today: TodayResultPayload,
   repairs: RepairsResultPayload,
   schedule: ScheduleResultPayload,
+  work: WorkResultPayload,
 ): TodayViewModel {
   const jobs = indexById(repairs.jobs);
+  const tasks = indexById(work.tasks);
   const dueTasks = today.tasks.map((task) => taskRow(task, jobs, today.asOf));
   const waitingRepairs = today.repairs.map((repair) => repairRow(repair, jobs));
   const dueActions = today.scheduledActions.map((action) =>
-    scheduleRow(action, 'Due', jobs),
+    scheduleRow(action, 'Due', jobs, tasks),
   );
   const ready = repairs.repairs
     .filter((repair) => repair.stage === 'READY')
     .map((repair) => repairRow(repair, jobs));
   const next = schedule.upcoming.slice(0, 2).map((action) =>
-    scheduleRow(action, 'Upcoming', jobs),
+    scheduleRow(action, 'Upcoming', jobs, tasks),
   );
 
   return {
@@ -416,13 +421,16 @@ export function buildScheduleView(
   work: WorkResultPayload,
 ): ScheduleViewModel {
   const jobs = indexById(work.jobs);
+  const tasks = indexById(work.tasks);
   return {
     rows: [
-      ...schedule.due.map((action) => scheduleRow(action, 'Due', jobs)),
+      ...schedule.due.map((action) => scheduleRow(action, 'Due', jobs, tasks)),
       ...schedule.upcoming.map((action) =>
-        scheduleRow(action, 'Upcoming', jobs),
+        scheduleRow(action, 'Upcoming', jobs, tasks),
       ),
-      ...schedule.paused.map((action) => scheduleRow(action, 'Paused', jobs)),
+      ...schedule.paused.map((action) =>
+        scheduleRow(action, 'Paused', jobs, tasks),
+      ),
     ],
   };
 }

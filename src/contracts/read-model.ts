@@ -21,6 +21,16 @@ function duplicateIds(values: readonly { id: string }[]): string[] {
   return [...duplicates];
 }
 
+function duplicateStrings(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) duplicates.add(value);
+    seen.add(value);
+  }
+  return [...duplicates];
+}
+
 function duplicateMessage(
   values: readonly { id: string }[],
   path: string,
@@ -107,6 +117,17 @@ export const jobViewSchema = z
     const eventDuplicates = duplicateMessage(view.events, 'events');
     if (eventDuplicates !== null) {
       context.addIssue({ code: 'custom', path: ['events'], message: eventDuplicates });
+    }
+    const duplicateMutationIds = duplicateStrings(
+      view.events.map((event) => event.mutationId),
+    );
+    if (duplicateMutationIds.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['events'],
+        message:
+          `events must contain unique mutationIds; duplicates: ${duplicateMutationIds.join(', ')}`,
+      });
     }
 
     if (view.job.partyId === null && view.party !== null) {
@@ -317,6 +338,18 @@ export const workResultSchema = z
     if (jobDuplicates !== null) {
       context.addIssue({ code: 'custom', path: ['jobs'], message: jobDuplicates });
     }
+    const duplicateJobKeys = duplicateStrings(
+      result.jobs.map((job) => job.key),
+    );
+    if (duplicateJobKeys.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['jobs'],
+        message:
+          'Work must contain unique Job keys; duplicates: ' +
+          duplicateJobKeys.join(', '),
+      });
+    }
     const taskDuplicates = duplicateMessage(result.tasks, 'tasks');
     if (taskDuplicates !== null) {
       context.addIssue({ code: 'custom', path: ['tasks'], message: taskDuplicates });
@@ -361,6 +394,18 @@ export const repairsResultSchema = z
     const jobDuplicates = duplicateMessage(result.jobs, 'jobs');
     if (jobDuplicates !== null) {
       context.addIssue({ code: 'custom', path: ['jobs'], message: jobDuplicates });
+    }
+    const duplicateJobKeys = duplicateStrings(
+      result.jobs.map((job) => job.key),
+    );
+    if (duplicateJobKeys.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['jobs'],
+        message:
+          'Repairs must contain unique Job keys; duplicates: ' +
+          duplicateJobKeys.join(', '),
+      });
     }
     const repairDuplicates = duplicateMessage(result.repairs, 'repairs');
     if (repairDuplicates !== null) {
