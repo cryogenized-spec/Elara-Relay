@@ -470,6 +470,93 @@ describe('API foundation', () => {
     expect(repairsResult.repairs).toEqual([]);
   });
 
+  it('creates a Repair case atomically and replays the same receipt safely', async () => {
+    const app = makeApi();
+    const request = {
+      mutation: { mutationId: 'MUT-repaircase-0001' },
+      input: {
+        party: {
+          mode: 'NEW_CUSTOMER',
+          name: 'Atomic Repair Customer',
+        },
+        jobTitle: 'Atomic Repair Job',
+        reportedFault: 'Valve leak',
+        serialState: 'UNKNOWN',
+        serialValue: null,
+        storageLocation: 'Workshop shelf',
+      },
+    };
+
+    const first = await jsonRequest(app, '/repair-cases', 'POST', request);
+    expect(first.status).toBe(201);
+    const result = (await first.json()) as {
+      party: { id: string; name: string };
+      job: { id: string; title: string; partyId: string };
+      repair: { id: string; jobId: string; reportedFault: string };
+    };
+    expect(result.party.name).toBe('Atomic Repair Customer');
+    expect(result.job).toMatchObject({
+      title: 'Atomic Repair Job',
+      partyId: result.party.id,
+    });
+    expect(result.repair).toMatchObject({
+      jobId: result.job.id,
+      reportedFault: 'Valve leak',
+    });
+
+    const replay = await jsonRequest(app, '/repair-cases', 'POST', request);
+    expect(replay.status).toBe(201);
+    await expect(replay.json()).resolves.toEqual(result);
+
+    const repairs = await app.request('/repairs', {
+      headers: authorizationHeaders(),
+    });
+    const repairState = (await repairs.json()) as {
+      parties: Array<{ id: string }>;
+      jobs: Array<{ id: string }>;
+      repairs: Array<{ id: string }>;
+    };
+    expect(repairState.parties).toHaveLength(1);
+    expect(repairState.jobs).toHaveLength(1);
+    expect(repairState.repairs).toHaveLength(1);
+    expect(repairState.repairs[0]?.id).toBe(result.repair.id);
+  });
+
+  it('reuses an existing Party in an atomic Repair case without duplicating it', async () => {
+    const app = makeApi();
+    const partyResponse = await jsonRequest(app, '/parties', 'POST', {
+      mutation: { mutationId: 'MUT-repaircase-party-0001' },
+      input: { name: 'Existing Customer', kind: 'CUSTOMER' },
+    });
+    const party = (await partyResponse.json()) as { id: string };
+
+    const response = await jsonRequest(app, '/repair-cases', 'POST', {
+      mutation: { mutationId: 'MUT-repaircase-0002' },
+      input: {
+        party: { mode: 'EXISTING', partyId: party.id },
+        jobTitle: 'Existing customer repair',
+        reportedFault: 'Pressure loss',
+        serialState: 'KNOWN',
+        serialValue: 'SER-100',
+        storageLocation: null,
+      },
+    });
+    expect(response.status).toBe(201);
+
+    const repairs = await app.request('/repairs', {
+      headers: authorizationHeaders(),
+    });
+    const repairState = (await repairs.json()) as {
+      parties: Array<{ id: string }>;
+      jobs: Array<{ partyId: string | null }>;
+      repairs: unknown[];
+    };
+    expect(repairState.parties).toHaveLength(1);
+    expect(repairState.jobs).toHaveLength(1);
+    expect(repairState.jobs[0]?.partyId).toBe(party.id);
+    expect(repairState.repairs).toHaveLength(1);
+  });
+
   it('maps domain conflicts, missing entities, and malformed requests safely', async () => {
     const app = makeApi();
 
