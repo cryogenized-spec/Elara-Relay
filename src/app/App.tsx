@@ -2497,6 +2497,186 @@ function LiveTaskCaptureForm({
   );
 }
 
+function LiveReminderCaptureForm({
+  runtime,
+  jobs,
+  onClose,
+  onCommitted,
+  onAuthorizationFailure,
+  authorizationSessionId,
+}: {
+  runtime: BrowserRuntime;
+  jobs: LiveReadState['work']['jobs'];
+  onClose: () => void;
+  onCommitted: () => Promise<void>;
+  onAuthorizationFailure: AuthorizationFailureHandler;
+  authorizationSessionId: string | null;
+}) {
+  const [title, setTitle] = useState('');
+  const [runLocal, setRunLocal] = useState('');
+  const [repeat, setRepeat] = useState<'once' | 'daily' | 'weekly'>('once');
+  const [jobId, setJobId] = useState('');
+  const [state, setState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const pendingAttempt = useRef<PendingMutationAttempt | null>(null);
+
+  const submit = async () => {
+    let runAt: string | null;
+    try {
+      runAt = johannesburgLocalDateTimeToIso(runLocal);
+    } catch (caught: unknown) {
+      setError(readableError(caught));
+      setState('error');
+      return;
+    }
+
+    if (runAt === null) {
+      setError('Run at is required');
+      setState('error');
+      return;
+    }
+
+    const input = {
+      jobId: jobId === '' ? null : jobId,
+      taskId: null,
+      title: title.trim(),
+      actionType: 'REMINDER' as const,
+      payload: {
+        kind: 'REMINDER' as const,
+        message: title.trim(),
+      },
+      timezone: 'Africa/Johannesburg' as const,
+      recurrenceRule:
+        repeat === 'daily'
+          ? 'FREQ=DAILY;INTERVAL=1'
+          : repeat === 'weekly'
+            ? 'FREQ=WEEKLY;INTERVAL=1'
+            : null,
+      runAt,
+    };
+
+    const attempt = resolveMutationAttempt(pendingAttempt.current, input);
+    pendingAttempt.current = attempt;
+    const requestAccessToken = runtime.auth.getAccessToken();
+
+    setError(null);
+    setState('saving');
+    try {
+      await runtime.api.createScheduledAction({
+        mutationId: attempt.mutationId,
+        input,
+      });
+      pendingAttempt.current = null;
+      onClose();
+      await onCommitted();
+    } catch (caught: unknown) {
+      if (
+        onAuthorizationFailure(
+          caught,
+          requestAccessToken,
+          authorizationSessionId,
+        )
+      ) {
+        return;
+      }
+      setError(readableError(caught));
+      setState('error');
+    }
+  };
+
+  return (
+    <form
+      className="captureForm"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <label className="formField">
+        <span>Title</span>
+        <input
+          name="reminder-title"
+          placeholder="What should happen?"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          maxLength={240}
+          required
+        />
+      </label>
+      <label className="formField">
+        <span>Run at</span>
+        <input
+          name="reminder-run-at"
+          type="datetime-local"
+          value={runLocal}
+          onChange={(event) => setRunLocal(event.target.value)}
+          required
+        />
+        <small>Africa/Johannesburg</small>
+      </label>
+      <label className="formField">
+        <span>Repeat</span>
+        <select
+          name="reminder-repeat"
+          value={repeat}
+          onChange={(event) =>
+            setRepeat(event.target.value as 'once' | 'daily' | 'weekly')
+          }
+        >
+          <option value="once">One time</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+        </select>
+      </label>
+      <label className="formField">
+        <span>Linked Job</span>
+        <select
+          name="reminder-job"
+          value={jobId}
+          onChange={(event) => setJobId(event.target.value)}
+        >
+          <option value="">No linked Job</option>
+          {jobs
+            .filter(
+              (job) =>
+                job.category !== 'DONE' && job.category !== 'CANCELLED',
+            )
+            .map((job) => (
+              <option key={job.id} value={job.id}>
+                {job.key} · {job.title}
+              </option>
+            ))}
+        </select>
+      </label>
+
+      {error === null ? null : (
+        <p className="captureError" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="captureForm__footer">
+        <p>Saved as a durable Scheduled Action.</p>
+        <button
+          className="primaryButton"
+          type="submit"
+          disabled={
+            state === 'saving' ||
+            title.trim() === '' ||
+            runLocal.trim() === ''
+          }
+        >
+          {state === 'saving'
+            ? 'Saving…'
+            : state === 'error'
+              ? 'Retry save'
+              : 'Save Reminder'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function LiveCaptureSheet({
   runtime,
   work,
@@ -2603,7 +2783,11 @@ function LiveCaptureSheet({
               <small>Durable workflow coming next in Pass 1H</small>
             </span>
           </button>
-          <button className="captureChoice" type="button" disabled>
+          <button
+            className="captureChoice"
+            type="button"
+            onClick={() => setMode('reminder')}
+          >
             <Icon
               className="captureChoice__icon"
               icon={calendarLinear}
@@ -2612,12 +2796,22 @@ function LiveCaptureSheet({
             />
             <span>
               <strong>Reminder</strong>
-              <small>Durable workflow coming next in Pass 1H</small>
+              <small>Create a durable Scheduled Action</small>
             </span>
+            <Icon icon={altArrowRightLinear} width={18} aria-hidden="true" />
           </button>
         </div>
       ) : mode === 'task' ? (
         <LiveTaskCaptureForm
+          runtime={runtime}
+          jobs={work.jobs}
+          onClose={onClose}
+          onCommitted={onCommitted}
+          onAuthorizationFailure={onAuthorizationFailure}
+          authorizationSessionId={authorizationSessionId}
+        />
+      ) : mode === 'reminder' ? (
+        <LiveReminderCaptureForm
           runtime={runtime}
           jobs={work.jobs}
           onClose={onClose}
