@@ -2403,6 +2403,7 @@ function LiveTaskCaptureForm({
           authorizationSessionId,
         )
       ) {
+        setState('idle');
         return;
       }
       setError(readableError(caught));
@@ -2577,6 +2578,7 @@ function LiveReminderCaptureForm({
           authorizationSessionId,
         )
       ) {
+        setState('idle');
         return;
       }
       setError(readableError(caught));
