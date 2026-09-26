@@ -741,6 +741,73 @@ export async function installLiveHarness(
       return;
     }
 
+    if (
+      path === `/tasks/${IDS.taskPressure}` &&
+      route.request().method() === 'PATCH'
+    ) {
+      const current =
+        mutatedPressureTask ??
+        tasks(asOf).find((task) => task.id === IDS.taskPressure)!;
+      const raw = route.request().postDataJSON() as {
+        mutation?: { expectedRevision?: unknown };
+        patch?: {
+          title?: unknown;
+          status?: unknown;
+          priority?: unknown;
+          dueAt?: unknown;
+          followUpAt?: unknown;
+        };
+      };
+      if (raw.mutation?.expectedRevision !== current.revision) {
+        await route.fulfill(
+          json(
+            { error: { code: 'CONFLICT', message: 'Revision conflict' } },
+            409,
+          ),
+        );
+        return;
+      }
+
+      const patch = raw.patch ?? {};
+      mutatedPressureTask = {
+        ...current,
+        ...(typeof patch.title === 'string' ? { title: patch.title } : {}),
+        ...(patch.status === 'INBOX' ||
+        patch.status === 'NEXT' ||
+        patch.status === 'DOING'
+          ? {
+              status: patch.status,
+              waitingOn: null,
+              waitingSince: null,
+            }
+          : {}),
+        ...(patch.priority === 'URGENT' ||
+        patch.priority === 'HIGH' ||
+        patch.priority === 'NORMAL' ||
+        patch.priority === 'LOW'
+          ? { priority: patch.priority }
+          : {}),
+        ...('dueAt' in patch
+          ? {
+              dueAt:
+                typeof patch.dueAt === 'string' ? patch.dueAt : null,
+            }
+          : {}),
+        ...('followUpAt' in patch
+          ? {
+              followUpAt:
+                typeof patch.followUpAt === 'string'
+                  ? patch.followUpAt
+                  : null,
+            }
+          : {}),
+        updatedAt: '2026-09-26T05:05:00.000Z',
+        revision: current.revision + 1,
+      };
+      await route.fulfill(json(mutatedPressureTask));
+      return;
+    }
+
     if (path === '/schedule' && route.request().method() === 'POST') {
       const raw = route.request().postDataJSON() as {
         mutation?: { mutationId?: unknown };
