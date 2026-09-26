@@ -2748,6 +2748,7 @@ function LiveCaptureSheet({
       className="captureSheet"
       ref={dialogRef}
       aria-labelledby="live-capture-title"
+      aria-busy={busy}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();
