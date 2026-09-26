@@ -139,10 +139,10 @@ mutate(
 
 mutate(
   'src/app/App.tsx',
-  'session.userId !== authorizedUserId',
-  'false',
+  "authorizedUserId === null ||\n        session.userId !== authorizedUserId ||\n        session.sessionId !== authorizedSessionId",
+  'authorizedUserId === null',
   () => runVitest('src/app/live-auth-lifecycle.test.tsx'),
-  'authenticated cross-user session reauthorization bypass',
+  'authenticated session-switch reauthorization bypass',
 );
 
 
