@@ -32,6 +32,11 @@ import {
   type RepairWarning,
 } from '../contracts/repair';
 import {
+  createRepairCaseInputSchema,
+  type CreateRepairCaseInput,
+  type RepairCaseResult,
+} from '../contracts/repair-case';
+import {
   claimScheduledActionInputSchema,
   createScheduledActionInputSchema,
   recordScheduledActionFailureInputSchema,
@@ -637,6 +642,112 @@ export class DomainKernel {
           }),
         );
         return next;
+      },
+    );
+  }
+
+  public async createRepairCase(
+    rawContext: MutationContext,
+    rawInput: CreateRepairCaseInput,
+  ): Promise<RepairCaseResult> {
+    const context = mutationContextSchema.parse(rawContext);
+    const input = createRepairCaseInputSchema.parse(rawInput);
+
+    return this.executeOnce(
+      context,
+      'createRepairCase',
+      input,
+      async (transaction) => {
+        const now = this.now();
+
+        let party: Party;
+        if (input.party.mode === 'EXISTING') {
+          const existing = await transaction.getParty(input.party.partyId);
+          if (existing === undefined) {
+            throw new DomainNotFoundError('Party', input.party.partyId);
+          }
+          party = existing;
+        } else {
+          party = {
+            id: this.newId(),
+            name: input.party.name,
+            kind: 'CUSTOMER',
+            createdAt: now,
+            updatedAt: now,
+            revision: 1,
+          };
+          await transaction.insertParty(party);
+          await transaction.appendEvent(
+            this.makeEvent(context, {
+              entityType: 'PARTY',
+              entityId: party.id,
+              eventType: 'PARTY_CREATED',
+              detail: null,
+              changes: {},
+              revisionAfter: party.revision,
+            }),
+          );
+        }
+
+        const jobId = this.newId();
+        const job: Job = {
+          id: jobId,
+          key: toJobKey(jobId),
+          title: input.jobTitle,
+          category: 'ACTIVE',
+          partyId: party.id,
+          createdAt: now,
+          updatedAt: now,
+          revision: 1,
+        };
+        await transaction.insertJob(job);
+        await transaction.appendEvent(
+          this.makeEvent(context, {
+            entityType: 'JOB',
+            entityId: job.id,
+            eventType: 'JOB_CREATED',
+            detail: null,
+            changes: {},
+            revisionAfter: job.revision,
+          }),
+        );
+
+        const repair = repairSchema.parse({
+          id: this.newId(),
+          jobId: job.id,
+          stage: 'RECEIVED',
+          reportedFault: input.reportedFault,
+          diagnosis: null,
+          currentFinding: null,
+          serialState: input.serialState,
+          serialValue: input.serialValue,
+          storageLocation: input.storageLocation,
+          waitingOn: null,
+          followUpAt: null,
+          finalTestResult: null,
+          finalTestDetail: null,
+          testedAt: null,
+          receivedAt: now,
+          readyAt: null,
+          collectedAt: null,
+          cancelledAt: null,
+          createdAt: now,
+          updatedAt: now,
+          revision: 1,
+        });
+        await transaction.insertRepair(repair);
+        await transaction.appendEvent(
+          this.makeEvent(context, {
+            entityType: 'REPAIR',
+            entityId: repair.id,
+            eventType: 'REPAIR_CREATED',
+            detail: repair.reportedFault,
+            changes: {},
+            revisionAfter: repair.revision,
+          }),
+        );
+
+        return { party, job, repair };
       },
     );
   }
