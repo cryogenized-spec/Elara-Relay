@@ -3143,7 +3143,7 @@ function LiveRepairCaptureForm({
 
       <div className="captureForm__footer">
         <p>
-          Customer, Job and Repair are committed atomically through one replay-safe mutation.
+          Customer, Job and Repair use one replay-safe case intent with resumable durable steps.
         </p>
         <button
           className="primaryButton"
