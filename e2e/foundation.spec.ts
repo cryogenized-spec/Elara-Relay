@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { installLiveHarness, signInOwner } from './live-harness';
 
+const IDS_FOR_TEST = {
+  jobRepair: '10000000-0000-4000-8000-000000000002',
+} as const;
+
 test('authenticated mobile operations shell reads live domain state', async ({
   page,
 }) => {
@@ -146,13 +150,20 @@ test('authenticated mobile operations shell reads live domain state', async ({
 
   const captureButton = page.getByRole('button', { name: 'Capture' });
   await captureButton.click();
-  await expect(page.getByRole('dialog', { name: 'Capture' })).toBeVisible();
-  await page.getByRole('button', { name: /Repair \/ Job/ }).click();
+  const captureDialog = page.getByRole('dialog', { name: 'Capture' });
+  await expect(captureDialog).toBeVisible();
+  await captureDialog.getByRole('button', { name: /^Task/ }).click();
+  const taskCaptureDialog = page.getByRole('dialog', { name: 'New task' });
+  await taskCaptureDialog.getByLabel('Title').fill('Count incoming repair seals');
+  await taskCaptureDialog.getByLabel('Priority').selectOption('HIGH');
+  await taskCaptureDialog.getByRole('button', { name: 'Save Task' }).click();
+
+  await expect(taskCaptureDialog).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
+  await page.getByRole('button', { name: 'Work' }).click();
   await expect(
-    page.getByRole('button', { name: 'Save unavailable in preview' }),
-  ).toBeDisabled();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'Capture' })).toBeHidden();
+    page.getByText('Count incoming repair seals', { exact: true }),
+  ).toBeVisible();
 
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -330,4 +341,120 @@ test('malformed successful aggregate fails closed instead of rendering plausible
     page.getByRole('heading', { name: 'Workspace unavailable' }),
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Today' })).toHaveCount(0);
+});
+
+
+test('Task Capture retries one unchanged durable mutation intent', async ({
+  page,
+}) => {
+  await installLiveHarness(page, { failFirstTaskCreate: true });
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Capture' }).click();
+  const capture = page.getByRole('dialog', { name: 'Capture' });
+  await capture.getByRole('button', { name: /^Task/ }).click();
+  const taskCapture = page.getByRole('dialog', { name: 'New task' });
+
+  await taskCapture.getByLabel('Title').fill('Retry-safe captured Task');
+  await taskCapture.getByLabel('Priority').selectOption('URGENT');
+  await taskCapture.getByRole('button', { name: 'Save Task' }).click();
+
+  await expect(
+    taskCapture.getByRole('alert'),
+  ).toContainText('Temporary Task save failure');
+  await expect(taskCapture.getByLabel('Title')).toHaveValue(
+    'Retry-safe captured Task',
+  );
+  await expect(
+    taskCapture.getByRole('button', { name: 'Retry save' }),
+  ).toBeVisible();
+
+  await taskCapture.getByRole('button', { name: 'Retry save' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await page.getByRole('button', { name: 'Work' }).click();
+  await expect(
+    page.getByText('Retry-safe captured Task', { exact: true }),
+  ).toBeVisible();
+});
+
+
+test('Capture stays locked while a durable Task save is unresolved', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+
+  let releaseTaskCreate: (() => void) | undefined;
+  let markTaskCreateStarted: (() => void) | undefined;
+  const taskCreateStarted = new Promise<void>((resolve) => {
+    markTaskCreateStarted = resolve;
+  });
+  const taskCreateReleased = new Promise<void>((resolve) => {
+    releaseTaskCreate = resolve;
+  });
+
+  await page.route('**/api-test/tasks', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    markTaskCreateStarted?.();
+    await taskCreateReleased;
+    await route.fallback();
+  });
+
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Capture' }).click();
+  await page
+    .getByRole('dialog', { name: 'Capture' })
+    .getByRole('button', { name: /^Task/ })
+    .click();
+
+  const taskCapture = page.getByRole('dialog', { name: 'New task' });
+  await taskCapture.getByLabel('Title').fill('Pending durable Task');
+  await taskCapture.getByRole('button', { name: 'Save Task' }).click();
+  await taskCreateStarted;
+
+  await expect(taskCapture).toHaveAttribute('aria-busy', 'true');
+  await expect(taskCapture.getByRole('button', { name: 'Back' })).toBeDisabled();
+  await expect(taskCapture.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+  await expect(taskCapture.getByLabel('Title')).toBeDisabled();
+
+  await page.keyboard.press('Escape');
+  await expect(taskCapture).toBeVisible();
+
+  releaseTaskCreate?.();
+  await expect(taskCapture).toHaveCount(0);
+});
+
+
+test('Reminder Capture persists recurrence and Job context', async ({ page }) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Capture' }).click();
+  const capture = page.getByRole('dialog', { name: 'Capture' });
+  await capture.getByRole('button', { name: /^Reminder/ }).click();
+
+  await page.getByLabel('Title').fill('Check regulator supplier ETA');
+  await page.getByLabel('Run at').fill('2026-09-26T14:30');
+  await page.getByLabel('Repeat').selectOption('daily');
+  await page.getByLabel('Linked Job').selectOption(IDS_FOR_TEST.jobRepair);
+  await page.getByRole('button', { name: 'Save Reminder' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await page.getByRole('button', { name: 'Schedule' }).click();
+  await expect(
+    page.getByText('Check regulator supplier ETA', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/FREQ=DAILY;INTERVAL=1.*JOB-7A31C4F2/),
+  ).toBeVisible();
 });

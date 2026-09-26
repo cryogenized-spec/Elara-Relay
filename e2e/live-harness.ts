@@ -18,11 +18,50 @@ const IDS = {
   actionNext: '10000000-0000-4000-8000-000000000013',
   actionPaused: '10000000-0000-4000-8000-000000000014',
   eventJob: '10000000-0000-4000-8000-000000000015',
+  taskCaptured: '10000000-0000-4000-8000-000000000016',
+  actionCaptured: '10000000-0000-4000-8000-000000000017',
 } as const;
+
+type HarnessTask = {
+  id: string;
+  jobId: string | null;
+  title: string;
+  status: 'INBOX' | 'NEXT' | 'DOING' | 'WAITING' | 'DONE' | 'CANCELLED';
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  dueAt: string | null;
+  followUpAt: string | null;
+  waitingOn: string | null;
+  waitingSince: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+};
+
+type HarnessScheduledAction = {
+  id: string;
+  jobId: string | null;
+  taskId: string | null;
+  title: string;
+  actionType: 'REMINDER';
+  payload: {
+    kind: 'REMINDER';
+    message: string;
+  };
+  timezone: 'Africa/Johannesburg';
+  recurrenceRule: string | null;
+  status: 'ACTIVE' | 'PAUSED';
+  runAt: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+};
 
 export interface LiveHarnessOptions {
   firstWhoAmIUnauthorized?: boolean;
   malformedWork?: boolean;
+  failFirstTaskCreate?: boolean;
 }
 
 function isoOffset(asOf: string, minutes: number): string {
@@ -127,7 +166,7 @@ function jobs() {
   ];
 }
 
-function tasks(asOf: string) {
+function tasks(asOf: string): HarnessTask[] {
   return [
     {
       id: IDS.taskStock,
@@ -260,7 +299,7 @@ function scheduledActions(asOf: string) {
     status: 'ACTIVE' | 'PAUSED',
     nextRunAt: string,
     recurrenceRule: string | null,
-  ) => ({
+  ): HarnessScheduledAction => ({
     id,
     jobId: IDS.jobRepair,
     taskId: null,
@@ -340,6 +379,12 @@ export async function installLiveHarness(
   let tokenGrantCount = 0;
   let logicalSessionIndex = -1;
   let currentSessionId: string = IDS.session;
+  let capturedTask: HarnessTask | null = null;
+  let capturedAction: HarnessScheduledAction | null = null;
+  let taskCreateAttempts = 0;
+  let firstTaskIntent:
+    | { mutationId: string; inputJson: string }
+    | null = null;
 
   await page.route('**/auth/v1/**', async (route) => {
     const url = new URL(route.request().url());
@@ -377,9 +422,22 @@ export async function installLiveHarness(
     const asOf =
       url.searchParams.get('asOf') ?? '2026-09-25T04:00:00.000Z';
     const allJobs = jobs();
-    const allTasks = tasks(asOf);
+    const allTasks = [
+      ...tasks(asOf),
+      ...(capturedTask === null ? [] : [capturedTask]),
+    ];
     const allRepairs = repairs(asOf);
     const schedule = scheduledActions(asOf);
+    if (capturedAction !== null) {
+      if (
+        capturedAction.nextRunAt !== null &&
+        Date.parse(capturedAction.nextRunAt) <= Date.parse(asOf)
+      ) {
+        schedule.due.push(capturedAction);
+      } else {
+        schedule.upcoming.push(capturedAction);
+      }
+    }
 
     if (path === '/auth/whoami') {
       whoAmICalls += 1;
@@ -405,6 +463,167 @@ export async function installLiveHarness(
           aal: 'aal1',
         }),
       );
+      return;
+    }
+
+    if (path === '/tasks' && route.request().method() === 'POST') {
+      const raw = route.request().postDataJSON() as {
+        mutation?: { mutationId?: unknown };
+        input?: {
+          jobId?: unknown;
+          title?: unknown;
+          priority?: unknown;
+          dueAt?: unknown;
+          followUpAt?: unknown;
+        };
+      };
+      const mutationId =
+        typeof raw.mutation?.mutationId === 'string'
+          ? raw.mutation.mutationId
+          : '';
+      const inputJson = JSON.stringify(raw.input ?? null);
+      taskCreateAttempts += 1;
+
+      if (
+        options.failFirstTaskCreate === true &&
+        taskCreateAttempts === 1
+      ) {
+        firstTaskIntent = { mutationId, inputJson };
+        await route.fulfill(
+          json(
+            {
+              error: {
+                code: 'TRANSIENT_TEST_FAILURE',
+                message: 'Temporary Task save failure',
+              },
+            },
+            503,
+          ),
+        );
+        return;
+      }
+
+      if (
+        firstTaskIntent !== null &&
+        (firstTaskIntent.mutationId !== mutationId ||
+          firstTaskIntent.inputJson !== inputJson)
+      ) {
+        await route.fulfill(
+          json(
+            {
+              error: {
+                code: 'CONFLICT',
+                message: 'Retry changed durable mutation intent',
+              },
+            },
+            409,
+          ),
+        );
+        return;
+      }
+
+      if (capturedTask === null) {
+        capturedTask = {
+          id: IDS.taskCaptured,
+          jobId:
+            typeof raw.input?.jobId === 'string'
+              ? raw.input.jobId
+              : null,
+          title:
+            typeof raw.input?.title === 'string'
+              ? raw.input.title
+              : 'Captured Task',
+          status: 'INBOX',
+          priority:
+            raw.input?.priority === 'URGENT' ||
+            raw.input?.priority === 'HIGH' ||
+            raw.input?.priority === 'LOW'
+              ? raw.input.priority
+              : 'NORMAL',
+          dueAt:
+            typeof raw.input?.dueAt === 'string'
+              ? raw.input.dueAt
+              : null,
+          followUpAt:
+            typeof raw.input?.followUpAt === 'string'
+              ? raw.input.followUpAt
+              : null,
+          waitingOn: null,
+          waitingSince: null,
+          createdAt: '2026-09-26T04:45:00.000Z',
+          updatedAt: '2026-09-26T04:45:00.000Z',
+          revision: 1,
+        };
+      }
+
+      await route.fulfill(json(capturedTask, 201));
+      return;
+    }
+
+    if (path === '/schedule' && route.request().method() === 'POST') {
+      const raw = route.request().postDataJSON() as {
+        mutation?: { mutationId?: unknown };
+        input?: {
+          jobId?: unknown;
+          taskId?: unknown;
+          title?: unknown;
+          actionType?: unknown;
+          payload?: unknown;
+          timezone?: unknown;
+          recurrenceRule?: unknown;
+          runAt?: unknown;
+        };
+      };
+
+      if (
+        typeof raw.mutation?.mutationId !== 'string' ||
+        raw.input?.actionType !== 'REMINDER' ||
+        raw.input?.timezone !== 'Africa/Johannesburg' ||
+        typeof raw.input?.title !== 'string' ||
+        typeof raw.input?.runAt !== 'string'
+      ) {
+        await route.fulfill(
+          json(
+            {
+              error: {
+                code: 'INVALID_REQUEST',
+                message: 'Reminder fixture received invalid durable intent',
+              },
+            },
+            400,
+          ),
+        );
+        return;
+      }
+
+      capturedAction = {
+        id: IDS.actionCaptured,
+        jobId:
+          typeof raw.input.jobId === 'string'
+            ? raw.input.jobId
+            : null,
+        taskId: null,
+        title: raw.input.title,
+        actionType: 'REMINDER',
+        payload: {
+          kind: 'REMINDER',
+          message: raw.input.title,
+        },
+        timezone: 'Africa/Johannesburg',
+        recurrenceRule:
+          typeof raw.input.recurrenceRule === 'string'
+            ? raw.input.recurrenceRule
+            : null,
+        status: 'ACTIVE',
+        runAt: raw.input.runAt,
+        nextRunAt: raw.input.runAt,
+        lastRunAt: null,
+        createdAt: '2026-09-26T04:50:00.000Z',
+        updatedAt: '2026-09-26T04:50:00.000Z',
+        revision: 1,
+      };
+
+      await route.fulfill(json(capturedAction, 201));
       return;
     }
 

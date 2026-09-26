@@ -23,6 +23,18 @@ function session(userId: string): BrowserAuthSession {
   };
 }
 
+const mutationApiStubs = {
+  createParty: () => Promise.reject(new Error('not used')),
+  createJob: () => Promise.reject(new Error('not used')),
+  createTask: () => Promise.reject(new Error('not used')),
+  updateTask: () => Promise.reject(new Error('not used')),
+  markTaskWaiting: () => Promise.reject(new Error('not used')),
+  completeTask: () => Promise.reject(new Error('not used')),
+  cancelTask: () => Promise.reject(new Error('not used')),
+  createRepair: () => Promise.reject(new Error('not used')),
+  createScheduledAction: () => Promise.reject(new Error('not used')),
+};
+
 async function flush(): Promise<void> {
   await Promise.resolve();
   await new Promise<void>((resolve) => {
@@ -55,6 +67,7 @@ describe('live authorization lifecycle', () => {
         signOut: () => Promise.resolve(),
       },
       api: {
+        ...mutationApiStubs,
         whoAmI: (): Promise<AuthIdentity> =>
           currentSession.userId !== OWNER_ID
             ? Promise.reject(
@@ -146,6 +159,7 @@ describe('live authorization lifecycle', () => {
         signOut: () => Promise.resolve(),
       },
       api: {
+        ...mutationApiStubs,
         whoAmI: () =>
           Promise.resolve({
             userId: OWNER_ID,
