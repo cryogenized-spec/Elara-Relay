@@ -381,6 +381,58 @@ test('Task Capture retries one unchanged durable mutation intent', async ({
 });
 
 
+test('Capture stays locked while a durable Task save is unresolved', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+
+  let releaseTaskCreate: (() => void) | undefined;
+  let markTaskCreateStarted: (() => void) | undefined;
+  const taskCreateStarted = new Promise<void>((resolve) => {
+    markTaskCreateStarted = resolve;
+  });
+  const taskCreateReleased = new Promise<void>((resolve) => {
+    releaseTaskCreate = resolve;
+  });
+
+  await page.route('**/api-test/tasks', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    markTaskCreateStarted?.();
+    await taskCreateReleased;
+    await route.fallback();
+  });
+
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Capture' }).click();
+  await page
+    .getByRole('dialog', { name: 'Capture' })
+    .getByRole('button', { name: /^Task/ })
+    .click();
+
+  const taskCapture = page.getByRole('dialog', { name: 'New task' });
+  await taskCapture.getByLabel('Title').fill('Pending durable Task');
+  await taskCapture.getByRole('button', { name: 'Save Task' }).click();
+  await taskCreateStarted;
+
+  await expect(taskCapture).toHaveAttribute('aria-busy', 'true');
+  await expect(taskCapture.getByRole('button', { name: 'Back' })).toBeDisabled();
+  await expect(taskCapture.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+  await expect(taskCapture.getByLabel('Title')).toBeDisabled();
+
+  await page.keyboard.press('Escape');
+  await expect(taskCapture).toBeVisible();
+
+  releaseTaskCreate?.();
+  await expect(taskCapture).toHaveCount(0);
+});
+
+
 test('Reminder Capture persists recurrence and Job context', async ({ page }) => {
   await installLiveHarness(page);
   await page.goto('/');
