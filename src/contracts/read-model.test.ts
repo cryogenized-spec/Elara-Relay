@@ -565,18 +565,21 @@ describe('read-model aggregate invariants', () => {
           event(),
           event({
             id: '10000000-0000-4000-8000-000000000010',
+            mutationId: 'MUT-read-model-test-0002',
             entityType: 'TASK',
             entityId: TASK_ID,
             eventType: 'TASK_UPDATED',
           }),
           event({
             id: '10000000-0000-4000-8000-000000000011',
+            mutationId: 'MUT-read-model-test-0003',
             entityType: 'REPAIR',
             entityId: REPAIR_ID,
             eventType: 'REPAIR_DETAILS_UPDATED',
           }),
           event({
             id: '10000000-0000-4000-8000-000000000012',
+            mutationId: 'MUT-read-model-test-0004',
             entityType: 'SCHEDULED_ACTION',
             entityId: ACTION_ID,
             eventType: 'SCHEDULED_ACTION_UPDATED',
