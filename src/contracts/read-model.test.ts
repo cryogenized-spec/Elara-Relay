@@ -762,7 +762,125 @@ describe('read-model aggregate invariants', () => {
           tasks: [{ ...dueTask, revision: 2 }],
         },
       }),
-    ).toThrow('Dashboard Today Tasks must match Work Task values');
+    ).toThrow('Dashboard Today Tasks must equal the complete due Work Task set');
+
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        today: {
+          ...dashboard.today,
+          tasks: [],
+        },
+      }),
+    ).toThrow('Dashboard Today Tasks must equal the complete due Work Task set');
+
+    const dueRepair = {
+      ...repair,
+      stage: 'AWAITING_PARTS' as const,
+      waitingOn: 'Seal kit',
+      followUpAt: '2026-09-25T08:00:00.000Z',
+    };
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        repairs: {
+          ...dashboard.repairs,
+          repairs: [dueRepair],
+        },
+      }),
+    ).toThrow('Dashboard Today Repairs must equal the complete due Repairs set');
+
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        schedule: {
+          ...dashboard.schedule,
+          due: [
+            action({
+              nextRunAt: '2026-09-25T08:00:00.000Z',
+              jobId: OTHER_JOB_ID,
+              taskId: null,
+            }),
+          ],
+        },
+        today: {
+          ...dashboard.today,
+          scheduledActions: [
+            action({
+              nextRunAt: '2026-09-25T08:00:00.000Z',
+              jobId: OTHER_JOB_ID,
+              taskId: null,
+            }),
+          ],
+        },
+      }),
+    ).toThrow('Dashboard Scheduled Action jobId must reference a Work Job');
+
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        schedule: {
+          ...dashboard.schedule,
+          due: [
+            action({
+              nextRunAt: '2026-09-25T08:00:00.000Z',
+              jobId: null,
+              taskId: '10000000-0000-4000-8000-999999999999',
+            }),
+          ],
+        },
+        today: {
+          ...dashboard.today,
+          scheduledActions: [
+            action({
+              nextRunAt: '2026-09-25T08:00:00.000Z',
+              jobId: null,
+              taskId: '10000000-0000-4000-8000-999999999999',
+            }),
+          ],
+        },
+      }),
+    ).toThrow('Dashboard Scheduled Action taskId must reference a Work Task');
+
+    const otherJob = {
+      ...job,
+      id: OTHER_JOB_ID,
+      key: 'JOB-1234ABCD',
+      partyId: PARTY_ID,
+    };
+    expect(() =>
+      dashboardResultSchema.parse({
+        ...dashboard,
+        work: {
+          ...dashboard.work,
+          jobs: [job, otherJob],
+        },
+        repairs: {
+          ...dashboard.repairs,
+          jobs: [job, otherJob],
+        },
+        schedule: {
+          ...dashboard.schedule,
+          due: [
+            action({
+              nextRunAt: '2026-09-25T08:00:00.000Z',
+              jobId: OTHER_JOB_ID,
+              taskId: TASK_ID,
+            }),
+          ],
+        },
+        today: {
+          ...dashboard.today,
+          scheduledActions: [
+            action({
+              nextRunAt: '2026-09-25T08:00:00.000Z',
+              jobId: OTHER_JOB_ID,
+              taskId: TASK_ID,
+            }),
+          ],
+        },
+      }),
+    ).toThrow('Dashboard Scheduled Action Job and Task references must agree');
 
     expect(() =>
       dashboardResultSchema.parse({

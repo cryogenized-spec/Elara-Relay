@@ -151,7 +151,7 @@ mutate(
   'if (requestAccessToken !== currentAccessToken) {',
   'if (false) {',
   () => runVitest('src/app/authorization-policy.test.ts'),
-  'stale-session authorization denial isolation bypass',
+  'rotated-bearer 401 retry classification bypass',
 );
 
 mutate(

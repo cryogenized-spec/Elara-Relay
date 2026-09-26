@@ -481,18 +481,6 @@ function sameEntities(
   );
 }
 
-function subsetEntities(
-  subset: readonly { id: string }[],
-  superset: readonly { id: string }[],
-): boolean {
-  const values = new Map(
-    superset.map((value) => [value.id, canonicalValue(value)]),
-  );
-  return subset.every(
-    (value) => values.get(value.id) === canonicalValue(value),
-  );
-}
-
 export const dashboardResultSchema = z
   .object({
     today: todayResultSchema,
@@ -524,18 +512,37 @@ export const dashboardResultSchema = z
         message: 'Dashboard Work and Repairs must share identical Job values',
       });
     }
-    if (!subsetEntities(dashboard.today.tasks, dashboard.work.tasks)) {
+    const asOf = Date.parse(dashboard.today.asOf);
+    const expectedTodayTasks = dashboard.work.tasks.filter((task) => {
+      const active =
+        task.status !== 'DONE' && task.status !== 'CANCELLED';
+      const due =
+        (task.dueAt !== null && Date.parse(task.dueAt) <= asOf) ||
+        (task.followUpAt !== null && Date.parse(task.followUpAt) <= asOf);
+      return active && due;
+    });
+    if (!sameEntities(dashboard.today.tasks, expectedTodayTasks)) {
       context.addIssue({
         code: 'custom',
         path: ['today', 'tasks'],
-        message: 'Dashboard Today Tasks must match Work Task values',
+        message:
+          'Dashboard Today Tasks must equal the complete due Work Task set',
       });
     }
-    if (!subsetEntities(dashboard.today.repairs, dashboard.repairs.repairs)) {
+
+    const expectedTodayRepairs = dashboard.repairs.repairs.filter(
+      (repair) =>
+        (repair.stage === 'AWAITING_PARTS' ||
+          repair.stage === 'AWAITING_CUSTOMER') &&
+        repair.followUpAt !== null &&
+        Date.parse(repair.followUpAt) <= asOf,
+    );
+    if (!sameEntities(dashboard.today.repairs, expectedTodayRepairs)) {
       context.addIssue({
         code: 'custom',
         path: ['today', 'repairs'],
-        message: 'Dashboard Today Repairs must match Repairs values',
+        message:
+          'Dashboard Today Repairs must equal the complete due Repairs set',
       });
     }
     if (!sameEntities(dashboard.today.scheduledActions, dashboard.schedule.due)) {
@@ -544,6 +551,54 @@ export const dashboardResultSchema = z
         path: ['today', 'scheduledActions'],
         message: 'Dashboard Today Scheduled Actions must equal Schedule due actions',
       });
+    }
+
+    const jobsById = new Map(
+      dashboard.work.jobs.map((job) => [job.id, job]),
+    );
+    const tasksById = new Map(
+      dashboard.work.tasks.map((task) => [task.id, task]),
+    );
+    const allScheduledActions = [
+      ...dashboard.schedule.due,
+      ...dashboard.schedule.upcoming,
+      ...dashboard.schedule.paused,
+    ];
+
+    for (const [index, action] of allScheduledActions.entries()) {
+      const job =
+        action.jobId === null ? undefined : jobsById.get(action.jobId);
+      const task =
+        action.taskId === null ? undefined : tasksById.get(action.taskId);
+
+      if (action.jobId !== null && job === undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['schedule', 'references', index, 'jobId'],
+          message:
+            'Dashboard Scheduled Action jobId must reference a Work Job',
+        });
+      }
+      if (action.taskId !== null && task === undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['schedule', 'references', index, 'taskId'],
+          message:
+            'Dashboard Scheduled Action taskId must reference a Work Task',
+        });
+      }
+      if (
+        action.jobId !== null &&
+        task !== undefined &&
+        task.jobId !== action.jobId
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['schedule', 'references', index],
+          message:
+            'Dashboard Scheduled Action Job and Task references must agree',
+        });
+      }
     }
   });
 

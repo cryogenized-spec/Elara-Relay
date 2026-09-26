@@ -2442,6 +2442,8 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
       if (classification === 'FORBIDDEN') {
         loadSequence.current += 1;
         setPhase('forbidden');
+      } else if (classification === 'RETRY_CURRENT_SESSION') {
+        void load();
       } else {
         void load();
       }

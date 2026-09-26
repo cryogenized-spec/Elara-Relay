@@ -3,6 +3,7 @@ import { OperationsApiError } from './operations-api';
 export type AuthorizationFailureClassification =
   | 'NOT_AUTHORIZATION_FAILURE'
   | 'STALE_SESSION'
+  | 'RETRY_CURRENT_SESSION'
   | 'UNAUTHENTICATED'
   | 'FORBIDDEN';
 
@@ -29,7 +30,7 @@ export function classifyAuthorizationFailure(
   }
 
   if (requestAccessToken !== currentAccessToken) {
-    return 'STALE_SESSION';
+    return 'RETRY_CURRENT_SESSION';
   }
 
   return 'UNAUTHENTICATED';

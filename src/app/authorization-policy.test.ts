@@ -32,7 +32,7 @@ describe('authorization failure classification', () => {
     }
   });
 
-  it('allows same-session bearer rotation to supersede only a 401', () => {
+  it('retries a same-session bearer rotation after a 401', () => {
     expect(
       classifyAuthorizationFailure(
         new OperationsApiError(401, 'UNAUTHENTICATED', 'Expired'),
@@ -41,7 +41,7 @@ describe('authorization failure classification', () => {
         SESSION_A,
         SESSION_A,
       ),
-    ).toBe('STALE_SESSION');
+    ).toBe('RETRY_CURRENT_SESSION');
   });
 
   it('still treats a missing-token 401 as current when the session is gone', () => {
