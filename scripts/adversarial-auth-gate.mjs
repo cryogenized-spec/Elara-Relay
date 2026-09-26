@@ -13,6 +13,13 @@ function runVitest(path) {
   );
 }
 
+function runNode(path) {
+  return spawnSync(process.execPath, [join(root, path)], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+}
+
 function mutate(path, search, replacement, runner, label) {
   const absolute = join(root, path);
   const original = readFileSync(absolute, 'utf8');
@@ -72,6 +79,191 @@ mutate(
   'legacy API key acceptance bypass',
 );
 
+
+mutate(
+  'src/app/operations-api.ts',
+  "if (token === null || token === '') {",
+  'if (false) {',
+  () => runVitest('src/app/operations-api.test.ts'),
+  'browser bearer fail-closed bypass',
+);
+
+mutate(
+  'src/app/operations-api.ts',
+  'authorization: `Bearer ${token}`',
+  'authorization: token',
+  () => runVitest('src/app/operations-api.test.ts'),
+  'browser bearer scheme corruption',
+);
+
+mutate(
+  'src/app/operations-api.ts',
+  'if (response.status === 401 || response.status === 403) {',
+  'if (false) {',
+  () => runVitest('src/app/operations-api.test.ts'),
+  'browser authorization-status classification bypass',
+);
+
+mutate(
+  'src/app/operations-api.ts',
+  'return schema.parse(body.value);',
+  'return body.value;',
+  () => runVitest('src/app/operations-api.test.ts'),
+  'browser read-model validation bypass',
+);
+
+mutate(
+  'src/app/runtime-config.ts',
+  "if (!parsed.VITE_SUPABASE_PUBLISHABLE_KEY.startsWith('sb_publishable_')) {",
+  'if (false) {',
+  () => runVitest('src/app/runtime-config.test.ts'),
+  'browser legacy publishable-key acceptance bypass',
+);
+
+
+mutate(
+  'src/contracts/read-model.ts',
+  'if (!jobIds.has(repair.jobId)) {',
+  'if (false) {',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Repair-to-Job aggregate integrity bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  "action.status !== 'ACTIVE' ||\n        action.nextRunAt === null ||\n        Date.parse(action.nextRunAt) <= asOf",
+  "false",
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'upcoming scheduler bucket semantic bypass',
+);
+
+mutate(
+  'src/app/App.tsx',
+  "authorizedUserId === null ||\n        session.userId !== authorizedUserId ||\n        session.sessionId !== authorizedSessionId",
+  'authorizedUserId === null',
+  () => runVitest('src/app/live-auth-lifecycle.test.tsx'),
+  'authenticated session-switch reauthorization bypass',
+);
+
+
+mutate(
+  'src/app/authorization-policy.ts',
+  'if (requestAccessToken !== currentAccessToken) {',
+  'if (false) {',
+  () => runVitest('src/app/authorization-policy.test.ts'),
+  'rotated-bearer 401 retry classification bypass',
+);
+
+mutate(
+  'src/app/read-view-model.ts',
+  "meta: party ?? 'Job',",
+  "meta: `${party ?? 'Job'} · 0 open Tasks`,",
+  () => runVitest('src/app/read-view-model.test.ts'),
+  'partial Search Job task-count fabrication',
+);
+
+mutate(
+  'src/app/read-view-model.ts',
+  "action.status === 'COMPLETED'\n              ? 'Completed'",
+  "action.status === 'COMPLETED'\n              ? 'Upcoming'",
+  () => runVitest('src/app/read-view-model.test.ts'),
+  'Search Scheduled Action terminal-status corruption',
+);
+
+mutate(
+  'src/app/App.tsx',
+  "authorizedUserId === null ||\n        session.userId !== authorizedUserId ||\n        session.sessionId !== authorizedSessionId",
+  "authorizedUserId !== null &&\n        session.userId !== authorizedUserId",
+  () => runVitest('src/app/live-auth-lifecycle.test.tsx'),
+  'signed-out cross-tab session authorization bypass',
+);
+
+mutate(
+  'src/app/App.tsx',
+  'requestId.current += 1;',
+  'requestId.current += 0;',
+  () => runNode('scripts/auth-boundary-gate.mjs'),
+  'Search synchronous request invalidation removal',
+);
+
+mutate(
+  'src/app/App.tsx',
+  'runtime.api.dashboard(asOf)',
+  'runtime.api.today(asOf)',
+  () => runNode('scripts/auth-boundary-gate.mjs'),
+  'single Dashboard endpoint bypass',
+);
+
+mutate(
+  'src/app/operations-api.ts',
+  `  try {
+    text = await response.text();
+  } catch {
+    return { parsed: false };
+  }`,
+  `  text = await response.text();`,
+  () => runVitest('src/app/operations-api.test.ts'),
+  'authorization response-body stream failure classification bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  `const duplicateJobKeys = duplicateStrings(
+      result.jobs.map((job) => job.key),
+    );`,
+  `const duplicateJobKeys = [];`,
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Work duplicate Job-key validation bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  'if (duplicateMutationIds.length > 0) {',
+  'if (false) {',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Job Event mutation-id uniqueness bypass',
+);
+
+mutate(
+  'src/app/read-view-model.ts',
+  'const linkedKey = jobKey(action.jobId ?? taskJobId, jobs);',
+  'const linkedKey = jobKey(action.jobId, jobs);',
+  () => runVitest('src/app/read-view-model.test.ts'),
+  'task-only Scheduled Action Job-context bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  'if (duplicateRepairJobIds.length > 0) {',
+  'if (false) {',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Repair one-to-one Job read-model bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  'event.revisionAfter > currentRevision',
+  'false',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'future Event revision read-model bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  'if (duplicateSearchJobKeys.length > 0) {',
+  'if (false) {',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Search duplicate Job-key validation bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  'if (duplicateSearchMutationIds.length > 0) {',
+  'if (false) {',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Search duplicate Event mutation-id validation bypass',
+);
+
 process.stdout.write(
-  'Adversarial auth gate passed: fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, and modern publishable-key controls resisted hostile mutations.\n',
+  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, stale-session denial isolation, Search truthfulness, strict read-model validation, authorization body-read failures, duplicate durable identifiers, Repair one-to-one ownership, Event revision truth, Search durable-identity uniqueness, task-only scheduler relationships, and modern publishable-key controls resisted hostile mutations.\n',
 );

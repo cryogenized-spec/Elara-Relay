@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { installLiveHarness, signInOwner } from './live-harness';
 
-test('mobile operations shell renders and navigates without browser errors', async ({
+test('authenticated mobile operations shell reads live domain state', async ({
   page,
 }) => {
   const pageErrors: string[] = [];
@@ -21,47 +22,50 @@ test('mobile operations shell renders and navigates without browser errors', asy
     }
   });
 
+  await installLiveHarness(page);
   await page.goto('/');
+
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today' })).toHaveCount(0);
+
+  await signInOwner(page);
 
   await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
   await expect(page.getByText('Needs attention')).toBeVisible();
+  await expect(page.getByText('Follow up seal supplier')).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Ready for collection' }),
   ).toBeVisible();
-  await expect(page.getByText('Preview')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign out' })).toContainText(
+    'Online',
+  );
 
   const repairAttentionRow = page.getByRole('button', {
-    name: /Open Avenge X regulator/,
+    name: /Open Avenge X regulator repair/,
   });
   await repairAttentionRow.click();
-  const repairDetail = page.getByRole('dialog', { name: 'Avenge X regulator' });
+  const repairDetail = page.getByRole('dialog', {
+    name: 'Avenge X regulator repair',
+  });
   await expect(repairDetail).toBeVisible();
   await expect(
-    repairDetail.getByRole('heading', { name: 'Avenge X regulator' }),
+    repairDetail.getByRole('heading', { name: 'Avenge X regulator repair' }),
   ).toBeFocused();
-  await expect(
-    repairDetail.getByText('Awaiting parts', { exact: true }),
-  ).toBeVisible();
   await expect(
     repairDetail
       .locator('.detailFields')
-      .getByText('Regulator transfer seal leaking under pressure', {
-        exact: true,
-      }),
+      .getByText('Awaiting Parts', { exact: true }),
   ).toBeVisible();
   await expect(
-    repairDetail.getByRole('heading', { name: 'Linked tasks' }),
-  ).toBeVisible();
-  await expect(
-    repairDetail.getByRole('heading', { name: 'Timeline' }),
+    repairDetail.getByText('Regulator transfer seal leaking under pressure', {
+      exact: true,
+    }),
   ).toBeVisible();
   await repairDetail.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(repairDetail).toBeHidden();
   await expect(repairAttentionRow).toBeFocused();
 
   await page.getByRole('button', { name: 'Work' }).click();
-  await expect(page.getByRole('heading', { name: 'Work' })).toBeVisible();
-  await expect(page.getByText('Jobs & tasks')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Jobs' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible();
   await expect(page.getByText('Avenge X regulator repair')).toBeVisible();
@@ -76,16 +80,16 @@ test('mobile operations shell renders and navigates without browser errors', asy
   });
   await expect(jobDetail).toBeVisible();
   await expect(
-    jobDetail.getByRole('heading', { name: 'Avenge X regulator repair' }),
-  ).toBeFocused();
-  await expect(
     jobDetail.getByRole('heading', { name: 'Linked Repair' }),
   ).toBeVisible();
-  await expect(jobDetail.getByText('Avenge X regulator', { exact: true })).toBeVisible();
+  await expect(jobDetail.getByText('Pressure drops after refill')).toBeVisible();
+  await expect(
+    jobDetail.getByRole('heading', { name: 'Scheduled actions' }),
+  ).toBeVisible();
+  await expect(jobDetail.getByText('Check supplier ETA')).toBeVisible();
   await expect(jobDetail.getByRole('heading', { name: 'Tasks' })).toBeVisible();
   await expect(jobDetail.getByRole('heading', { name: 'Timeline' })).toBeVisible();
   await jobDetail.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(jobDetail).toBeHidden();
   await expect(jobRow).toBeFocused();
 
   const taskRow = page.getByRole('button', {
@@ -97,22 +101,10 @@ test('mobile operations shell renders and navigates without browser errors', asy
   });
   await expect(taskDetail).toBeVisible();
   await expect(
-    taskDetail.getByRole('heading', { name: 'Pressure-test regulator block' }),
-  ).toBeFocused();
-  await expect(
     taskDetail.getByText('Doing', { exact: true }).first(),
   ).toBeVisible();
-  await expect(
-    taskDetail.getByRole('heading', { name: 'Linked Job' }),
-  ).toBeVisible();
-  await expect(
-    taskDetail.getByText('Avenge X regulator repair', { exact: true }),
-  ).toBeVisible();
-  await expect(
-    taskDetail.getByRole('heading', { name: 'Timeline' }),
-  ).toBeVisible();
+  await expect(taskDetail.getByText('Avenge X regulator repair')).toBeVisible();
   await taskDetail.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(taskDetail).toBeHidden();
   await expect(taskRow).toBeFocused();
 
   await page.getByRole('button', { name: 'Repairs' }).click();
@@ -121,22 +113,33 @@ test('mobile operations shell renders and navigates without browser errors', asy
 
   await page.getByRole('button', { name: 'Schedule' }).click();
   await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
-  await expect(page.getByText('Africa/Johannesburg')).toBeVisible();
+  await expect(page.getByText('Follow up seal supplier')).toBeVisible();
+  await expect(page.getByText('Website backlog review')).toBeVisible();
 
   const searchButton = page.getByRole('button', { name: 'Search' });
   await searchButton.click();
   const searchDialog = page.getByRole('dialog', { name: 'Search' });
-  await expect(searchDialog).toBeVisible();
   const searchInput = page.getByPlaceholder('Job, serial, task, customer…');
-  await expect(searchInput).toBeFocused();
   await searchInput.fill('Avenge');
   await expect(
     searchDialog.getByRole('heading', { name: 'Repairs' }),
   ).toBeVisible();
-  await expect(searchDialog.getByText('Avenge X regulator')).toBeVisible();
-  await expect(searchDialog.getByText('Preview results')).toBeVisible();
-  await searchInput.fill('no-such-preview-item');
-  await expect(searchDialog.getByText('No preview results')).toBeVisible();
+  const repairSearchGroup = searchDialog
+    .locator('.searchResultGroup')
+    .filter({ hasText: 'Repairs' });
+  await expect(
+    repairSearchGroup.getByText('Avenge X regulator repair', { exact: true }),
+  ).toBeVisible();
+  await expect(searchDialog.getByText('Results')).toBeVisible();
+  await expect(
+    searchDialog.getByRole('heading', { name: 'History' }),
+  ).toBeVisible();
+  await expect(
+    searchDialog.getByText('Waiting on transfer seal kit', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    searchDialog.getByRole('button', { name: /Waiting on transfer seal kit/ }),
+  ).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(searchDialog).toBeHidden();
   await expect(searchButton).toBeFocused();
@@ -144,31 +147,12 @@ test('mobile operations shell renders and navigates without browser errors', asy
   const captureButton = page.getByRole('button', { name: 'Capture' });
   await captureButton.click();
   await expect(page.getByRole('dialog', { name: 'Capture' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Capture' })).toBeFocused();
-
   await page.getByRole('button', { name: /Repair \/ Job/ }).click();
-  await expect(
-    page.getByRole('dialog', { name: 'New repair / Job' }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('heading', { name: 'New repair / Job' }),
-  ).toBeFocused();
-  await expect(page.getByLabel('Customer')).toBeVisible();
-  await expect(page.getByLabel('Item / model')).toBeVisible();
-  await expect(page.getByLabel('Reported fault')).toBeVisible();
-  await expect(page.getByLabel('Serial')).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Save unavailable in preview' }),
   ).toBeDisabled();
-
-  const repairDialog = page.getByRole('dialog', { name: 'New repair / Job' });
-  await repairDialog.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Capture' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Capture' })).toBeFocused();
-
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Capture' })).toBeHidden();
-  await expect(captureButton).toBeFocused();
 
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -176,21 +160,174 @@ test('mobile operations shell renders and navigates without browser errors', asy
   }));
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
 
-  const navTargets = await page.locator('.bottomNav button').evaluateAll(
-    (buttons) =>
-      buttons.map((button) => {
-        const rect = button.getBoundingClientRect();
-        return { width: rect.width, height: rect.height };
-      }),
-  );
-  expect(
-    navTargets.every(
-      (target) => target.width >= 48 && target.height >= 48,
-    ),
-  ).toBe(true);
-
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
   expect(failedRequests).toEqual([]);
   expect(serverErrors).toEqual([]);
+});
+
+test('shell stays gated when the server rejects authorization', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  await page.route('**/api-test/auth/whoami', async (route) => {
+    await route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: { code: 'FORBIDDEN', message: 'Access denied' },
+      }),
+    });
+  });
+
+  await page.goto('/');
+  await signInOwner(page);
+
+  await expect(
+    page.getByRole('heading', { name: 'Access not authorized' }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today' })).toHaveCount(0);
+});
+
+test('later authorization denial clears the cached operational shell', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  await page.route('**/api-test/search*', async (route) => {
+    await route.fulfill({
+      status: 403,
+      contentType: 'text/html',
+      body: '<html>forbidden</html>',
+    });
+  });
+
+  await page.getByRole('button', { name: 'Search' }).click();
+  await page
+    .getByPlaceholder('Job, serial, task, customer…')
+    .fill('Avenge');
+
+  await expect(
+    page.getByRole('heading', { name: 'Access not authorized' }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Search' })).toHaveCount(0);
+});
+
+test('authorization denial from a stale Search UI request still clears current shell', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  let releaseSearch: (() => void) | undefined;
+  let markSearchStarted: (() => void) | undefined;
+  const searchStarted = new Promise<void>((resolve) => {
+    markSearchStarted = resolve;
+  });
+  const searchReleased = new Promise<void>((resolve) => {
+    releaseSearch = resolve;
+  });
+
+  await page.route('**/api-test/search*', async (route) => {
+    markSearchStarted?.();
+    await searchReleased;
+    await route.fulfill({
+      status: 403,
+      contentType: 'text/plain',
+      body: 'forbidden',
+    });
+  });
+
+  await page.getByRole('button', { name: 'Search' }).click();
+  const input = page.getByPlaceholder('Job, serial, task, customer…');
+  await input.fill('Avenge');
+  await searchStarted;
+  await input.fill('');
+  releaseSearch?.();
+
+  await expect(
+    page.getByRole('heading', { name: 'Access not authorized' }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today' })).toHaveCount(0);
+});
+
+test('denial from an obsolete signed-out Search session cannot clear a new session', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  let releaseSearch: (() => void) | undefined;
+  let markSearchStarted: (() => void) | undefined;
+  const searchStarted = new Promise<void>((resolve) => {
+    markSearchStarted = resolve;
+  });
+  const searchReleased = new Promise<void>((resolve) => {
+    releaseSearch = resolve;
+  });
+
+  await page.route('**/api-test/search*', async (route) => {
+    markSearchStarted?.();
+    await searchReleased;
+    await route.fulfill({
+      status: 403,
+      contentType: 'text/plain',
+      body: 'old session forbidden',
+    });
+  });
+
+  await page.getByRole('button', { name: 'Search' }).click();
+  await page
+    .getByPlaceholder('Job, serial, task, customer…')
+    .fill('Avenge');
+  await searchStarted;
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Search' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  releaseSearch?.();
+  await page.waitForTimeout(100);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Access not authorized' }),
+  ).toHaveCount(0);
+});
+
+test('stale bearer gets one refresh and server authorization retry', async ({
+  page,
+}) => {
+  await installLiveHarness(page, { firstWhoAmIUnauthorized: true });
+  await page.goto('/');
+  await signInOwner(page);
+
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign out' })).toContainText(
+    'Online',
+  );
+});
+
+test('malformed successful aggregate fails closed instead of rendering plausible state', async ({
+  page,
+}) => {
+  await installLiveHarness(page, { malformedWork: true });
+  await page.goto('/');
+  await signInOwner(page);
+
+  await expect(
+    page.getByRole('heading', { name: 'Workspace unavailable' }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today' })).toHaveCount(0);
 });

@@ -1238,3 +1238,148 @@ button.workRow:active {
     animation-iteration-count: 1 !important;
   }
 }
+
+.emptyRow {
+  min-height: 60px;
+  padding: 18px 13px;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.onlineState {
+  display: inline-flex;
+  min-height: 44px;
+  padding: 0 8px;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.onlineState > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.onlineState:hover,
+.onlineState:active {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.liveReadState {
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-weight: 580;
+}
+
+.authShell {
+  display: grid;
+  min-height: 100dvh;
+  padding:
+    calc(28px + env(safe-area-inset-top))
+    var(--screen-gutter)
+    calc(28px + env(safe-area-inset-bottom));
+  place-items: center;
+  background: var(--canvas);
+}
+
+.authPanel {
+  display: grid;
+  width: min(100%, 380px);
+  gap: 12px;
+}
+
+.authPanel h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.authPanel > p,
+.systemState > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.authEyebrow {
+  color: #b9c0ff;
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.authForm {
+  display: grid;
+  margin-top: 8px;
+  gap: 13px;
+}
+
+.authError {
+  color: #ff8d97;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.primaryButton {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(162, 173, 255, 0.3);
+  border-radius: 8px;
+  color: #f4f5ff;
+  background: #202544;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 630;
+}
+
+.primaryButton:hover,
+.primaryButton:active {
+  background: #2a3156;
+}
+
+.systemPanel {
+  padding: 18px 0;
+}
+
+.systemState {
+  display: grid;
+  padding: 24px 2px;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.systemState strong {
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.searchResultRow--button {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.searchResultRow--button:last-child {
+  border-bottom: 0;
+}
+
+.searchResultRow--button:hover,
+.searchResultRow--button:active {
+  background: var(--surface-2);
+}

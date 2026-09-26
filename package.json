@@ -32,14 +32,15 @@
     "docs:check": "node scripts/documentation-contract-gate.mjs"
   },
   "dependencies": {
+    "@iconify-icons/solar": "2.0.3",
+    "@iconify/react": "6.0.2",
+    "@supabase/supabase-js": "2.117.1",
     "hono": "4.13.8",
+    "jose": "6.2.12",
+    "pg": "8.23.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "zod": "4.0.0",
-    "pg": "8.23.0",
-    "jose": "6.2.12",
-    "@iconify/react": "6.0.2",
-    "@iconify-icons/solar": "2.0.3"
+    "zod": "4.0.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { readAuthRuntimeConfig } from './auth-config';
+import {
+  readAllowedOrigins,
+  readAuthRuntimeConfig,
+} from './auth-config';
 
 const USER_A = '50000000-0000-4000-8000-000000000001';
 const USER_B = '50000000-0000-4000-8000-000000000002';
@@ -48,5 +51,32 @@ describe('auth runtime config', () => {
         ELARA_ALLOWED_USER_IDS: `${USER_A},${USER_A}`,
       }),
     ).toThrow('must not contain duplicates');
+  });
+});
+
+describe('API CORS runtime config', () => {
+  it('accepts exact HTTPS origins and local development HTTP origins', () => {
+    expect(
+      readAllowedOrigins({
+        ELARA_ALLOWED_ORIGINS:
+          'https://relay.example.com, http://127.0.0.1:4173',
+      }),
+    ).toEqual([
+      'https://relay.example.com',
+      'http://127.0.0.1:4173',
+    ]);
+  });
+
+  it('rejects paths, credentials, insecure remote origins, and duplicates', () => {
+    for (const value of [
+      'https://relay.example.com/app',
+      'https://user:pass@relay.example.com',
+      'http://relay.example.com',
+      'https://relay.example.com,https://relay.example.com',
+    ]) {
+      expect(() =>
+        readAllowedOrigins({ ELARA_ALLOWED_ORIGINS: value }),
+      ).toThrow();
+    }
   });
 });

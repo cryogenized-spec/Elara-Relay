@@ -9,6 +9,11 @@ const verifier = read('src/auth/supabase-auth-verifier.ts');
 const bearer = read('src/auth/bearer.ts');
 const authConfig = read('src/runtime/node/auth-config.ts');
 const persistent = read('src/runtime/node/persistent-api.ts');
+const browserAuth = read('src/app/auth-client.ts');
+const browserApi = read('src/app/operations-api.ts');
+const browserConfig = read('src/app/runtime-config.ts');
+const browserApp = read('src/app/App.tsx');
+const browserAuthorizationPolicy = read('src/app/authorization-policy.ts');
 
 for (const marker of [
   'AuthVerifier is required whenever domain routes are enabled',
@@ -65,10 +70,65 @@ for (const marker of [
 for (const marker of [
   'new SupabaseAuthVerifier',
   'readAuthRuntimeConfig(env)',
-  'createApi(kernel, authVerifier)',
+  'app: createApi(kernel, authVerifier, { allowedOrigins })',
 ]) {
   if (!persistent.includes(marker)) {
     findings.push(`Persistent runtime lost auth wiring: ${marker}`);
+  }
+}
+
+for (const marker of [
+  'persistSession: true',
+  'autoRefreshToken: true',
+  'refreshSession()',
+  'onAuthStateChange',
+]) {
+  if (!browserAuth.includes(marker)) {
+    findings.push(`Browser auth client lost required control: ${marker}`);
+  }
+}
+
+for (const marker of [
+  "if (token === null || token === '')",
+  'authorization: `Bearer ${token}`',
+  'if (response.status === 401 || response.status === 403)',
+  'return schema.parse(body.value);',
+]) {
+  if (!browserApi.includes(marker)) {
+    findings.push(`Browser Operations API lost required control: ${marker}`);
+  }
+}
+
+for (const marker of [
+  'VITE_SUPABASE_URL',
+  'VITE_SUPABASE_PUBLISHABLE_KEY',
+  'VITE_ELARA_API_URL',
+  "startsWith('sb_publishable_')",
+  'must not contain credentials',
+]) {
+  if (!browserConfig.includes(marker)) {
+    findings.push(`Browser runtime config lost required control: ${marker}`);
+  }
+}
+
+for (const marker of [
+  'requestAccessToken !== currentAccessToken',
+  "'STALE_SESSION'",
+  "'FORBIDDEN'",
+  "'UNAUTHENTICATED'",
+]) {
+  if (!browserAuthorizationPolicy.includes(marker)) {
+    findings.push(`Browser authorization policy lost required control: ${marker}`);
+  }
+}
+
+for (const marker of [
+  'runtime.api.dashboard(asOf)',
+  'authorizedUserId === null ||',
+  'requestId.current += 1;',
+]) {
+  if (!browserApp.includes(marker)) {
+    findings.push(`Browser live shell lost required control: ${marker}`);
   }
 }
 

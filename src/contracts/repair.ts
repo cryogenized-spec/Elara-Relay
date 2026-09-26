@@ -240,3 +240,7 @@ export type RecordRepairTestInput = z.infer<
   typeof recordRepairTestInputSchema
 >;
 export type RepairWarning = z.infer<typeof repairWarningSchema>;
+
+export function repairWarningsFor(repair: Repair): RepairWarning[] {
+  return repair.serialState === 'UNKNOWN' ? ['SERIAL_UNKNOWN'] : [];
+}

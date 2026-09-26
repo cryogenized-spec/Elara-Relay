@@ -45,7 +45,7 @@ const ids = [
   '10000000-0000-4000-8000-000000000016',
 ] as const;
 
-function makeApi() {
+function makeApi(options?: { allowedOrigins?: readonly string[] }) {
   let index = 0;
   const kernel = new DomainKernel(new MemoryDomainStore(), {
     clock: () => '2026-09-24T09:00:00.000Z',
@@ -56,7 +56,7 @@ function makeApi() {
       return id;
     },
   });
-  return createApi(kernel, new TestAuthVerifier());
+  return createApi(kernel, new TestAuthVerifier(), options);
 }
 
 function authorizationHeaders(): HeadersInit {
@@ -116,6 +116,39 @@ describe('API foundation', () => {
       { headers: { authorization: 'Bearer bad.token.value' } },
     );
     expect(invalid.status).toBe(401);
+  });
+
+
+  it('handles restricted browser CORS before bearer verification', async () => {
+    const app = makeApi({
+      allowedOrigins: ['http://127.0.0.1:4173'],
+    });
+
+    const allowed = await app.request('/work', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://127.0.0.1:4173',
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'authorization',
+      },
+    });
+    expect(allowed.status).toBe(204);
+    expect(allowed.headers.get('access-control-allow-origin')).toBe(
+      'http://127.0.0.1:4173',
+    );
+    expect(
+      allowed.headers.get('access-control-allow-headers')?.toLowerCase(),
+    ).toContain('authorization');
+
+    const denied = await app.request('/work', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://attacker.example',
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'authorization',
+      },
+    });
+    expect(denied.headers.get('access-control-allow-origin')).toBeNull();
   });
 
   it('exposes only the verified identity and never trusts caller actor claims', async () => {
@@ -294,11 +327,40 @@ describe('API foundation', () => {
     );
     expect(noteResponse.status).toBe(201);
 
+    const taskView = await app.request(`/tasks/${task.id}`, {
+      headers: authorizationHeaders(),
+    });
+    expect(taskView.status).toBe(200);
+    const taskDetail = (await taskView.json()) as {
+      task: { id: string; title: string };
+      job: { id: string; title: string } | null;
+    };
+    expect(taskDetail.task).toMatchObject({
+      id: task.id,
+      title: 'Pressure test through lunch',
+    });
+    expect(taskDetail.job).toMatchObject({
+      id: job.id,
+      title: 'Avenge-X regulator repair',
+    });
+
     const jobView = await app.request(`/jobs/${job.id}`, {
       headers: authorizationHeaders(),
     });
     expect(jobView.status).toBe(200);
-    const view = (await jobView.json()) as { tasks: unknown[]; events: unknown[] };
+    const view = (await jobView.json()) as {
+      party: { id: string; name: string };
+      tasks: unknown[];
+      events: unknown[];
+    };
+    expect(view.party).toEqual({
+      id: party.id,
+      name: 'Niven Naiker',
+      kind: 'CUSTOMER',
+      createdAt: '2026-09-24T09:00:00.000Z',
+      updatedAt: '2026-09-24T09:00:00.000Z',
+      revision: 1,
+    });
     expect(view.tasks).toHaveLength(2);
     const events = (
       view as {
@@ -324,6 +386,88 @@ describe('API foundation', () => {
     expect(search.status).toBe(200);
     const searchResult = (await search.json()) as { events: unknown[] };
     expect(searchResult.events).toHaveLength(1);
+
+    const dashboard = await app.request(
+      '/dashboard?asOf=2026-09-24T09%3A00%3A00.000Z',
+      { headers: authorizationHeaders() },
+    );
+    expect(dashboard.status).toBe(200);
+    const dashboardResult = (await dashboard.json()) as {
+      today: { asOf: string; tasks: unknown[] };
+      work: { parties: unknown[]; jobs: unknown[]; tasks: unknown[] };
+      repairs: { parties: unknown[]; jobs: unknown[]; repairs: unknown[] };
+      schedule: {
+        asOf: string;
+        due: unknown[];
+        upcoming: unknown[];
+        paused: unknown[];
+      };
+    };
+    expect(dashboardResult.today.asOf).toBe('2026-09-24T09:00:00.000Z');
+    expect(dashboardResult.schedule.asOf).toBe(dashboardResult.today.asOf);
+    expect(dashboardResult.work.jobs).toHaveLength(1);
+    expect(dashboardResult.repairs.jobs).toHaveLength(1);
+
+    const work = await app.request('/work', {
+      headers: authorizationHeaders(),
+    });
+    expect(work.status).toBe(200);
+    const workResult = (await work.json()) as {
+      parties: unknown[];
+      jobs: unknown[];
+      tasks: unknown[];
+    };
+    expect(workResult.parties).toHaveLength(1);
+    expect(workResult.jobs).toHaveLength(1);
+    expect(workResult.tasks).toHaveLength(2);
+
+    const repairs = await app.request('/repairs', {
+      headers: authorizationHeaders(),
+    });
+    expect(repairs.status).toBe(200);
+    const repairsResult = (await repairs.json()) as {
+      parties: Array<{
+        id: string;
+        name: string;
+        kind: string;
+        createdAt: string;
+        updatedAt: string;
+        revision: number;
+      }>;
+      jobs: Array<{
+        id: string;
+        key: string;
+        title: string;
+        category: string;
+        partyId: string | null;
+        createdAt: string;
+        updatedAt: string;
+        revision: number;
+      }>;
+      repairs: unknown[];
+    };
+    expect(repairsResult.parties).toEqual([
+      {
+        id: party.id,
+        name: 'Niven Naiker',
+        kind: 'CUSTOMER',
+        createdAt: '2026-09-24T09:00:00.000Z',
+        updatedAt: '2026-09-24T09:00:00.000Z',
+        revision: 1,
+      },
+    ]);
+    expect(repairsResult.jobs).toHaveLength(1);
+    expect(repairsResult.jobs[0]).toMatchObject({
+      id: job.id,
+      title: 'Avenge-X regulator repair',
+      category: 'ACTIVE',
+      partyId: party.id,
+      createdAt: '2026-09-24T09:00:00.000Z',
+      updatedAt: '2026-09-24T09:00:00.000Z',
+      revision: 2,
+    });
+    expect(repairsResult.jobs[0]?.key).toMatch(/^JOB-[A-F0-9]{8}$/);
+    expect(repairsResult.repairs).toEqual([]);
   });
 
   it('maps domain conflicts, missing entities, and malformed requests safely', async () => {

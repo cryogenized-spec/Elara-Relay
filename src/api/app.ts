@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { cors } from 'hono/cors';
 import { z, ZodError } from 'zod';
 import type {
   AuthIdentity,
@@ -44,6 +45,10 @@ type ApiEnv = {
 };
 
 type ApiContext = Context<ApiEnv>;
+
+export interface ApiOptions {
+  allowedOrigins?: readonly string[] | undefined;
+}
 
 const mutationRequestSchema = z
   .object({
@@ -216,6 +221,10 @@ function registerDomainRoutes(
     );
   });
 
+  app.get('/tasks/:taskId', async (context) =>
+    context.json(await kernel.getTask(context.req.param('taskId'))),
+  );
+
   app.post('/repairs', async (context) => {
     const request = createRepairRequestSchema.parse(await requestJson(context));
     return context.json(
@@ -265,6 +274,10 @@ function registerDomainRoutes(
       ),
     );
   });
+
+  app.get('/repairs', async (context) =>
+    context.json(await kernel.getRepairs()),
+  );
 
   app.get('/repairs/:repairId', async (context) =>
     context.json(await kernel.getRepair(context.req.param('repairId'))),
@@ -389,6 +402,15 @@ function registerDomainRoutes(
     context.json(await kernel.getJob(context.req.param('jobId'))),
   );
 
+  app.get('/work', async (context) =>
+    context.json(await kernel.getWork()),
+  );
+
+  app.get('/dashboard', async (context) => {
+    const asOf = z.string().parse(context.req.query('asOf'));
+    return context.json(await kernel.getDashboard(asOf));
+  });
+
   app.get('/today', async (context) => {
     const asOf = z.string().parse(context.req.query('asOf'));
     return context.json(await kernel.getToday(asOf));
@@ -422,8 +444,22 @@ function registerProtectedDomainApi(
 export function createApi(
   kernel?: DomainKernel,
   authVerifier?: AuthVerifier,
+  options: ApiOptions = {},
 ): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
+  const allowedOrigins = [...(options.allowedOrigins ?? [])];
+
+  if (allowedOrigins.length > 0) {
+    app.use(
+      '*',
+      cors({
+        origin: allowedOrigins,
+        allowHeaders: ['Authorization', 'Content-Type'],
+        allowMethods: ['GET', 'HEAD', 'POST', 'PATCH', 'OPTIONS'],
+        maxAge: 600,
+      }),
+    );
+  }
 
   app.get('/health', (context) =>
     context.json({

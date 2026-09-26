@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const baseURL = 'http://127.0.0.1:4173';
+
 export default defineConfig({
   testDir: './e2e',
   forbidOnly: true,
@@ -7,7 +9,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -34,8 +36,13 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run dev',
-    url: 'http://127.0.0.1:4173',
+    url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000,
+    env: {
+      VITE_SUPABASE_URL: baseURL,
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_playwright',
+      VITE_ELARA_API_URL: `${baseURL}/api-test`,
+    },
   },
 });

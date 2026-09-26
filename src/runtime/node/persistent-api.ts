@@ -3,7 +3,10 @@ import { SupabaseAuthVerifier } from '../../auth/supabase-auth-verifier';
 import { createApi } from '../../api/app';
 import { PostgresDomainStore } from '../../db/postgres/postgres-store';
 import { DomainKernel } from '../../domain/kernel';
-import { readAuthRuntimeConfig } from './auth-config';
+import {
+  readAllowedOrigins,
+  readAuthRuntimeConfig,
+} from './auth-config';
 import {
   createNodePostgresResourcesFromEnv,
   type NodePostgresResources,
@@ -17,12 +20,13 @@ export interface PersistentApiRuntime {
 export function createPersistentApiFromResources(
   resources: NodePostgresResources,
   authVerifier: AuthVerifier,
+  allowedOrigins: readonly string[] = [],
 ): PersistentApiRuntime {
   const store = new PostgresDomainStore(resources.sqlPool);
   const kernel = new DomainKernel(store);
 
   return {
-    app: createApi(kernel, authVerifier),
+    app: createApi(kernel, authVerifier, { allowedOrigins }),
     close: async () => {
       await resources.close();
     },
@@ -37,5 +41,9 @@ export function createPersistentApiFromEnv(
     readAuthRuntimeConfig(env),
   );
 
-  return createPersistentApiFromResources(resources, authVerifier);
+  return createPersistentApiFromResources(
+    resources,
+    authVerifier,
+    readAllowedOrigins(env),
+  );
 }

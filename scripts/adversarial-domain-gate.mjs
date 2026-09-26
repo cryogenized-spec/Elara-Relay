@@ -230,6 +230,22 @@ mutate(
   'scheduler pre-claim completion validation removal',
 );
 
+mutate(
+  'src/contracts/repair.ts',
+  "return repair.serialState === 'UNKNOWN' ? ['SERIAL_UNKNOWN'] : [];",
+  'return [];',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Repair warning truth suppression',
+);
+
+mutate(
+  'src/contracts/event.ts',
+  '!eventTypesByEntity[eventValue.entityType].includes(eventValue.eventType)',
+  'false',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Event entity-type correlation bypass',
+);
+
 process.stdout.write(
-  'Adversarial domain gate passed: replay, foreign-key, event-history, terminal-state, Repair lifecycle/test/one-to-one controls, Scheduler lease/catch-up/occurrence/delivery-snapshot/owner-email/completion controls, append-only, advisory-lock, row-lock, one-event-per-mutation, RLS, privilege-revocation, and search_path mutations were rejected.\n',
+  'Adversarial domain gate passed: replay, foreign-key, event-history/type-correlation, terminal-state, Repair lifecycle/test/one-to-one/warning-truth controls, Scheduler lease/catch-up/occurrence/delivery-snapshot/owner-email/completion controls, append-only, advisory-lock, row-lock, one-event-per-mutation, RLS, privilege-revocation, and search_path mutations were rejected.\n',
 );
