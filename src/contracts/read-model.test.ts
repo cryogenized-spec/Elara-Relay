@@ -922,6 +922,72 @@ describe('read-model aggregate invariants', () => {
 
 });
 
+describe('read-model current-truth hardening', () => {
+  it('rejects multiple Repairs claiming the same Job', () => {
+    expect(() =>
+      repairsResultSchema.parse({
+        parties: [party],
+        jobs: [job],
+        repairs: [
+          repair,
+          {
+            ...repair,
+            id: '10000000-0000-4000-8000-000000000055',
+          },
+        ],
+      }),
+    ).toThrow(/unique jobIds/);
+  });
+
+  it('rejects Job history that claims revisions ahead of current aggregate state', () => {
+    const scheduled = action();
+    const base = {
+      job,
+      party,
+      tasks: [task],
+      repair,
+      repairWarnings: ['SERIAL_UNKNOWN'] as const,
+      scheduledActions: [scheduled],
+    };
+
+    const impossibleEvents = [
+      event({
+        entityType: 'JOB',
+        entityId: job.id,
+        eventType: 'JOB_NOTE',
+        revisionAfter: job.revision + 1,
+      }),
+      event({
+        entityType: 'TASK',
+        entityId: task.id,
+        eventType: 'TASK_UPDATED',
+        revisionAfter: task.revision + 1,
+      }),
+      event({
+        entityType: 'REPAIR',
+        entityId: repair.id,
+        eventType: 'REPAIR_DETAILS_UPDATED',
+        revisionAfter: repair.revision + 1,
+      }),
+      event({
+        entityType: 'SCHEDULED_ACTION',
+        entityId: scheduled.id,
+        eventType: 'SCHEDULED_ACTION_UPDATED',
+        revisionAfter: scheduled.revision + 1,
+      }),
+    ];
+
+    for (const impossible of impossibleEvents) {
+      expect(() =>
+        jobViewSchema.parse({
+          ...base,
+          events: [impossible],
+        }),
+      ).toThrow(/revisionAfter cannot exceed the current entity revision/);
+    }
+  });
+});
+
 describe('read-model uniqueness hardening', () => {
   it('rejects duplicate Job keys even when ids differ', () => {
     const baseJob = {

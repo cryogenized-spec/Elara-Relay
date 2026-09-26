@@ -232,6 +232,22 @@ mutate(
   'task-only Scheduled Action Job-context bypass',
 );
 
+mutate(
+  'src/contracts/read-model.ts',
+  'if (duplicateRepairJobIds.length > 0) {',
+  'if (false) {',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Repair one-to-one Job read-model bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  'event.revisionAfter > currentRevision',
+  'false',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'future Event revision read-model bypass',
+);
+
 process.stdout.write(
-  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, stale-session denial isolation, Search truthfulness, strict read-model validation, authorization body-read failures, duplicate durable identifiers, task-only scheduler relationships, and modern publishable-key controls resisted hostile mutations.\n',
+  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, stale-session denial isolation, Search truthfulness, strict read-model validation, authorization body-read failures, duplicate durable identifiers, Repair one-to-one ownership, Event revision truth, task-only scheduler relationships, and modern publishable-key controls resisted hostile mutations.\n',
 );

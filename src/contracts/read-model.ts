@@ -190,10 +190,14 @@ export const jobViewSchema = z
       }
     }
 
-    const taskIds = new Set(view.tasks.map((task) => task.id));
-    const actionIds = new Set(
-      view.scheduledActions.map((action) => action.id),
+    const tasksById = new Map(
+      view.tasks.map((task) => [task.id, task]),
     );
+    const actionsById = new Map(
+      view.scheduledActions.map((action) => [action.id, action]),
+    );
+    const taskIds = new Set(tasksById.keys());
+    const actionIds = new Set(actionsById.keys());
 
     for (const [index, action] of view.scheduledActions.entries()) {
       const directJobMatch = action.jobId === view.job.id;
@@ -219,14 +223,24 @@ export const jobViewSchema = z
     }
 
     for (const [index, event] of view.events.entries()) {
+      const task =
+        event.entityType === 'TASK'
+          ? tasksById.get(event.entityId)
+          : undefined;
+      const action =
+        event.entityType === 'SCHEDULED_ACTION'
+          ? actionsById.get(event.entityId)
+          : undefined;
+      const repairMatch =
+        event.entityType === 'REPAIR' &&
+        view.repair !== null &&
+        event.entityId === view.repair.id;
+
       const belongsToAggregate =
         (event.entityType === 'JOB' && event.entityId === view.job.id) ||
-        (event.entityType === 'TASK' && taskIds.has(event.entityId)) ||
-        (event.entityType === 'REPAIR' &&
-          view.repair !== null &&
-          event.entityId === view.repair.id) ||
-        (event.entityType === 'SCHEDULED_ACTION' &&
-          actionIds.has(event.entityId));
+        task !== undefined ||
+        repairMatch ||
+        action !== undefined;
 
       if (!belongsToAggregate) {
         context.addIssue({
@@ -234,6 +248,28 @@ export const jobViewSchema = z
           path: ['events', index],
           message:
             'Job view Events must reference the viewed Job aggregate',
+        });
+        continue;
+      }
+
+      const currentRevision =
+        event.entityType === 'JOB'
+          ? view.job.revision
+          : event.entityType === 'TASK'
+            ? task?.revision
+            : event.entityType === 'REPAIR'
+              ? view.repair?.revision
+              : action?.revision;
+
+      if (
+        currentRevision !== undefined &&
+        event.revisionAfter > currentRevision
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['events', index, 'revisionAfter'],
+          message:
+            'Job view Event revisionAfter cannot exceed the current entity revision',
         });
       }
     }
@@ -410,6 +446,18 @@ export const repairsResultSchema = z
     const repairDuplicates = duplicateMessage(result.repairs, 'repairs');
     if (repairDuplicates !== null) {
       context.addIssue({ code: 'custom', path: ['repairs'], message: repairDuplicates });
+    }
+    const duplicateRepairJobIds = duplicateStrings(
+      result.repairs.map((repair) => repair.jobId),
+    );
+    if (duplicateRepairJobIds.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['repairs'],
+        message:
+          'Repairs must contain unique jobIds; duplicates: ' +
+          duplicateRepairJobIds.join(', '),
+      });
     }
 
     const partyIds = new Set(result.parties.map((party) => party.id));
