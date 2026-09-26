@@ -719,6 +719,32 @@ export const searchResultSchema = z
         context.addIssue({ code: 'custom', path: [path], message });
       }
     }
+
+    const duplicateSearchJobKeys = duplicateStrings(
+      result.jobs.map((job) => job.key),
+    );
+    if (duplicateSearchJobKeys.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['jobs'],
+        message:
+          'Search must contain unique Job keys; duplicates: ' +
+          duplicateSearchJobKeys.join(', '),
+      });
+    }
+
+    const duplicateSearchMutationIds = duplicateStrings(
+      result.events.map((event) => event.mutationId),
+    );
+    if (duplicateSearchMutationIds.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['events'],
+        message:
+          'Search must contain unique Event mutationIds; duplicates: ' +
+          duplicateSearchMutationIds.join(', '),
+      });
+    }
   });
 
 export type TaskViewPayload = z.infer<typeof taskViewSchema>;

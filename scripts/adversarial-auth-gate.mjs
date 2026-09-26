@@ -248,6 +248,22 @@ mutate(
   'future Event revision read-model bypass',
 );
 
+mutate(
+  'src/contracts/read-model.ts',
+  'if (duplicateSearchJobKeys.length > 0) {',
+  'if (false) {',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Search duplicate Job-key validation bypass',
+);
+
+mutate(
+  'src/contracts/read-model.ts',
+  'if (duplicateSearchMutationIds.length > 0) {',
+  'if (false) {',
+  () => runVitest('src/contracts/read-model.test.ts'),
+  'Search duplicate Event mutation-id validation bypass',
+);
+
 process.stdout.write(
-  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, stale-session denial isolation, Search truthfulness, strict read-model validation, authorization body-read failures, duplicate durable identifiers, Repair one-to-one ownership, Event revision truth, task-only scheduler relationships, and modern publishable-key controls resisted hostile mutations.\n',
+  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, stale-session denial isolation, Search truthfulness, strict read-model validation, authorization body-read failures, duplicate durable identifiers, Repair one-to-one ownership, Event revision truth, Search durable-identity uniqueness, task-only scheduler relationships, and modern publishable-key controls resisted hostile mutations.\n',
 );

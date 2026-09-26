@@ -922,6 +922,50 @@ describe('read-model aggregate invariants', () => {
 
 });
 
+describe('search durable-identity hardening', () => {
+  it('rejects duplicate Job keys with distinct row ids', () => {
+    expect(() =>
+      searchResultSchema.parse({
+        parties: [],
+        jobs: [
+          job,
+          {
+            ...job,
+            id: '10000000-0000-4000-8000-000000000077',
+            title: 'Duplicate visible key',
+          },
+        ],
+        tasks: [],
+        repairs: [],
+        scheduledActions: [],
+        events: [],
+      }),
+    ).toThrow(/Search must contain unique Job keys/);
+  });
+
+  it('rejects duplicate Event mutationIds with distinct Event ids', () => {
+    const first = event();
+    expect(() =>
+      searchResultSchema.parse({
+        parties: [],
+        jobs: [],
+        tasks: [],
+        repairs: [],
+        scheduledActions: [],
+        events: [
+          first,
+          {
+            ...first,
+            id: '10000000-0000-4000-8000-000000000078',
+            eventType: 'JOB_NOTE',
+            detail: 'Duplicate mutation identity',
+          },
+        ],
+      }),
+    ).toThrow(/Search must contain unique Event mutationIds/);
+  });
+});
+
 describe('read-model current-truth hardening', () => {
   it('rejects multiple Repairs claiming the same Job', () => {
     expect(() =>
