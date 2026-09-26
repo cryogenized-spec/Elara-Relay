@@ -1256,7 +1256,6 @@ function PreviewSave() {
 
 function CaptureSheet({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<CaptureMode>('menu');
-  const [busy, setBusy] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -1304,7 +1303,7 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
       aria-labelledby="capture-title"
       onCancel={(event) => {
         event.preventDefault();
-        if (!busy) onClose();
+        onClose();
       }}
     >
       <div className="sheetHandle" aria-hidden="true" />
@@ -1315,7 +1314,6 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
               className="sheetBackButton"
               type="button"
               aria-label="Back"
-              disabled={busy}
               onClick={() => setMode('menu')}
             >
               <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
@@ -1325,12 +1323,7 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
             {captureTitles[mode]}
           </h2>
         </div>
-        <button
-          className="textButton"
-          type="button"
-          disabled={busy}
-          onClick={onClose}
-        >
+        <button className="textButton" type="button" onClick={onClose}>
           Cancel
         </button>
       </div>
@@ -2722,6 +2715,7 @@ function LiveCaptureSheet({
   authorizationSessionId: string | null;
 }) {
   const [mode, setMode] = useState<CaptureMode>('menu');
+  const [busy, setBusy] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -2756,7 +2750,7 @@ function LiveCaptureSheet({
       aria-labelledby="live-capture-title"
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (!busy) onClose();
       }}
     >
       <div className="sheetHandle" aria-hidden="true" />
@@ -2767,6 +2761,7 @@ function LiveCaptureSheet({
               className="sheetBackButton"
               type="button"
               aria-label="Back"
+              disabled={busy}
               onClick={() => setMode('menu')}
             >
               <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
@@ -2776,7 +2771,12 @@ function LiveCaptureSheet({
             {captureTitles[mode]}
           </h2>
         </div>
-        <button className="textButton" type="button" onClick={onClose}>
+        <button
+          className="textButton"
+          type="button"
+          disabled={busy}
+          onClick={onClose}
+        >
           Cancel
         </button>
       </div>
