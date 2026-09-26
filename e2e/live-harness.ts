@@ -436,6 +436,7 @@ export async function installLiveHarness(
   let firstTaskIntent:
     | { mutationId: string; inputJson: string }
     | null = null;
+  let currentAsOf = '2026-09-25T04:00:00.000Z';
 
   await page.route('**/auth/v1/**', async (route) => {
     const url = new URL(route.request().url());
@@ -470,8 +471,9 @@ export async function installLiveHarness(
   await page.route('**/api-test/**', async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^\/api-test/, '');
-    const asOf =
-      url.searchParams.get('asOf') ?? '2026-09-25T04:00:00.000Z';
+    const requestedAsOf = url.searchParams.get('asOf');
+    if (requestedAsOf !== null) currentAsOf = requestedAsOf;
+    const asOf = requestedAsOf ?? currentAsOf;
     const allParties = [
       baseParty(),
       ...(capturedParty === null ? [] : [capturedParty]),
@@ -504,6 +506,24 @@ export async function installLiveHarness(
         schedule.upcoming.push(capturedAction);
       }
     }
+
+    const asOfMillis = Date.parse(asOf);
+    const todayTasks = allTasks.filter((task) => {
+      const active =
+        task.status !== 'DONE' && task.status !== 'CANCELLED';
+      const due =
+        (task.dueAt !== null && Date.parse(task.dueAt) <= asOfMillis) ||
+        (task.followUpAt !== null &&
+          Date.parse(task.followUpAt) <= asOfMillis);
+      return active && due;
+    });
+    const todayRepairs = allRepairs.filter(
+      (repair) =>
+        (repair.stage === 'AWAITING_PARTS' ||
+          repair.stage === 'AWAITING_CUSTOMER') &&
+        repair.followUpAt !== null &&
+        Date.parse(repair.followUpAt) <= asOfMillis,
+    );
 
     if (path === '/auth/whoami') {
       whoAmICalls += 1;
@@ -598,7 +618,7 @@ export async function installLiveHarness(
 
       capturedJob ??= {
         id: IDS.jobCaptured,
-        key: 'JOB-CAPTURE1',
+        key: 'JOB-CA7E0001',
         title: raw.input.jobTitle,
         category: 'ACTIVE',
         partyId: party.id,
@@ -971,8 +991,8 @@ export async function installLiveHarness(
         json({
           today: {
             asOf,
-            tasks: [allTasks[0]],
-            repairs: [allRepairs[0]],
+            tasks: todayTasks,
+            repairs: todayRepairs,
             scheduledActions: schedule.due,
           },
           work,
