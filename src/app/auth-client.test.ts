@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { RawSession } from './supabase-runtime.mjs';
-import { toBrowserAuthSession } from './auth-client';
+import {
+  toBrowserAuthEventSession,
+  toBrowserAuthSession,
+} from './auth-client';
 
 const ACCESS_TOKEN =
   'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIzMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLCJzZXNzaW9uX2lkIjoiMzAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAyIn0.signature';
@@ -37,7 +40,20 @@ describe('browser auth session mapping', () => {
     );
   });
 
+  it('fails closed for malformed auth-state events', () => {
+    const malformed = {
+      access_token: 'not-a-jwt',
+      user: {
+        id: '30000000-0000-4000-8000-000000000001',
+        email: 'owner@example.com',
+      },
+    } satisfies RawSession;
+
+    expect(toBrowserAuthEventSession(malformed)).toBeNull();
+  });
+
   it('preserves the signed-out state', () => {
     expect(toBrowserAuthSession(null)).toBeNull();
+    expect(toBrowserAuthEventSession(null)).toBeNull();
   });
 });

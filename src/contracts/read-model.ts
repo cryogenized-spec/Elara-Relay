@@ -732,6 +732,19 @@ export const searchResultSchema = z
       });
     }
 
+    const duplicateSearchRepairJobIds = duplicateStrings(
+      result.repairs.map((repair) => repair.jobId),
+    );
+    if (duplicateSearchRepairJobIds.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['repairs'],
+        message:
+          'Search must contain unique Repair jobIds; duplicates: ' +
+          duplicateSearchRepairJobIds.join(', '),
+      });
+    }
+
     const duplicateSearchMutationIds = duplicateStrings(
       result.events.map((event) => event.mutationId),
     );

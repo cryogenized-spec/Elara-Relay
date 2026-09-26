@@ -943,6 +943,25 @@ describe('search durable-identity hardening', () => {
     ).toThrow(/Search must contain unique Job keys/);
   });
 
+  it('rejects multiple Search Repairs claiming the same Job', () => {
+    expect(() =>
+      searchResultSchema.parse({
+        parties: [],
+        jobs: [],
+        tasks: [],
+        repairs: [
+          repair,
+          {
+            ...repair,
+            id: '10000000-0000-4000-8000-000000000079',
+          },
+        ],
+        scheduledActions: [],
+        events: [],
+      }),
+    ).toThrow(/Search must contain unique Repair jobIds/);
+  });
+
   it('rejects duplicate Event mutationIds with distinct Event ids', () => {
     const first = event();
     expect(() =>
