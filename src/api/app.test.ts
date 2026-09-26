@@ -470,7 +470,7 @@ describe('API foundation', () => {
     expect(repairsResult.repairs).toEqual([]);
   });
 
-  it('creates a Repair case atomically and replays the same receipt safely', async () => {
+  it('creates a Repair case through replay-safe composite steps', async () => {
     const app = makeApi();
     const request = {
       mutation: { mutationId: 'MUT-repaircase-0001' },
