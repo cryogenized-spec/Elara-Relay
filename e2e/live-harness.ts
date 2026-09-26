@@ -19,6 +19,7 @@ const IDS = {
   actionPaused: '10000000-0000-4000-8000-000000000014',
   eventJob: '10000000-0000-4000-8000-000000000015',
   taskCaptured: '10000000-0000-4000-8000-000000000016',
+  actionCaptured: '10000000-0000-4000-8000-000000000017',
 } as const;
 
 export interface LiveHarnessOptions {
@@ -343,6 +344,9 @@ export async function installLiveHarness(
   let logicalSessionIndex = -1;
   let currentSessionId: string = IDS.session;
   let capturedTask: ReturnType<typeof tasks>[number] | null = null;
+  let capturedAction:
+    | ReturnType<typeof scheduledActions>['upcoming'][number]
+    | null = null;
   let taskCreateAttempts = 0;
   let firstTaskIntent:
     | { mutationId: string; inputJson: string }
@@ -390,6 +394,16 @@ export async function installLiveHarness(
     ];
     const allRepairs = repairs(asOf);
     const schedule = scheduledActions(asOf);
+    if (capturedAction !== null) {
+      if (
+        capturedAction.nextRunAt !== null &&
+        Date.parse(capturedAction.nextRunAt) <= Date.parse(asOf)
+      ) {
+        schedule.due.push(capturedAction);
+      } else {
+        schedule.upcoming.push(capturedAction);
+      }
+    }
 
     if (path === '/auth/whoami') {
       whoAmICalls += 1;
@@ -509,6 +523,73 @@ export async function installLiveHarness(
       }
 
       await route.fulfill(json(capturedTask, 201));
+      return;
+    }
+
+    if (path === '/schedule' && route.request().method() === 'POST') {
+      const raw = route.request().postDataJSON() as {
+        mutation?: { mutationId?: unknown };
+        input?: {
+          jobId?: unknown;
+          taskId?: unknown;
+          title?: unknown;
+          actionType?: unknown;
+          payload?: unknown;
+          timezone?: unknown;
+          recurrenceRule?: unknown;
+          runAt?: unknown;
+        };
+      };
+
+      if (
+        typeof raw.mutation?.mutationId !== 'string' ||
+        raw.input?.actionType !== 'REMINDER' ||
+        raw.input?.timezone !== 'Africa/Johannesburg' ||
+        typeof raw.input?.title !== 'string' ||
+        typeof raw.input?.runAt !== 'string'
+      ) {
+        await route.fulfill(
+          json(
+            {
+              error: {
+                code: 'INVALID_REQUEST',
+                message: 'Reminder fixture received invalid durable intent',
+              },
+            },
+            400,
+          ),
+        );
+        return;
+      }
+
+      capturedAction = {
+        id: IDS.actionCaptured,
+        jobId:
+          typeof raw.input.jobId === 'string'
+            ? raw.input.jobId
+            : null,
+        taskId: null,
+        title: raw.input.title,
+        actionType: 'REMINDER',
+        payload: {
+          kind: 'REMINDER',
+          message: raw.input.title,
+        },
+        timezone: 'Africa/Johannesburg',
+        recurrenceRule:
+          typeof raw.input.recurrenceRule === 'string'
+            ? raw.input.recurrenceRule
+            : null,
+        status: 'ACTIVE',
+        runAt: raw.input.runAt,
+        nextRunAt: raw.input.runAt,
+        lastRunAt: null,
+        createdAt: '2026-09-26T04:50:00.000Z',
+        updatedAt: '2026-09-26T04:50:00.000Z',
+        revision: 1,
+      };
+
+      await route.fulfill(json(capturedAction, 201));
       return;
     }
 

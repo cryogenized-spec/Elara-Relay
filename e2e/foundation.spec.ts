@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { installLiveHarness, signInOwner } from './live-harness';
 
+const IDS_FOR_TEST = {
+  jobRepair: '10000000-0000-4000-8000-000000000002',
+} as const;
+
 test('authenticated mobile operations shell reads live domain state', async ({
   page,
 }) => {
@@ -370,5 +374,32 @@ test('Task Capture retries one unchanged durable mutation intent', async ({
   await page.getByRole('button', { name: 'Work' }).click();
   await expect(
     page.getByText('Retry-safe captured Task', { exact: true }),
+  ).toBeVisible();
+});
+
+
+test('Reminder Capture persists recurrence and Job context', async ({ page }) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Capture' }).click();
+  const capture = page.getByRole('dialog', { name: 'Capture' });
+  await capture.getByRole('button', { name: /^Reminder/ }).click();
+
+  await page.getByLabel('Title').fill('Check regulator supplier ETA');
+  await page.getByLabel('Run at').fill('2026-09-26T14:30');
+  await page.getByLabel('Repeat').selectOption('daily');
+  await page.getByLabel('Linked Job').selectOption(IDS_FOR_TEST.jobRepair);
+  await page.getByRole('button', { name: 'Save Reminder' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await page.getByRole('button', { name: 'Schedule' }).click();
+  await expect(
+    page.getByText('Check regulator supplier ETA', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/FREQ=DAILY;INTERVAL=1.*JOB-7A31C4F2/),
   ).toBeVisible();
 });
