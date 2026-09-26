@@ -62,9 +62,23 @@ function isoOffset(asOf, minutes) {
   return new Date(Date.parse(asOf) + minutes * 60_000).toISOString();
 }
 
+function liveJwt() {
+  const encode = (value) =>
+    Buffer.from(JSON.stringify(value)).toString('base64url');
+  const header = encode({ alg: 'none', typ: 'JWT' });
+  const payload = encode({
+    sub: LIVE_IDS.user,
+    session_id: LIVE_IDS.session,
+    role: 'authenticated',
+    aal: 'aal1',
+    jti: 'visual-evidence',
+  });
+  return `${header}.${payload}.fixture`;
+}
+
 function liveSessionPayload() {
   return {
-    access_token: 'visual-access-token',
+    access_token: liveJwt(),
     token_type: 'bearer',
     expires_in: 3600,
     expires_at: Math.floor(Date.now() / 1000) + 3600,
