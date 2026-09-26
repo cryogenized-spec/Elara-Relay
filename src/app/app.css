@@ -1383,3 +1383,18 @@ button.workRow:active {
 .searchResultRow--button:active {
   background: var(--surface-2);
 }
+
+.captureMutationError {
+  color: #ff8d97 !important;
+}
+
+.captureForm__footer .primaryButton {
+  width: 100%;
+}
+
+.sheetBackButton:disabled,
+.textButton:disabled,
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}

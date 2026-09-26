@@ -20,6 +20,17 @@ import type { BrowserRuntime } from './browser-runtime';
 import { classifyAuthorizationFailure } from './authorization-policy';
 import { OperationsApiError } from './operations-api';
 import {
+  createReminderCapturePlan,
+  createRepairCapturePlan,
+  createTaskCapturePlan,
+  submitReminderCapture,
+  submitRepairCapture,
+  submitTaskCapture,
+  type ReminderCapturePlan,
+  type RepairCapturePlan,
+  type TaskCapturePlan,
+} from './capture-commands';
+import {
   buildRepairsView,
   buildScheduleView,
   buildSearchGroups,
@@ -1246,6 +1257,547 @@ function PreviewSave() {
         Save unavailable in preview
       </button>
     </div>
+  );
+}
+
+function LiveMutationFooter({
+  pending,
+  error,
+}: {
+  pending: boolean;
+  error: string | null;
+}) {
+  return (
+    <div className="captureForm__footer">
+      {error === null ? (
+        <p>Writes are persisted through Elara's Operations API.</p>
+      ) : (
+        <p className="captureMutationError" role="alert">
+          {error}
+        </p>
+      )}
+      <button className="primaryButton" type="submit" disabled={pending}>
+        {pending ? 'Saving…' : error === null ? 'Save' : 'Retry save'}
+      </button>
+    </div>
+  );
+}
+
+function LiveTaskCaptureForm({
+  runtime,
+  dashboard,
+  onCommitted,
+  onAuthorizationFailure,
+  authorizationSessionId,
+  onBusyChange,
+}: {
+  runtime: BrowserRuntime;
+  dashboard: DashboardResultPayload;
+  onCommitted: () => void;
+  onAuthorizationFailure: AuthorizationFailureHandler;
+  authorizationSessionId: string | null;
+  onBusyChange: (busy: boolean) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [dueLocal, setDueLocal] = useState('');
+  const [jobKey, setJobKey] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const planRef = useRef<TaskCapturePlan | null>(null);
+
+  const invalidate = () => {
+    planRef.current = null;
+    setError(null);
+  };
+
+  return (
+    <form
+      className="captureForm"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (pending) return;
+
+        const plan =
+          planRef.current ?? (planRef.current = createTaskCapturePlan());
+        const requestAccessToken = runtime.auth.getAccessToken();
+        setPending(true);
+        onBusyChange(true);
+        setError(null);
+
+        void submitTaskCapture(
+          runtime.api,
+          dashboard,
+          { title, dueLocal, jobKey },
+          plan,
+        )
+          .then(() => {
+            onCommitted();
+          })
+          .catch((caught: unknown) => {
+            if (
+              onAuthorizationFailure(
+                caught,
+                requestAccessToken,
+                authorizationSessionId,
+              )
+            ) {
+              return;
+            }
+            setError(readableError(caught));
+          })
+          .finally(() => {
+            setPending(false);
+            onBusyChange(false);
+          });
+      }}
+    >
+      <label className="formField">
+        <span>Title</span>
+        <input
+          name="task-title"
+          placeholder="What needs doing?"
+          value={title}
+          onChange={(event) => {
+            invalidate();
+            setTitle(event.target.value);
+          }}
+          required
+        />
+      </label>
+      <label className="formField">
+        <span>Due</span>
+        <input
+          name="task-due"
+          type="datetime-local"
+          value={dueLocal}
+          onChange={(event) => {
+            invalidate();
+            setDueLocal(event.target.value);
+          }}
+        />
+      </label>
+      <label className="formField">
+        <span>Linked Job</span>
+        <input
+          name="task-job"
+          list="live-task-job-keys"
+          placeholder="Optional exact Job key"
+          value={jobKey}
+          onChange={(event) => {
+            invalidate();
+            setJobKey(event.target.value);
+          }}
+        />
+        <datalist id="live-task-job-keys">
+          {dashboard.work.jobs.map((job) => (
+            <option key={job.id} value={job.key}>
+              {job.title}
+            </option>
+          ))}
+        </datalist>
+      </label>
+      <LiveMutationFooter pending={pending} error={error} />
+    </form>
+  );
+}
+
+function LiveRepairCaptureForm({
+  runtime,
+  dashboard,
+  onCommitted,
+  onAuthorizationFailure,
+  authorizationSessionId,
+  onBusyChange,
+}: {
+  runtime: BrowserRuntime;
+  dashboard: DashboardResultPayload;
+  onCommitted: () => void;
+  onAuthorizationFailure: AuthorizationFailureHandler;
+  authorizationSessionId: string | null;
+  onBusyChange: (busy: boolean) => void;
+}) {
+  const [partyName, setPartyName] = useState('');
+  const [itemTitle, setItemTitle] = useState('');
+  const [reportedFault, setReportedFault] = useState('');
+  const [serial, setSerial] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const planRef = useRef<RepairCapturePlan | null>(null);
+
+  const invalidate = () => {
+    planRef.current = null;
+    setError(null);
+  };
+
+  return (
+    <form
+      className="captureForm"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (pending) return;
+
+        const plan =
+          planRef.current ?? (planRef.current = createRepairCapturePlan());
+        const requestAccessToken = runtime.auth.getAccessToken();
+        setPending(true);
+        onBusyChange(true);
+        setError(null);
+
+        void submitRepairCapture(
+          runtime.api,
+          dashboard,
+          { partyName, itemTitle, reportedFault, serial },
+          plan,
+        )
+          .then(() => {
+            onCommitted();
+          })
+          .catch((caught: unknown) => {
+            if (
+              onAuthorizationFailure(
+                caught,
+                requestAccessToken,
+                authorizationSessionId,
+              )
+            ) {
+              return;
+            }
+            setError(readableError(caught));
+          })
+          .finally(() => {
+            setPending(false);
+            onBusyChange(false);
+          });
+      }}
+    >
+      <label className="formField">
+        <span>Customer</span>
+        <input
+          name="repair-customer"
+          list="live-repair-parties"
+          placeholder="Existing Party name or new customer"
+          value={partyName}
+          onChange={(event) => {
+            invalidate();
+            setPartyName(event.target.value);
+          }}
+          required
+        />
+        <datalist id="live-repair-parties">
+          {dashboard.work.parties.map((party) => (
+            <option key={party.id} value={party.name} />
+          ))}
+        </datalist>
+      </label>
+      <label className="formField">
+        <span>Item / model</span>
+        <input
+          name="repair-item"
+          placeholder="What is being repaired?"
+          value={itemTitle}
+          onChange={(event) => {
+            invalidate();
+            setItemTitle(event.target.value);
+          }}
+          required
+        />
+      </label>
+      <label className="formField">
+        <span>Reported fault</span>
+        <textarea
+          name="repair-fault"
+          placeholder="Describe the reported problem"
+          value={reportedFault}
+          onChange={(event) => {
+            invalidate();
+            setReportedFault(event.target.value);
+          }}
+          required
+        />
+      </label>
+      <label className="formField">
+        <span>Serial</span>
+        <input
+          name="repair-serial"
+          placeholder="Optional serial number"
+          value={serial}
+          onChange={(event) => {
+            invalidate();
+            setSerial(event.target.value);
+          }}
+        />
+      </label>
+      <LiveMutationFooter pending={pending} error={error} />
+    </form>
+  );
+}
+
+function LiveReminderCaptureForm({
+  runtime,
+  dashboard,
+  onCommitted,
+  onAuthorizationFailure,
+  authorizationSessionId,
+  onBusyChange,
+}: {
+  runtime: BrowserRuntime;
+  dashboard: DashboardResultPayload;
+  onCommitted: () => void;
+  onAuthorizationFailure: AuthorizationFailureHandler;
+  authorizationSessionId: string | null;
+  onBusyChange: (busy: boolean) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [runAtLocal, setRunAtLocal] = useState('');
+  const [repeat, setRepeat] = useState<'once' | 'daily' | 'weekly'>('once');
+  const [jobKey, setJobKey] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const planRef = useRef<ReminderCapturePlan | null>(null);
+
+  const invalidate = () => {
+    planRef.current = null;
+    setError(null);
+  };
+
+  return (
+    <form
+      className="captureForm"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (pending) return;
+
+        const plan =
+          planRef.current ?? (planRef.current = createReminderCapturePlan());
+        const requestAccessToken = runtime.auth.getAccessToken();
+        setPending(true);
+        onBusyChange(true);
+        setError(null);
+
+        void submitReminderCapture(
+          runtime.api,
+          dashboard,
+          { title, runAtLocal, repeat, jobKey },
+          plan,
+        )
+          .then(() => {
+            onCommitted();
+          })
+          .catch((caught: unknown) => {
+            if (
+              onAuthorizationFailure(
+                caught,
+                requestAccessToken,
+                authorizationSessionId,
+              )
+            ) {
+              return;
+            }
+            setError(readableError(caught));
+          })
+          .finally(() => {
+            setPending(false);
+            onBusyChange(false);
+          });
+      }}
+    >
+      <label className="formField">
+        <span>Title</span>
+        <input
+          name="reminder-title"
+          placeholder="What should happen?"
+          value={title}
+          onChange={(event) => {
+            invalidate();
+            setTitle(event.target.value);
+          }}
+          required
+        />
+      </label>
+      <label className="formField">
+        <span>Run at</span>
+        <input
+          name="reminder-run-at"
+          type="datetime-local"
+          value={runAtLocal}
+          onChange={(event) => {
+            invalidate();
+            setRunAtLocal(event.target.value);
+          }}
+          required
+        />
+      </label>
+      <label className="formField">
+        <span>Repeat</span>
+        <select
+          name="reminder-repeat"
+          value={repeat}
+          onChange={(event) => {
+            invalidate();
+            setRepeat(event.target.value as 'once' | 'daily' | 'weekly');
+          }}
+        >
+          <option value="once">One time</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+        </select>
+      </label>
+      <label className="formField">
+        <span>Linked Job</span>
+        <input
+          name="reminder-job"
+          list="live-reminder-job-keys"
+          placeholder="Optional exact Job key"
+          value={jobKey}
+          onChange={(event) => {
+            invalidate();
+            setJobKey(event.target.value);
+          }}
+        />
+        <datalist id="live-reminder-job-keys">
+          {dashboard.work.jobs.map((job) => (
+            <option key={job.id} value={job.key}>
+              {job.title}
+            </option>
+          ))}
+        </datalist>
+      </label>
+      <LiveMutationFooter pending={pending} error={error} />
+    </form>
+  );
+}
+
+function LiveCaptureSheet({
+  runtime,
+  dashboard,
+  onClose,
+  onCommitted,
+  onAuthorizationFailure,
+  authorizationSessionId,
+}: {
+  runtime: BrowserRuntime;
+  dashboard: DashboardResultPayload;
+  onClose: () => void;
+  onCommitted: () => void;
+  onAuthorizationFailure: AuthorizationFailureHandler;
+  authorizationSessionId: string | null;
+}) {
+  const [mode, setMode] = useState<CaptureMode>('menu');
+  const [busy, setBusy] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (dialog.open) dialog.close();
+      previousFocus?.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    titleRef.current?.focus();
+  }, [mode]);
+
+  const common = {
+    runtime,
+    dashboard,
+    onCommitted,
+    onAuthorizationFailure,
+    authorizationSessionId,
+    onBusyChange: setBusy,
+  };
+
+  const form = (() => {
+    switch (mode) {
+      case 'task':
+        return <LiveTaskCaptureForm {...common} />;
+      case 'repair':
+        return <LiveRepairCaptureForm {...common} />;
+      case 'reminder':
+        return <LiveReminderCaptureForm {...common} />;
+      case 'menu':
+        return null;
+    }
+  })();
+
+  return (
+    <dialog
+      className="captureSheet"
+      ref={dialogRef}
+      aria-labelledby="live-capture-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <div className="sheetHandle" aria-hidden="true" />
+      <div className="sheetHeader">
+        <div className="sheetTitle">
+          {mode !== 'menu' ? (
+            <button
+              className="sheetBackButton"
+              type="button"
+              aria-label="Back"
+              disabled={busy}
+              onClick={() => setMode('menu')}
+            >
+              <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
+            </button>
+          ) : null}
+          <h2 id="live-capture-title" ref={titleRef} tabIndex={-1}>
+            {captureTitles[mode]}
+          </h2>
+        </div>
+        <button
+          className="textButton"
+          type="button"
+          disabled={busy}
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+      </div>
+
+      {mode === 'menu' ? (
+        <div className="captureChoices">
+          {captureChoices.map((choice) => (
+            <button
+              className="captureChoice"
+              type="button"
+              key={choice.mode}
+              onClick={() => setMode(choice.mode)}
+            >
+              <Icon
+                className="captureChoice__icon"
+                icon={choice.icon}
+                width={22}
+                aria-hidden="true"
+              />
+              <span>
+                <strong>{choice.label}</strong>
+                <small>{choice.description}</small>
+              </span>
+              <Icon icon={altArrowRightLinear} width={18} aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        form
+      )}
+    </dialog>
   );
 }
 
@@ -2685,7 +3237,19 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
           authorizationSessionId={identity?.sessionId ?? null}
         />
       ) : null}
-      {captureOpen ? <CaptureSheet onClose={() => setCaptureOpen(false)} /> : null}
+      {captureOpen ? (
+        <LiveCaptureSheet
+          runtime={runtime}
+          dashboard={readState}
+          onClose={() => setCaptureOpen(false)}
+          onCommitted={() => {
+            setCaptureOpen(false);
+            void load();
+          }}
+          onAuthorizationFailure={handleAuthorizationFailure}
+          authorizationSessionId={identity?.sessionId ?? null}
+        />
+      ) : null}
       {detail?.type === 'JOB' ? (
         <LiveJobDetailSurface
           runtime={runtime}
