@@ -32,6 +32,7 @@ const mutationApiStubs = {
   completeTask: () => Promise.reject(new Error('not used')),
   cancelTask: () => Promise.reject(new Error('not used')),
   createRepair: () => Promise.reject(new Error('not used')),
+  createRepairCase: () => Promise.reject(new Error('not used')),
   createScheduledAction: () => Promise.reject(new Error('not used')),
 };
 
