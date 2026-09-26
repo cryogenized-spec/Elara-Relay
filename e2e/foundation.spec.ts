@@ -433,6 +433,116 @@ test('Capture stays locked while a durable Task save is unresolved', async ({
 });
 
 
+test('Repair Capture opens one atomic durable workshop case', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  let repairCaseBody: unknown = null;
+  page.on('request', (request) => {
+    if (
+      request.url().includes('/api-test/repair-cases') &&
+      request.method() === 'POST'
+    ) {
+      repairCaseBody = request.postDataJSON();
+    }
+  });
+
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Capture' }).click();
+  const capture = page.getByRole('dialog', { name: 'Capture' });
+  await capture.getByRole('button', { name: /^Repair \/ Job/ }).click();
+  const repairCapture = page.getByRole('dialog', {
+    name: 'New repair / Job',
+  });
+
+  await repairCapture.getByLabel('Customer').fill('Demo workshop customer');
+  await repairCapture.getByLabel('Item / model').fill('Spyder Victor service');
+  await repairCapture
+    .getByLabel('Reported fault')
+    .fill('CO₂ leak around valve body');
+  await repairCapture.getByLabel('Serial').fill('SV-TEST-01');
+  await repairCapture
+    .getByLabel('Storage location')
+    .fill('Workshop test shelf');
+  await repairCapture.getByRole('button', { name: 'Open Repair' }).click();
+
+  await expect(repairCapture).toHaveCount(0);
+  expect(repairCaseBody).toMatchObject({
+    mutation: { mutationId: expect.any(String) },
+    input: {
+      party: {
+        mode: 'EXISTING',
+        partyId: '10000000-0000-4000-8000-000000000001',
+      },
+      jobTitle: 'Spyder Victor service',
+      reportedFault: 'CO₂ leak around valve body',
+      serialState: 'KNOWN',
+      serialValue: 'SV-TEST-01',
+      storageLocation: 'Workshop test shelf',
+    },
+  });
+
+  await page.getByRole('button', { name: 'Repairs' }).click();
+  await expect(
+    page.getByText('Spyder Victor service', { exact: true }),
+  ).toBeVisible();
+});
+
+
+test('Task detail can edit, wait, and complete through versioned writes', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+  await page.getByRole('button', { name: 'Work' }).click();
+
+  await page
+    .getByRole('button', { name: /Open Pressure-test regulator block/ })
+    .click();
+  const taskDetail = page.locator('dialog.detailSurface');
+  await expect(taskDetail).toHaveAttribute(
+    'aria-label',
+    'Pressure-test regulator block',
+  );
+
+  await taskDetail.getByRole('button', { name: 'Edit Task' }).click();
+  const edit = taskDetail.getByRole('form', { name: 'Edit Task' });
+  await edit.getByLabel('Title').fill('Pressure-test regulator block today');
+  await edit.getByLabel('Priority').selectOption('NORMAL');
+  await edit.getByRole('button', { name: 'Save changes' }).click();
+
+  await expect(taskDetail).toHaveAttribute(
+    'aria-label',
+    'Pressure-test regulator block today',
+  );
+  await expect(
+    taskDetail.getByText('Normal', { exact: true }),
+  ).toBeVisible();
+
+  await taskDetail.getByRole('button', { name: 'Mark waiting' }).click();
+  const waiting = taskDetail.getByRole('form', {
+    name: 'Mark Task waiting',
+  });
+  await waiting.getByLabel('Waiting on').fill('Seal supplier');
+  await waiting.getByLabel('Follow-up').fill('2026-09-26T15:00');
+  await waiting.getByRole('button', { name: 'Save waiting state' }).click();
+
+  await expect(
+    taskDetail.getByText('Waiting', { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    taskDetail.getByText('Seal supplier', { exact: true }),
+  ).toBeVisible();
+
+  await taskDetail.getByRole('button', { name: 'Complete' }).click();
+  await expect(taskDetail).toHaveCount(0);
+});
+
+
 test('Reminder Capture persists recurrence and Job context', async ({ page }) => {
   await installLiveHarness(page);
   await page.goto('/');

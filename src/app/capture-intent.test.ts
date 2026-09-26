@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  johannesburgIsoToLocalDateTimeInput,
   johannesburgLocalDateTimeToIso,
   resolveMutationAttempt,
 } from './capture-intent';
@@ -32,6 +33,16 @@ describe('Capture mutation intent', () => {
     );
     expect(changed.mutationId).not.toBe(first.mutationId);
     expect(calls).toBe(2);
+  });
+
+  it('formats persisted timestamps back into Johannesburg form values', () => {
+    expect(
+      johannesburgIsoToLocalDateTimeInput('2026-09-26T12:30:00.000Z'),
+    ).toBe('2026-09-26T14:30');
+    expect(johannesburgIsoToLocalDateTimeInput(null)).toBe('');
+    expect(() => johannesburgIsoToLocalDateTimeInput('not-a-date')).toThrow(
+      'Timestamp is invalid',
+    );
   });
 
   it('interprets Capture wall time as Africa/Johannesburg', () => {

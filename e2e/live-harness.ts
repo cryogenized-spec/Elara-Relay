@@ -20,7 +20,54 @@ const IDS = {
   eventJob: '10000000-0000-4000-8000-000000000015',
   taskCaptured: '10000000-0000-4000-8000-000000000016',
   actionCaptured: '10000000-0000-4000-8000-000000000017',
+  partyCaptured: '10000000-0000-4000-8000-000000000018',
+  jobCaptured: '10000000-0000-4000-8000-000000000019',
+  repairCaptured: '10000000-0000-4000-8000-000000000020',
 } as const;
+
+type HarnessParty = {
+  id: string;
+  name: string;
+  kind: 'CUSTOMER' | 'SUPPLIER' | 'OTHER';
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+};
+
+type HarnessJob = {
+  id: string;
+  key: string;
+  title: string;
+  category: 'ACTIVE' | 'WAITING' | 'DONE' | 'CANCELLED';
+  partyId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+};
+
+type HarnessRepair = {
+  id: string;
+  jobId: string;
+  stage: 'RECEIVED' | 'DIAGNOSING' | 'AWAITING_PARTS' | 'AWAITING_CUSTOMER' | 'REPAIRING' | 'TESTING' | 'READY' | 'COLLECTED' | 'CANCELLED';
+  reportedFault: string;
+  diagnosis: string | null;
+  currentFinding: string | null;
+  serialState: 'KNOWN' | 'UNKNOWN' | 'NOT_APPLICABLE';
+  serialValue: string | null;
+  storageLocation: string | null;
+  waitingOn: string | null;
+  followUpAt: string | null;
+  finalTestResult: 'PASS' | 'FAIL' | null;
+  finalTestDetail: string | null;
+  testedAt: string | null;
+  receivedAt: string;
+  readyAt: string | null;
+  collectedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+};
 
 type HarnessTask = {
   id: string;
@@ -120,7 +167,7 @@ function sessionPayload(
   };
 }
 
-function baseParty() {
+function baseParty(): HarnessParty {
   return {
     id: IDS.party,
     name: 'Demo workshop customer',
@@ -131,7 +178,7 @@ function baseParty() {
   };
 }
 
-function jobs() {
+function jobs(): HarnessJob[] {
   return [
     {
       id: IDS.jobRepair,
@@ -241,7 +288,7 @@ function tasks(asOf: string): HarnessTask[] {
   ];
 }
 
-function repairs(asOf: string) {
+function repairs(asOf: string): HarnessRepair[] {
   return [
     {
       id: IDS.repairWaiting,
@@ -380,11 +427,16 @@ export async function installLiveHarness(
   let logicalSessionIndex = -1;
   let currentSessionId: string = IDS.session;
   let capturedTask: HarnessTask | null = null;
+  let mutatedPressureTask: HarnessTask | null = null;
   let capturedAction: HarnessScheduledAction | null = null;
+  let capturedParty: HarnessParty | null = null;
+  let capturedJob: HarnessJob | null = null;
+  let capturedRepair: HarnessRepair | null = null;
   let taskCreateAttempts = 0;
   let firstTaskIntent:
     | { mutationId: string; inputJson: string }
     | null = null;
+  let currentAsOf = '2026-09-25T04:00:00.000Z';
 
   await page.route('**/auth/v1/**', async (route) => {
     const url = new URL(route.request().url());
@@ -419,14 +471,30 @@ export async function installLiveHarness(
   await page.route('**/api-test/**', async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^\/api-test/, '');
-    const asOf =
-      url.searchParams.get('asOf') ?? '2026-09-25T04:00:00.000Z';
-    const allJobs = jobs();
+    const requestedAsOf = url.searchParams.get('asOf');
+    if (requestedAsOf !== null) currentAsOf = requestedAsOf;
+    const asOf = requestedAsOf ?? currentAsOf;
+    const allParties = [
+      baseParty(),
+      ...(capturedParty === null ? [] : [capturedParty]),
+    ];
+    const allJobs = [
+      ...jobs(),
+      ...(capturedJob === null ? [] : [capturedJob]),
+    ];
+    const baseTasks = tasks(asOf).map((task) =>
+      task.id === IDS.taskPressure && mutatedPressureTask !== null
+        ? mutatedPressureTask
+        : task,
+    );
     const allTasks = [
-      ...tasks(asOf),
+      ...baseTasks,
       ...(capturedTask === null ? [] : [capturedTask]),
     ];
-    const allRepairs = repairs(asOf);
+    const allRepairs = [
+      ...repairs(asOf),
+      ...(capturedRepair === null ? [] : [capturedRepair]),
+    ];
     const schedule = scheduledActions(asOf);
     if (capturedAction !== null) {
       if (
@@ -438,6 +506,24 @@ export async function installLiveHarness(
         schedule.upcoming.push(capturedAction);
       }
     }
+
+    const asOfMillis = Date.parse(asOf);
+    const todayTasks = allTasks.filter((task) => {
+      const active =
+        task.status !== 'DONE' && task.status !== 'CANCELLED';
+      const due =
+        (task.dueAt !== null && Date.parse(task.dueAt) <= asOfMillis) ||
+        (task.followUpAt !== null &&
+          Date.parse(task.followUpAt) <= asOfMillis);
+      return active && due;
+    });
+    const todayRepairs = allRepairs.filter(
+      (repair) =>
+        (repair.stage === 'AWAITING_PARTS' ||
+          repair.stage === 'AWAITING_CUSTOMER') &&
+        repair.followUpAt !== null &&
+        Date.parse(repair.followUpAt) <= asOfMillis,
+    );
 
     if (path === '/auth/whoami') {
       whoAmICalls += 1;
@@ -462,6 +548,121 @@ export async function installLiveHarness(
           email: 'owner@example.com',
           aal: 'aal1',
         }),
+      );
+      return;
+    }
+
+    if (path === '/repair-cases' && route.request().method() === 'POST') {
+      const raw = route.request().postDataJSON() as {
+        mutation?: { mutationId?: unknown };
+        input?: {
+          party?: { mode?: unknown; partyId?: unknown; name?: unknown };
+          jobTitle?: unknown;
+          reportedFault?: unknown;
+          serialState?: unknown;
+          serialValue?: unknown;
+          storageLocation?: unknown;
+        };
+      };
+
+      if (
+        typeof raw.mutation?.mutationId !== 'string' ||
+        typeof raw.input?.jobTitle !== 'string' ||
+        typeof raw.input?.reportedFault !== 'string'
+      ) {
+        await route.fulfill(
+          json(
+            {
+              error: {
+                code: 'INVALID_REQUEST',
+                message: 'Repair-case fixture received invalid durable intent',
+              },
+            },
+            400,
+          ),
+        );
+        return;
+      }
+
+      let party: HarnessParty;
+      if (raw.input.party?.mode === 'EXISTING') {
+        const partyId =
+          typeof raw.input.party.partyId === 'string'
+            ? raw.input.party.partyId
+            : '';
+        const existing = allParties.find((candidate) => candidate.id === partyId);
+        if (existing === undefined) {
+          await route.fulfill(
+            json(
+              { error: { code: 'NOT_FOUND', message: 'Party not found' } },
+              404,
+            ),
+          );
+          return;
+        }
+        party = existing;
+      } else {
+        capturedParty ??= {
+          id: IDS.partyCaptured,
+          name:
+            typeof raw.input.party?.name === 'string'
+              ? raw.input.party.name
+              : 'Captured customer',
+          kind: 'CUSTOMER',
+          createdAt: '2026-09-26T05:00:00.000Z',
+          updatedAt: '2026-09-26T05:00:00.000Z',
+          revision: 1,
+        };
+        party = capturedParty;
+      }
+
+      capturedJob ??= {
+        id: IDS.jobCaptured,
+        key: 'JOB-CA7E0001',
+        title: raw.input.jobTitle,
+        category: 'ACTIVE',
+        partyId: party.id,
+        createdAt: '2026-09-26T05:00:00.000Z',
+        updatedAt: '2026-09-26T05:00:00.000Z',
+        revision: 1,
+      };
+      capturedRepair ??= {
+        id: IDS.repairCaptured,
+        jobId: capturedJob.id,
+        stage: 'RECEIVED',
+        reportedFault: raw.input.reportedFault,
+        diagnosis: null,
+        currentFinding: null,
+        serialState:
+          raw.input.serialState === 'KNOWN'
+            ? 'KNOWN'
+            : raw.input.serialState === 'NOT_APPLICABLE'
+              ? 'NOT_APPLICABLE'
+              : 'UNKNOWN',
+        serialValue:
+          typeof raw.input.serialValue === 'string'
+            ? raw.input.serialValue
+            : null,
+        storageLocation:
+          typeof raw.input.storageLocation === 'string'
+            ? raw.input.storageLocation
+            : null,
+        waitingOn: null,
+        followUpAt: null,
+        finalTestResult: null,
+        finalTestDetail: null,
+        testedAt: null,
+        receivedAt: '2026-09-26T05:00:00.000Z',
+        readyAt: null,
+        collectedAt: null,
+        cancelledAt: null,
+        createdAt: '2026-09-26T05:00:00.000Z',
+        updatedAt: '2026-09-26T05:00:00.000Z',
+        revision: 1,
+      };
+
+      await route.fulfill(
+        json({ party, job: capturedJob, repair: capturedRepair }, 201),
       );
       return;
     }
@@ -560,6 +761,152 @@ export async function installLiveHarness(
       return;
     }
 
+    if (
+      path === `/tasks/${IDS.taskPressure}` &&
+      route.request().method() === 'PATCH'
+    ) {
+      const current =
+        mutatedPressureTask ??
+        tasks(asOf).find((task) => task.id === IDS.taskPressure)!;
+      const raw = route.request().postDataJSON() as {
+        mutation?: { expectedRevision?: unknown };
+        patch?: {
+          title?: unknown;
+          status?: unknown;
+          priority?: unknown;
+          dueAt?: unknown;
+          followUpAt?: unknown;
+        };
+      };
+      if (raw.mutation?.expectedRevision !== current.revision) {
+        await route.fulfill(
+          json(
+            { error: { code: 'CONFLICT', message: 'Revision conflict' } },
+            409,
+          ),
+        );
+        return;
+      }
+
+      const patch = raw.patch ?? {};
+      mutatedPressureTask = {
+        ...current,
+        ...(typeof patch.title === 'string' ? { title: patch.title } : {}),
+        ...(patch.status === 'INBOX' ||
+        patch.status === 'NEXT' ||
+        patch.status === 'DOING'
+          ? {
+              status: patch.status,
+              waitingOn: null,
+              waitingSince: null,
+            }
+          : {}),
+        ...(patch.priority === 'URGENT' ||
+        patch.priority === 'HIGH' ||
+        patch.priority === 'NORMAL' ||
+        patch.priority === 'LOW'
+          ? { priority: patch.priority }
+          : {}),
+        ...('dueAt' in patch
+          ? {
+              dueAt:
+                typeof patch.dueAt === 'string' ? patch.dueAt : null,
+            }
+          : {}),
+        ...('followUpAt' in patch
+          ? {
+              followUpAt:
+                typeof patch.followUpAt === 'string'
+                  ? patch.followUpAt
+                  : null,
+            }
+          : {}),
+        updatedAt: '2026-09-26T05:05:00.000Z',
+        revision: current.revision + 1,
+      };
+      await route.fulfill(json(mutatedPressureTask));
+      return;
+    }
+
+    if (
+      path === `/tasks/${IDS.taskPressure}/wait` &&
+      route.request().method() === 'POST'
+    ) {
+      const current =
+        mutatedPressureTask ??
+        tasks(asOf).find((task) => task.id === IDS.taskPressure)!;
+      const raw = route.request().postDataJSON() as {
+        mutation?: { expectedRevision?: unknown };
+        input?: { waitingOn?: unknown; followUpAt?: unknown };
+      };
+      if (raw.mutation?.expectedRevision !== current.revision) {
+        await route.fulfill(
+          json(
+            { error: { code: 'CONFLICT', message: 'Revision conflict' } },
+            409,
+          ),
+        );
+        return;
+      }
+      if (typeof raw.input?.waitingOn !== 'string') {
+        await route.fulfill(
+          json(
+            { error: { code: 'INVALID_REQUEST', message: 'Waiting on is required' } },
+            400,
+          ),
+        );
+        return;
+      }
+
+      mutatedPressureTask = {
+        ...current,
+        status: 'WAITING',
+        waitingOn: raw.input.waitingOn,
+        waitingSince: '2026-09-26T05:06:00.000Z',
+        followUpAt:
+          typeof raw.input.followUpAt === 'string'
+            ? raw.input.followUpAt
+            : null,
+        updatedAt: '2026-09-26T05:06:00.000Z',
+        revision: current.revision + 1,
+      };
+      await route.fulfill(json(mutatedPressureTask));
+      return;
+    }
+
+    if (
+      (path === `/tasks/${IDS.taskPressure}/complete` ||
+        path === `/tasks/${IDS.taskPressure}/cancel`) &&
+      route.request().method() === 'POST'
+    ) {
+      const current =
+        mutatedPressureTask ??
+        tasks(asOf).find((task) => task.id === IDS.taskPressure)!;
+      const raw = route.request().postDataJSON() as {
+        mutation?: { expectedRevision?: unknown };
+      };
+      if (raw.mutation?.expectedRevision !== current.revision) {
+        await route.fulfill(
+          json(
+            { error: { code: 'CONFLICT', message: 'Revision conflict' } },
+            409,
+          ),
+        );
+        return;
+      }
+
+      mutatedPressureTask = {
+        ...current,
+        status: path.endsWith('/complete') ? 'DONE' : 'CANCELLED',
+        waitingOn: null,
+        waitingSince: null,
+        updatedAt: '2026-09-26T05:07:00.000Z',
+        revision: current.revision + 1,
+      };
+      await route.fulfill(json(mutatedPressureTask));
+      return;
+    }
+
     if (path === '/schedule' && route.request().method() === 'POST') {
       const raw = route.request().postDataJSON() as {
         mutation?: { mutationId?: unknown };
@@ -631,12 +978,12 @@ export async function installLiveHarness(
       const work =
         options.malformedWork === true
           ? {
-              parties: [baseParty()],
+              parties: allParties,
               jobs: allJobs,
               tasks: [{ ...allTasks[1]!, jobId: IDS.jobWebsite }],
             }
           : {
-              parties: [baseParty()],
+              parties: allParties,
               jobs: allJobs,
               tasks: allTasks,
             };
@@ -644,13 +991,13 @@ export async function installLiveHarness(
         json({
           today: {
             asOf,
-            tasks: [allTasks[0]],
-            repairs: [allRepairs[0]],
+            tasks: todayTasks,
+            repairs: todayRepairs,
             scheduledActions: schedule.due,
           },
           work,
           repairs: {
-            parties: [baseParty()],
+            parties: allParties,
             jobs: allJobs,
             repairs: allRepairs,
           },

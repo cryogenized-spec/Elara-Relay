@@ -52,3 +52,35 @@ export function johannesburgLocalDateTimeToIso(value: string): string | null {
 
   return new Date(utcMillis).toISOString();
 }
+
+
+export function johannesburgIsoToLocalDateTimeInput(
+  value: string | null,
+): string {
+  if (value === null) return '';
+
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) {
+    throw new Error('Timestamp is invalid');
+  }
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Johannesburg',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant);
+
+  const read = (type: Intl.DateTimeFormatPartTypes): string => {
+    const part = parts.find((candidate) => candidate.type === type);
+    if (part === undefined) {
+      throw new Error('Timestamp could not be formatted');
+    }
+    return part.value;
+  };
+
+  return `${read('year')}-${read('month')}-${read('day')}T${read('hour')}:${read('minute')}`;
+}
