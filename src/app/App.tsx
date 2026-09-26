@@ -18,6 +18,11 @@ import type {
 } from '../contracts/read-model';
 import type { BrowserRuntime } from './browser-runtime';
 import { classifyAuthorizationFailure } from './authorization-policy';
+import {
+  johannesburgLocalDateTimeToIso,
+  resolveMutationAttempt,
+  type PendingMutationAttempt,
+} from './capture-intent';
 import { OperationsApiError } from './operations-api';
 import {
   buildRepairsView,
@@ -2333,6 +2338,298 @@ function LiveSearchSurface({
   );
 }
 
+function LiveTaskCaptureForm({
+  runtime,
+  jobs,
+  onClose,
+  onCommitted,
+  onAuthorizationFailure,
+  authorizationSessionId,
+}: {
+  runtime: BrowserRuntime;
+  jobs: LiveReadState['work']['jobs'];
+  onClose: () => void;
+  onCommitted: () => Promise<void>;
+  onAuthorizationFailure: AuthorizationFailureHandler;
+  authorizationSessionId: string | null;
+}) {
+  const [title, setTitle] = useState('');
+  const [priority, setPriority] = useState<'URGENT' | 'HIGH' | 'NORMAL' | 'LOW'>(
+    'NORMAL',
+  );
+  const [dueLocal, setDueLocal] = useState('');
+  const [jobId, setJobId] = useState('');
+  const [state, setState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const pendingAttempt = useRef<PendingMutationAttempt | null>(null);
+
+  const submit = async () => {
+    let dueAt: string | null;
+    try {
+      dueAt = johannesburgLocalDateTimeToIso(dueLocal);
+    } catch (caught: unknown) {
+      setError(readableError(caught));
+      setState('error');
+      return;
+    }
+
+    const input = {
+      jobId: jobId === '' ? null : jobId,
+      title: title.trim(),
+      priority,
+      dueAt,
+      followUpAt: null,
+    };
+    const attempt = resolveMutationAttempt(pendingAttempt.current, input);
+    pendingAttempt.current = attempt;
+
+    const requestAccessToken = runtime.auth.getAccessToken();
+    setError(null);
+    setState('saving');
+
+    try {
+      await runtime.api.createTask({
+        mutationId: attempt.mutationId,
+        input,
+      });
+      pendingAttempt.current = null;
+      onClose();
+      await onCommitted();
+    } catch (caught: unknown) {
+      if (
+        onAuthorizationFailure(
+          caught,
+          requestAccessToken,
+          authorizationSessionId,
+        )
+      ) {
+        return;
+      }
+      setError(readableError(caught));
+      setState('error');
+    }
+  };
+
+  return (
+    <form
+      className="captureForm"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <label className="formField">
+        <span>Title</span>
+        <input
+          name="task-title"
+          placeholder="What needs doing?"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          required
+          maxLength={240}
+        />
+      </label>
+      <label className="formField">
+        <span>Priority</span>
+        <select
+          name="task-priority"
+          value={priority}
+          onChange={(event) =>
+            setPriority(
+              event.target.value as 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW',
+            )
+          }
+        >
+          <option value="URGENT">Urgent</option>
+          <option value="HIGH">High</option>
+          <option value="NORMAL">Normal</option>
+          <option value="LOW">Low</option>
+        </select>
+      </label>
+      <label className="formField">
+        <span>Due</span>
+        <input
+          name="task-due"
+          type="datetime-local"
+          value={dueLocal}
+          onChange={(event) => setDueLocal(event.target.value)}
+        />
+        <small>Africa/Johannesburg</small>
+      </label>
+      <label className="formField">
+        <span>Linked Job</span>
+        <select
+          name="task-job"
+          value={jobId}
+          onChange={(event) => setJobId(event.target.value)}
+        >
+          <option value="">Standalone Task</option>
+          {jobs
+            .filter(
+              (job) =>
+                job.category !== 'DONE' && job.category !== 'CANCELLED',
+            )
+            .map((job) => (
+              <option key={job.id} value={job.id}>
+                {job.key} · {job.title}
+              </option>
+            ))}
+        </select>
+      </label>
+
+      {error === null ? null : (
+        <p className="captureError" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="captureForm__footer">
+        <p>Saved through the authenticated Operations API.</p>
+        <button
+          className="primaryButton"
+          type="submit"
+          disabled={state === 'saving' || title.trim() === ''}
+        >
+          {state === 'saving' ? 'Saving…' : state === 'error' ? 'Retry save' : 'Save Task'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function LiveCaptureSheet({
+  runtime,
+  work,
+  onClose,
+  onCommitted,
+  onAuthorizationFailure,
+  authorizationSessionId,
+}: {
+  runtime: BrowserRuntime;
+  work: LiveReadState['work'];
+  onClose: () => void;
+  onCommitted: () => Promise<void>;
+  onAuthorizationFailure: AuthorizationFailureHandler;
+  authorizationSessionId: string | null;
+}) {
+  const [mode, setMode] = useState<CaptureMode>('menu');
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (dialog.open) dialog.close();
+      previousFocus?.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    titleRef.current?.focus();
+  }, [mode]);
+
+  return (
+    <dialog
+      className="captureSheet"
+      ref={dialogRef}
+      aria-labelledby="live-capture-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="sheetHandle" aria-hidden="true" />
+      <div className="sheetHeader">
+        <div className="sheetTitle">
+          {mode !== 'menu' ? (
+            <button
+              className="sheetBackButton"
+              type="button"
+              aria-label="Back"
+              onClick={() => setMode('menu')}
+            >
+              <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
+            </button>
+          ) : null}
+          <h2 id="live-capture-title" ref={titleRef} tabIndex={-1}>
+            {captureTitles[mode]}
+          </h2>
+        </div>
+        <button className="textButton" type="button" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+
+      {mode === 'menu' ? (
+        <div className="captureChoices">
+          <button
+            className="captureChoice"
+            type="button"
+            onClick={() => setMode('task')}
+          >
+            <Icon
+              className="captureChoice__icon"
+              icon={clipboardListLinear}
+              width={22}
+              aria-hidden="true"
+            />
+            <span>
+              <strong>Task</strong>
+              <small>Capture a durable next action</small>
+            </span>
+            <Icon icon={altArrowRightLinear} width={18} aria-hidden="true" />
+          </button>
+          <button className="captureChoice" type="button" disabled>
+            <Icon
+              className="captureChoice__icon"
+              icon={settingsLinear}
+              width={22}
+              aria-hidden="true"
+            />
+            <span>
+              <strong>Repair / Job</strong>
+              <small>Durable workflow coming next in Pass 1H</small>
+            </span>
+          </button>
+          <button className="captureChoice" type="button" disabled>
+            <Icon
+              className="captureChoice__icon"
+              icon={calendarLinear}
+              width={22}
+              aria-hidden="true"
+            />
+            <span>
+              <strong>Reminder</strong>
+              <small>Durable workflow coming next in Pass 1H</small>
+            </span>
+          </button>
+        </div>
+      ) : mode === 'task' ? (
+        <LiveTaskCaptureForm
+          runtime={runtime}
+          jobs={work.jobs}
+          onClose={onClose}
+          onCommitted={onCommitted}
+          onAuthorizationFailure={onAuthorizationFailure}
+          authorizationSessionId={authorizationSessionId}
+        />
+      ) : null}
+    </dialog>
+  );
+}
+
 function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
   const [phase, setPhase] = useState<LivePhase>('restoring');
   const [identity, setIdentity] = useState<AuthIdentity | null>(null);
@@ -2685,7 +2982,16 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
           authorizationSessionId={identity?.sessionId ?? null}
         />
       ) : null}
-      {captureOpen ? <CaptureSheet onClose={() => setCaptureOpen(false)} /> : null}
+      {captureOpen ? (
+        <LiveCaptureSheet
+          runtime={runtime}
+          work={readState.work}
+          onClose={() => setCaptureOpen(false)}
+          onCommitted={load}
+          onAuthorizationFailure={handleAuthorizationFailure}
+          authorizationSessionId={identity?.sessionId ?? null}
+        />
+      ) : null}
       {detail?.type === 'JOB' ? (
         <LiveJobDetailSurface
           runtime={runtime}
