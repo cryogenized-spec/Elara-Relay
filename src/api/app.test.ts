@@ -470,7 +470,7 @@ describe('API foundation', () => {
     expect(repairsResult.repairs).toEqual([]);
   });
 
-  it('creates a Repair case through replay-safe composite steps', async () => {
+  it('creates a Repair case atomically and replays the same receipt safely', async () => {
     const app = makeApi();
     const request = {
       mutation: { mutationId: 'MUT-repaircase-0001' },
@@ -531,7 +531,7 @@ describe('API foundation', () => {
     expect(repairState.repairs[0]?.id).toBe(result.repair.id);
   });
 
-  it('reuses an existing Party in a composite Repair case without duplicating it', async () => {
+  it('reuses an existing Party in an atomic Repair case without duplicating it', async () => {
     const app = makeApi();
     const partyResponse = await jsonRequest(app, '/parties', 'POST', {
       mutation: { mutationId: 'MUT-repaircase-party-0001' },
