@@ -249,6 +249,131 @@ No automatic email was sent.
 
 ---
 
+### 2026-09-25 00:09:56 UTC
+### 2026-09-25 02:09:56 SAST
+
+**Pass 1F0 — Visual Evidence Bootstrap**
+
+PR #11 merged.
+
+Commit:
+
+`d36d68754ba07a42eeab99843bd3f2efd4871125`
+
+Established:
+
+- opt-in visual-evidence workflow support
+- screenshot/evidence harness integration
+- mobile viewport evidence targets
+- reviewable presentation evidence alongside Certification
+
+State after milestone:
+
+Elara gained a repeatable presentation-evidence path for UI review.
+
+---
+
+### 2026-09-26 05:10:43 UTC
+### 2026-09-26 07:10:43 SAST
+
+**Pass 1F — Mobile UI Foundation**
+
+PR #10 merged.
+
+Commit:
+
+`ae6b09b66688e6a3ceee563725034ff1631f28e5`
+
+Established:
+
+- dark mobile operations shell
+- Today, Work, Repairs, Schedule and Search presentation surfaces
+- persistent Capture entry point
+- mobile-first navigation
+- Iconify/Solar icon system
+- exact 9:16-oriented responsive behavior
+- desktop and Android portrait coverage
+
+State after milestone:
+
+Elara had a coherent mobile interface ready for live operational state.
+
+---
+
+### 2026-09-26 05:13:50 UTC
+### 2026-09-26 07:13:50 SAST
+
+**Pass 1G — Live Auth and Authenticated Read Model**
+
+PR #12 merged.
+
+Commit:
+
+`d576f84e4977ee4415c148f20e120bcaf05f8be1`
+
+Established:
+
+- live Supabase session restoration
+- server `whoAmI` authorization gate
+- authenticated dashboard/read-model loading
+- live Today / Work / Repairs / Schedule / Search
+- live Job / Task / Repair detail reads
+- fail-closed stale-session and account-rollover behavior
+- strict aggregate/read-model validation
+- hardened cross-origin browser/API boundary
+
+State after milestone:
+
+Elara became an authenticated live read client over its durable operations model.
+
+---
+
+### 2026-09-26 12:51:11 UTC
+### 2026-09-26 14:51:11 SAST
+
+**Pass 1H-A — Durable Task and Reminder Capture**
+
+PR #14 merged.
+
+Commit:
+
+`ccd990e00bff08c1ebb4820c6ba00f9bae362c89`
+
+Established:
+
+- replay-safe browser mutation IDs
+- typed authenticated mutation transport
+- strict mutation success/error validation
+- optimistic Task revision context
+- durable Task Capture
+- durable Reminder Capture
+- Africa/Johannesburg datetime conversion and validity checks
+- post-mutation dashboard refresh
+- pending-write Capture locking
+- unchanged-intent retry preservation
+
+Verification:
+
+- full Certification green on PR head `21bd139a370666b2247edd5b9aa5f55649ae4dc9`
+- TypeScript 6 and 7
+- unit and coverage gates
+- adversarial foundation/domain/auth gates
+- migration contract
+- PostgreSQL integration
+- production build
+- Playwright desktop, exact 9:16 mobile and Android portrait
+
+Codex adversarial review was requested against the certified head, but the
+GitHub Codex reviewer reported that its code-review usage limit had been
+reached. No Codex approval is claimed.
+
+State after milestone:
+
+Elara became a durable write-capable mobile operations client for Tasks and
+Reminders.
+
+---
+
 ## Current Phase 1 state
 
 Completed:
@@ -257,19 +382,27 @@ Completed:
 - transactional domain kernel
 - persistent PostgreSQL/Supabase runtime
 - authentication boundary
-- Repairs
+- Repairs domain
 - Scheduler
+- mobile UI foundation
+- live sign-in and server authorization
+- authenticated operational read model
+- live Today / Work / Repairs / Schedule / Search
+- durable Task Capture
+- durable Reminder Capture
 
 Still required before Phase 1 freeze:
 
-- product UI
-- live sign-in flow
-- mobile Capture
-- deployment
-- production secret wiring
+- durable Repair / Job Capture
+- interactive Task update / waiting / complete / cancel UI
+- interactive Repair progression/test UI
+- production API deployment
+- production web/PWA deployment
+- production secret/runtime wiring
+- richer health/observability boundary
 - backup/export
 - restore proof
-- final adversarial/recovery kill-test
+- final Phase 1 adversarial/recovery kill-test
 
 ## Future entry format
 
