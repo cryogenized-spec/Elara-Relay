@@ -22,6 +22,42 @@ const IDS = {
   actionCaptured: '10000000-0000-4000-8000-000000000017',
 } as const;
 
+type HarnessTask = {
+  id: string;
+  jobId: string | null;
+  title: string;
+  status: 'INBOX' | 'NEXT' | 'DOING' | 'WAITING' | 'DONE' | 'CANCELLED';
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  dueAt: string | null;
+  followUpAt: string | null;
+  waitingOn: string | null;
+  waitingSince: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+};
+
+type HarnessScheduledAction = {
+  id: string;
+  jobId: string | null;
+  taskId: string | null;
+  title: string;
+  actionType: 'REMINDER';
+  payload: {
+    kind: 'REMINDER';
+    message: string;
+  };
+  timezone: 'Africa/Johannesburg';
+  recurrenceRule: string | null;
+  status: 'ACTIVE' | 'PAUSED';
+  runAt: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+};
+
 export interface LiveHarnessOptions {
   firstWhoAmIUnauthorized?: boolean;
   malformedWork?: boolean;
@@ -130,7 +166,7 @@ function jobs() {
   ];
 }
 
-function tasks(asOf: string) {
+function tasks(asOf: string): HarnessTask[] {
   return [
     {
       id: IDS.taskStock,
@@ -263,7 +299,7 @@ function scheduledActions(asOf: string) {
     status: 'ACTIVE' | 'PAUSED',
     nextRunAt: string,
     recurrenceRule: string | null,
-  ) => ({
+  ): HarnessScheduledAction => ({
     id,
     jobId: IDS.jobRepair,
     taskId: null,
@@ -343,10 +379,8 @@ export async function installLiveHarness(
   let tokenGrantCount = 0;
   let logicalSessionIndex = -1;
   let currentSessionId: string = IDS.session;
-  let capturedTask: ReturnType<typeof tasks>[number] | null = null;
-  let capturedAction:
-    | ReturnType<typeof scheduledActions>['upcoming'][number]
-    | null = null;
+  let capturedTask: HarnessTask | null = null;
+  let capturedAction: HarnessScheduledAction | null = null;
   let taskCreateAttempts = 0;
   let firstTaskIntent:
     | { mutationId: string; inputJson: string }
