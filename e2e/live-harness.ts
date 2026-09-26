@@ -34,11 +34,18 @@ function base64Url(value: unknown): string {
     .toString('base64url');
 }
 
-function testAccessToken(grant: number): string {
+function sessionIdFor(index: number): string {
+  return `30000000-0000-4000-8000-${String(index + 2).padStart(12, '0')}`;
+}
+
+function testAccessToken(
+  grant: number,
+  sessionId: string = IDS.session,
+): string {
   const header = base64Url({ alg: 'none', typ: 'JWT' });
   const payload = base64Url({
     sub: IDS.user,
-    session_id: IDS.session,
+    session_id: sessionId,
     role: 'authenticated',
     aal: 'aal1',
     jti: `playwright-${grant}`,
@@ -46,7 +53,9 @@ function testAccessToken(grant: number): string {
   return `${header}.${payload}.fixture`;
 }
 
-function sessionPayload(accessToken = testAccessToken(0)) {
+function sessionPayload(
+  accessToken = testAccessToken(0),
+) {
   return {
     access_token: accessToken,
     token_type: 'bearer',
@@ -329,6 +338,8 @@ export async function installLiveHarness(
 ): Promise<void> {
   let whoAmICalls = 0;
   let tokenGrantCount = 0;
+  let logicalSessionIndex = -1;
+  let currentSessionId = IDS.session;
 
   await page.route('**/auth/v1/**', async (route) => {
     const url = new URL(route.request().url());
@@ -338,7 +349,17 @@ export async function installLiveHarness(
       url.pathname.endsWith('/token/')
     ) {
       tokenGrantCount += 1;
-      await route.fulfill(json(sessionPayload(testAccessToken(tokenGrantCount))));
+      if (url.searchParams.get('grant_type') !== 'refresh_token') {
+        logicalSessionIndex += 1;
+        currentSessionId = sessionIdFor(logicalSessionIndex);
+      }
+      await route.fulfill(
+        json(
+          sessionPayload(
+            testAccessToken(tokenGrantCount, currentSessionId),
+          ),
+        ),
+      );
       return;
     }
 
@@ -379,7 +400,7 @@ export async function installLiveHarness(
       await route.fulfill(
         json({
           userId: IDS.user,
-          sessionId: IDS.session,
+          sessionId: currentSessionId,
           email: 'owner@example.com',
           aal: 'aal1',
         }),
