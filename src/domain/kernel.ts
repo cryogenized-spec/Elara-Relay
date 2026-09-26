@@ -6,6 +6,7 @@ import {
 } from '../contracts/job';
 import {
   mutationContextSchema,
+  mutationIdSchema,
   mutationReceiptSchema,
   versionedMutationContextSchema,
   type MutationContext,
@@ -31,6 +32,12 @@ import {
   type RepairStage,
   type RepairWarning,
 } from '../contracts/repair';
+import {
+  createRepairCaseInputSchema,
+  repairCaseResultSchema,
+  type CreateRepairCaseInput,
+  type RepairCaseResult,
+} from '../contracts/repair-case';
 import {
   claimScheduledActionInputSchema,
   createScheduledActionInputSchema,
@@ -141,6 +148,20 @@ export interface KernelOptions {
 
 function toJobKey(id: string): string {
   return `JOB-${id.replaceAll('-', '').slice(0, 8).toUpperCase()}`;
+}
+
+async function repairCaseChildMutationId(
+  rootMutationId: string,
+  step: 'party' | 'job' | 'repair',
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${rootMutationId}:${step}`),
+  );
+  const hex = [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+  return mutationIdSchema.parse(`MUT-${hex}`);
 }
 
 const REPAIR_STAGE_TRANSITIONS: Readonly<
@@ -639,6 +660,221 @@ export class DomainKernel {
         return next;
       },
     );
+  }
+
+  public async createRepairCase(
+    rawContext: MutationContext,
+    rawInput: CreateRepairCaseInput,
+  ): Promise<RepairCaseResult> {
+    const context = mutationContextSchema.parse(rawContext);
+    const input = createRepairCaseInputSchema.parse(rawInput);
+    const command = 'createRepairCase';
+    const fingerprint = canonicalJson({
+      actor: context.actor,
+      command,
+      payload: input,
+    });
+    const childMutationIds = {
+      party: await repairCaseChildMutationId(context.mutationId, 'party'),
+      job: await repairCaseChildMutationId(context.mutationId, 'job'),
+      repair: await repairCaseChildMutationId(context.mutationId, 'repair'),
+    };
+
+    return this.store.transact(async (transaction) => {
+      const existing = await transaction.getMutationReceipt(context.mutationId);
+      if (existing !== undefined) {
+        if (
+          existing.command !== command ||
+          existing.fingerprint !== fingerprint
+        ) {
+          throw new MutationReplayMismatchError(context.mutationId);
+        }
+        return repairCaseResultSchema.parse(structuredClone(existing.result));
+      }
+
+      const requireUnusedChild = async (mutationId: string): Promise<void> => {
+        if ((await transaction.getMutationReceipt(mutationId)) !== undefined) {
+          throw new MutationReplayMismatchError(mutationId);
+        }
+      };
+
+      const now = this.now();
+      let party: Party;
+
+      if (input.party.mode === 'EXISTING') {
+        const existingParty = await transaction.getParty(input.party.partyId);
+        if (existingParty === undefined) {
+          throw new DomainNotFoundError('Party', input.party.partyId);
+        }
+        party = existingParty;
+      } else {
+        await requireUnusedChild(childMutationIds.party);
+        const partyInput = createPartyInputSchema.parse({
+          name: input.party.name,
+          kind: 'CUSTOMER',
+        });
+        party = {
+          id: this.newId(),
+          name: partyInput.name,
+          kind: partyInput.kind,
+          createdAt: now,
+          updatedAt: now,
+          revision: 1,
+        };
+        await transaction.insertParty(party);
+        await transaction.appendEvent(
+          this.makeEvent(
+            {
+              mutationId: childMutationIds.party,
+              actor: context.actor,
+            },
+            {
+              entityType: 'PARTY',
+              entityId: party.id,
+              eventType: 'PARTY_CREATED',
+              detail: null,
+              changes: {},
+              revisionAfter: party.revision,
+            },
+          ),
+        );
+        await transaction.saveMutationReceipt(
+          mutationReceiptSchema.parse({
+            mutationId: childMutationIds.party,
+            command: 'createParty',
+            fingerprint: canonicalJson({
+              actor: context.actor,
+              command: 'createParty',
+              payload: partyInput,
+            }),
+            result: party,
+            committedAt: now,
+          }),
+        );
+      }
+
+      await requireUnusedChild(childMutationIds.job);
+      const jobInput = createJobInputSchema.parse({
+        title: input.jobTitle,
+        category: 'ACTIVE',
+        partyId: party.id,
+      });
+      const jobId = this.newId();
+      const job: Job = {
+        id: jobId,
+        key: toJobKey(jobId),
+        title: jobInput.title,
+        category: jobInput.category,
+        partyId: jobInput.partyId,
+        createdAt: now,
+        updatedAt: now,
+        revision: 1,
+      };
+      await transaction.insertJob(job);
+      await transaction.appendEvent(
+        this.makeEvent(
+          {
+            mutationId: childMutationIds.job,
+            actor: context.actor,
+          },
+          {
+            entityType: 'JOB',
+            entityId: job.id,
+            eventType: 'JOB_CREATED',
+            detail: null,
+            changes: {},
+            revisionAfter: job.revision,
+          },
+        ),
+      );
+      await transaction.saveMutationReceipt(
+        mutationReceiptSchema.parse({
+          mutationId: childMutationIds.job,
+          command: 'createJob',
+          fingerprint: canonicalJson({
+            actor: context.actor,
+            command: 'createJob',
+            payload: jobInput,
+          }),
+          result: job,
+          committedAt: now,
+        }),
+      );
+
+      await requireUnusedChild(childMutationIds.repair);
+      const repairInput = createRepairInputSchema.parse({
+        jobId: job.id,
+        reportedFault: input.reportedFault,
+        serialState: input.serialState,
+        serialValue: input.serialValue,
+        storageLocation: input.storageLocation,
+      });
+      const repair = repairSchema.parse({
+        id: this.newId(),
+        jobId: repairInput.jobId,
+        stage: 'RECEIVED',
+        reportedFault: repairInput.reportedFault,
+        diagnosis: null,
+        currentFinding: null,
+        serialState: repairInput.serialState,
+        serialValue: repairInput.serialValue,
+        storageLocation: repairInput.storageLocation,
+        waitingOn: null,
+        followUpAt: null,
+        finalTestResult: null,
+        finalTestDetail: null,
+        testedAt: null,
+        receivedAt: now,
+        readyAt: null,
+        collectedAt: null,
+        cancelledAt: null,
+        createdAt: now,
+        updatedAt: now,
+        revision: 1,
+      });
+      await transaction.insertRepair(repair);
+      await transaction.appendEvent(
+        this.makeEvent(
+          {
+            mutationId: childMutationIds.repair,
+            actor: context.actor,
+          },
+          {
+            entityType: 'REPAIR',
+            entityId: repair.id,
+            eventType: 'REPAIR_CREATED',
+            detail: repair.reportedFault,
+            changes: {},
+            revisionAfter: repair.revision,
+          },
+        ),
+      );
+      await transaction.saveMutationReceipt(
+        mutationReceiptSchema.parse({
+          mutationId: childMutationIds.repair,
+          command: 'createRepair',
+          fingerprint: canonicalJson({
+            actor: context.actor,
+            command: 'createRepair',
+            payload: repairInput,
+          }),
+          result: repair,
+          committedAt: now,
+        }),
+      );
+
+      const result = repairCaseResultSchema.parse({ party, job, repair });
+      await transaction.saveMutationReceipt(
+        mutationReceiptSchema.parse({
+          mutationId: context.mutationId,
+          command,
+          fingerprint,
+          result,
+          committedAt: now,
+        }),
+      );
+      return result;
+    });
   }
 
   public async createRepair(
