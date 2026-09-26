@@ -427,7 +427,11 @@ export async function installLiveHarness(
   let logicalSessionIndex = -1;
   let currentSessionId: string = IDS.session;
   let capturedTask: HarnessTask | null = null;
+  let mutatedPressureTask: HarnessTask | null = null;
   let capturedAction: HarnessScheduledAction | null = null;
+  let capturedParty: HarnessParty | null = null;
+  let capturedJob: HarnessJob | null = null;
+  let capturedRepair: HarnessRepair | null = null;
   let taskCreateAttempts = 0;
   let firstTaskIntent:
     | { mutationId: string; inputJson: string }
@@ -468,12 +472,27 @@ export async function installLiveHarness(
     const path = url.pathname.replace(/^\/api-test/, '');
     const asOf =
       url.searchParams.get('asOf') ?? '2026-09-25T04:00:00.000Z';
-    const allJobs = jobs();
+    const allParties = [
+      baseParty(),
+      ...(capturedParty === null ? [] : [capturedParty]),
+    ];
+    const allJobs = [
+      ...jobs(),
+      ...(capturedJob === null ? [] : [capturedJob]),
+    ];
+    const baseTasks = tasks(asOf).map((task) =>
+      task.id === IDS.taskPressure && mutatedPressureTask !== null
+        ? mutatedPressureTask
+        : task,
+    );
     const allTasks = [
-      ...tasks(asOf),
+      ...baseTasks,
       ...(capturedTask === null ? [] : [capturedTask]),
     ];
-    const allRepairs = repairs(asOf);
+    const allRepairs = [
+      ...repairs(asOf),
+      ...(capturedRepair === null ? [] : [capturedRepair]),
+    ];
     const schedule = scheduledActions(asOf);
     if (capturedAction !== null) {
       if (
@@ -678,12 +697,12 @@ export async function installLiveHarness(
       const work =
         options.malformedWork === true
           ? {
-              parties: [baseParty()],
+              parties: allParties,
               jobs: allJobs,
               tasks: [{ ...allTasks[1]!, jobId: IDS.jobWebsite }],
             }
           : {
-              parties: [baseParty()],
+              parties: allParties,
               jobs: allJobs,
               tasks: allTasks,
             };
@@ -697,7 +716,7 @@ export async function installLiveHarness(
           },
           work,
           repairs: {
-            parties: [baseParty()],
+            parties: allParties,
             jobs: allJobs,
             repairs: allRepairs,
           },
