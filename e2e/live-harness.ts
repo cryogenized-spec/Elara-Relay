@@ -20,7 +20,54 @@ const IDS = {
   eventJob: '10000000-0000-4000-8000-000000000015',
   taskCaptured: '10000000-0000-4000-8000-000000000016',
   actionCaptured: '10000000-0000-4000-8000-000000000017',
+  partyCaptured: '10000000-0000-4000-8000-000000000018',
+  jobCaptured: '10000000-0000-4000-8000-000000000019',
+  repairCaptured: '10000000-0000-4000-8000-000000000020',
 } as const;
+
+type HarnessParty = {
+  id: string;
+  name: string;
+  kind: 'CUSTOMER' | 'SUPPLIER' | 'OTHER';
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+};
+
+type HarnessJob = {
+  id: string;
+  key: string;
+  title: string;
+  category: 'ACTIVE' | 'WAITING' | 'DONE' | 'CANCELLED';
+  partyId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+};
+
+type HarnessRepair = {
+  id: string;
+  jobId: string;
+  stage: 'RECEIVED' | 'DIAGNOSING' | 'AWAITING_PARTS' | 'AWAITING_CUSTOMER' | 'REPAIRING' | 'TESTING' | 'READY' | 'COLLECTED' | 'CANCELLED';
+  reportedFault: string;
+  diagnosis: string | null;
+  currentFinding: string | null;
+  serialState: 'KNOWN' | 'UNKNOWN' | 'NOT_APPLICABLE';
+  serialValue: string | null;
+  storageLocation: string | null;
+  waitingOn: string | null;
+  followUpAt: string | null;
+  finalTestResult: 'PASS' | 'FAIL' | null;
+  finalTestDetail: string | null;
+  testedAt: string | null;
+  receivedAt: string;
+  readyAt: string | null;
+  collectedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+};
 
 type HarnessTask = {
   id: string;
@@ -120,7 +167,7 @@ function sessionPayload(
   };
 }
 
-function baseParty() {
+function baseParty(): HarnessParty {
   return {
     id: IDS.party,
     name: 'Demo workshop customer',
@@ -131,7 +178,7 @@ function baseParty() {
   };
 }
 
-function jobs() {
+function jobs(): HarnessJob[] {
   return [
     {
       id: IDS.jobRepair,
@@ -241,7 +288,7 @@ function tasks(asOf: string): HarnessTask[] {
   ];
 }
 
-function repairs(asOf: string) {
+function repairs(asOf: string): HarnessRepair[] {
   return [
     {
       id: IDS.repairWaiting,
