@@ -18,11 +18,13 @@ const IDS = {
   actionNext: '10000000-0000-4000-8000-000000000013',
   actionPaused: '10000000-0000-4000-8000-000000000014',
   eventJob: '10000000-0000-4000-8000-000000000015',
+  taskCaptured: '10000000-0000-4000-8000-000000000016',
 } as const;
 
 export interface LiveHarnessOptions {
   firstWhoAmIUnauthorized?: boolean;
   malformedWork?: boolean;
+  failFirstTaskCreate?: boolean;
 }
 
 function isoOffset(asOf: string, minutes: number): string {
@@ -340,6 +342,11 @@ export async function installLiveHarness(
   let tokenGrantCount = 0;
   let logicalSessionIndex = -1;
   let currentSessionId: string = IDS.session;
+  let capturedTask: ReturnType<typeof tasks>[number] | null = null;
+  let taskCreateAttempts = 0;
+  let firstTaskIntent:
+    | { mutationId: string; inputJson: string }
+    | null = null;
 
   await page.route('**/auth/v1/**', async (route) => {
     const url = new URL(route.request().url());
@@ -377,7 +384,10 @@ export async function installLiveHarness(
     const asOf =
       url.searchParams.get('asOf') ?? '2026-09-25T04:00:00.000Z';
     const allJobs = jobs();
-    const allTasks = tasks(asOf);
+    const allTasks = [
+      ...tasks(asOf),
+      ...(capturedTask === null ? [] : [capturedTask]),
+    ];
     const allRepairs = repairs(asOf);
     const schedule = scheduledActions(asOf);
 
@@ -405,6 +415,100 @@ export async function installLiveHarness(
           aal: 'aal1',
         }),
       );
+      return;
+    }
+
+    if (path === '/tasks' && route.request().method() === 'POST') {
+      const raw = route.request().postDataJSON() as {
+        mutation?: { mutationId?: unknown };
+        input?: {
+          jobId?: unknown;
+          title?: unknown;
+          priority?: unknown;
+          dueAt?: unknown;
+          followUpAt?: unknown;
+        };
+      };
+      const mutationId =
+        typeof raw.mutation?.mutationId === 'string'
+          ? raw.mutation.mutationId
+          : '';
+      const inputJson = JSON.stringify(raw.input ?? null);
+      taskCreateAttempts += 1;
+
+      if (
+        options.failFirstTaskCreate === true &&
+        taskCreateAttempts === 1
+      ) {
+        firstTaskIntent = { mutationId, inputJson };
+        await route.fulfill(
+          json(
+            {
+              error: {
+                code: 'TRANSIENT_TEST_FAILURE',
+                message: 'Temporary Task save failure',
+              },
+            },
+            503,
+          ),
+        );
+        return;
+      }
+
+      if (
+        firstTaskIntent !== null &&
+        (firstTaskIntent.mutationId !== mutationId ||
+          firstTaskIntent.inputJson !== inputJson)
+      ) {
+        await route.fulfill(
+          json(
+            {
+              error: {
+                code: 'CONFLICT',
+                message: 'Retry changed durable mutation intent',
+              },
+            },
+            409,
+          ),
+        );
+        return;
+      }
+
+      if (capturedTask === null) {
+        capturedTask = {
+          id: IDS.taskCaptured,
+          jobId:
+            typeof raw.input?.jobId === 'string'
+              ? raw.input.jobId
+              : null,
+          title:
+            typeof raw.input?.title === 'string'
+              ? raw.input.title
+              : 'Captured Task',
+          status: 'INBOX',
+          priority:
+            raw.input?.priority === 'URGENT' ||
+            raw.input?.priority === 'HIGH' ||
+            raw.input?.priority === 'LOW'
+              ? raw.input.priority
+              : 'NORMAL',
+          dueAt:
+            typeof raw.input?.dueAt === 'string'
+              ? raw.input.dueAt
+              : null,
+          followUpAt:
+            typeof raw.input?.followUpAt === 'string'
+              ? raw.input.followUpAt
+              : null,
+          waitingOn: null,
+          waitingSince: null,
+          createdAt: '2026-09-26T04:45:00.000Z',
+          updatedAt: '2026-09-26T04:45:00.000Z',
+          revision: 1,
+        };
+      }
+
+      await route.fulfill(json(capturedTask, 201));
       return;
     }
 

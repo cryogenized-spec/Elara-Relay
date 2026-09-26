@@ -146,13 +146,18 @@ test('authenticated mobile operations shell reads live domain state', async ({
 
   const captureButton = page.getByRole('button', { name: 'Capture' });
   await captureButton.click();
-  await expect(page.getByRole('dialog', { name: 'Capture' })).toBeVisible();
-  await page.getByRole('button', { name: /Repair \/ Job/ }).click();
+  const captureDialog = page.getByRole('dialog', { name: 'Capture' });
+  await expect(captureDialog).toBeVisible();
+  await captureDialog.getByRole('button', { name: /^Task/ }).click();
+  await page.getByLabel('Title').fill('Count incoming repair seals');
+  await page.getByLabel('Priority').selectOption('HIGH');
+  await page.getByRole('button', { name: 'Save Task' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await page.getByRole('button', { name: 'Work' }).click();
   await expect(
-    page.getByRole('button', { name: 'Save unavailable in preview' }),
-  ).toBeDisabled();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'Capture' })).toBeHidden();
+    page.getByText('Count incoming repair seals', { exact: true }),
+  ).toBeVisible();
 
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -330,4 +335,40 @@ test('malformed successful aggregate fails closed instead of rendering plausible
     page.getByRole('heading', { name: 'Workspace unavailable' }),
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Today' })).toHaveCount(0);
+});
+
+
+test('Task Capture retries one unchanged durable mutation intent', async ({
+  page,
+}) => {
+  await installLiveHarness(page, { failFirstTaskCreate: true });
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Capture' }).click();
+  const capture = page.getByRole('dialog', { name: 'Capture' });
+  await capture.getByRole('button', { name: /^Task/ }).click();
+
+  await page.getByLabel('Title').fill('Retry-safe captured Task');
+  await page.getByLabel('Priority').selectOption('URGENT');
+  await page.getByRole('button', { name: 'Save Task' }).click();
+
+  await expect(
+    capture.getByRole('alert'),
+  ).toContainText('Temporary Task save failure');
+  await expect(page.getByLabel('Title')).toHaveValue(
+    'Retry-safe captured Task',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Retry save' }),
+  ).toBeVisible();
+
+  await page.getByRole('button', { name: 'Retry save' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await page.getByRole('button', { name: 'Work' }).click();
+  await expect(
+    page.getByText('Retry-safe captured Task', { exact: true }),
+  ).toBeVisible();
 });
