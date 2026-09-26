@@ -1738,8 +1738,37 @@ function LiveTaskDetailSurface({
   ]);
 
   useEffect(() => {
-    void loadTask();
-  }, [loadTask]);
+    let active = true;
+    const requestAccessToken = runtime.auth.getAccessToken();
+    void runtime.api
+      .task(taskId)
+      .then((result) => {
+        if (!active) return;
+        setData(result);
+        setError(null);
+      })
+      .catch((caught: unknown) => {
+        if (
+          onAuthorizationFailure(
+            caught,
+            requestAccessToken,
+            authorizationSessionId,
+          )
+        ) {
+          return;
+        }
+        if (active) setError(readableError(caught));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    authorizationSessionId,
+    onAuthorizationFailure,
+    runtime,
+    taskId,
+  ]);
 
   const handleMutationFailure = async (
     caught: unknown,
