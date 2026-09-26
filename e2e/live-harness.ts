@@ -808,6 +808,52 @@ export async function installLiveHarness(
       return;
     }
 
+    if (
+      path === `/tasks/${IDS.taskPressure}/wait` &&
+      route.request().method() === 'POST'
+    ) {
+      const current =
+        mutatedPressureTask ??
+        tasks(asOf).find((task) => task.id === IDS.taskPressure)!;
+      const raw = route.request().postDataJSON() as {
+        mutation?: { expectedRevision?: unknown };
+        input?: { waitingOn?: unknown; followUpAt?: unknown };
+      };
+      if (raw.mutation?.expectedRevision !== current.revision) {
+        await route.fulfill(
+          json(
+            { error: { code: 'CONFLICT', message: 'Revision conflict' } },
+            409,
+          ),
+        );
+        return;
+      }
+      if (typeof raw.input?.waitingOn !== 'string') {
+        await route.fulfill(
+          json(
+            { error: { code: 'INVALID_REQUEST', message: 'Waiting on is required' } },
+            400,
+          ),
+        );
+        return;
+      }
+
+      mutatedPressureTask = {
+        ...current,
+        status: 'WAITING',
+        waitingOn: raw.input.waitingOn,
+        waitingSince: '2026-09-26T05:06:00.000Z',
+        followUpAt:
+          typeof raw.input.followUpAt === 'string'
+            ? raw.input.followUpAt
+            : null,
+        updatedAt: '2026-09-26T05:06:00.000Z',
+        revision: current.revision + 1,
+      };
+      await route.fulfill(json(mutatedPressureTask));
+      return;
+    }
+
     if (path === '/schedule' && route.request().method() === 'POST') {
       const raw = route.request().postDataJSON() as {
         mutation?: { mutationId?: unknown };
