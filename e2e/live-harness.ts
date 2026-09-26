@@ -339,7 +339,7 @@ export async function installLiveHarness(
   let whoAmICalls = 0;
   let tokenGrantCount = 0;
   let logicalSessionIndex = -1;
-  let currentSessionId = IDS.session;
+  let currentSessionId: string = IDS.session;
 
   await page.route('**/auth/v1/**', async (route) => {
     const url = new URL(route.request().url());
