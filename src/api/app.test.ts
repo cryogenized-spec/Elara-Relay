@@ -421,6 +421,59 @@ describe('API foundation', () => {
     expect(workResult.jobs).toHaveLength(1);
     expect(workResult.tasks).toHaveLength(2);
 
+    const repairCase = await jsonRequest(
+      app,
+      '/repair-cases',
+      'POST',
+      {
+        mutation: { mutationId: 'MUT-repaircase-0001' },
+        input: {
+          party: {
+            mode: 'NEW_CUSTOMER',
+            name: 'Atomic Repair Customer',
+          },
+          jobTitle: 'Atomic Repair Job',
+          reportedFault: 'Valve leak',
+          serialState: 'UNKNOWN',
+          serialValue: null,
+          storageLocation: 'Workshop shelf',
+        },
+      },
+    );
+    expect(repairCase.status).toBe(201);
+    const repairCaseResult = (await repairCase.json()) as {
+      party: { id: string; name: string };
+      job: { id: string; title: string; partyId: string };
+      repair: { reportedFault: string; jobId: string };
+    };
+    expect(repairCaseResult.party.name).toBe('Atomic Repair Customer');
+    expect(repairCaseResult.job.title).toBe('Atomic Repair Job');
+    expect(repairCaseResult.job.partyId).toBe(repairCaseResult.party.id);
+    expect(repairCaseResult.repair.jobId).toBe(repairCaseResult.job.id);
+    expect(repairCaseResult.repair.reportedFault).toBe('Valve leak');
+
+    const repairCaseReplay = await jsonRequest(
+      app,
+      '/repair-cases',
+      'POST',
+      {
+        mutation: { mutationId: 'MUT-repaircase-0001' },
+        input: {
+          party: {
+            mode: 'NEW_CUSTOMER',
+            name: 'Atomic Repair Customer',
+          },
+          jobTitle: 'Atomic Repair Job',
+          reportedFault: 'Valve leak',
+          serialState: 'UNKNOWN',
+          serialValue: null,
+          storageLocation: 'Workshop shelf',
+        },
+      },
+    );
+    expect(repairCaseReplay.status).toBe(201);
+    await expect(repairCaseReplay.json()).resolves.toEqual(repairCaseResult);
+
     const repairs = await app.request('/repairs', {
       headers: authorizationHeaders(),
     });
