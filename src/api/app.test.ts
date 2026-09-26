@@ -508,6 +508,15 @@ describe('API foundation', () => {
     expect(replay.status).toBe(201);
     await expect(replay.json()).resolves.toEqual(result);
 
+    const changedIntent = await jsonRequest(app, '/repair-cases', 'POST', {
+      ...request,
+      input: {
+        ...request.input,
+        jobTitle: 'Changed Repair Job',
+      },
+    });
+    expect(changedIntent.status).toBe(409);
+
     const repairs = await app.request('/repairs', {
       headers: authorizationHeaders(),
     });
@@ -522,7 +531,7 @@ describe('API foundation', () => {
     expect(repairState.repairs[0]?.id).toBe(result.repair.id);
   });
 
-  it('reuses an existing Party in an atomic Repair case without duplicating it', async () => {
+  it('reuses an existing Party in a composite Repair case without duplicating it', async () => {
     const app = makeApi();
     const partyResponse = await jsonRequest(app, '/parties', 'POST', {
       mutation: { mutationId: 'MUT-repaircase-party-0001' },
