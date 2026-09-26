@@ -112,7 +112,7 @@ jobs:
         run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Playwright desktop and Android portrait
-        run: npm run e2e -- --project=chromium --project=android-portrait
+        run: npm run e2e -- --project=chromium --project=mobile-9x16 --project=android-portrait
 
       - name: Upload Playwright report on failure
         if: failure()

@@ -178,8 +178,183 @@ async function captureViewport(browser, viewport, fileName) {
     path: join(outputDir, fileName.replace('.png', '-panel.png')),
   });
 
+  let repairDetailFile = null;
+  const repairAttentionRow = page.getByRole('button', {
+    name: /Open Avenge X regulator/,
+  });
+  if ((await repairAttentionRow.count()) > 0) {
+    await repairAttentionRow.click();
+    const repairDetail = page.getByRole('dialog', {
+      name: 'Avenge X regulator',
+    });
+    try {
+      await repairDetail.waitFor({ state: 'visible', timeout: 1_500 });
+      repairDetailFile = fileName.replace('.png', '-repair-detail.png');
+      await page.screenshot({
+        path: join(outputDir, repairDetailFile),
+        fullPage: false,
+      });
+      await repairDetail.getByRole('button', {
+        name: 'Back',
+        exact: true,
+      }).click();
+    } catch {
+      // Older comparison baselines may not have a Repair detail surface yet.
+    }
+  }
+
+  const surfaceFiles = {};
+  const primaryNav = [
+    ['Work', 'work'],
+    ['Repairs', 'repairs'],
+    ['Schedule', 'schedule'],
+  ];
+  for (const [navLabel, suffix] of primaryNav) {
+    const navButton = page.getByRole('button', { name: navLabel, exact: true });
+    if ((await navButton.count()) === 0) continue;
+    await navButton.click();
+    const surfaceFile = fileName.replace('.png', `-${suffix}.png`);
+    await page.screenshot({
+      path: join(outputDir, surfaceFile),
+      fullPage: false,
+    });
+    surfaceFiles[suffix] = `${label}/${surfaceFile}`;
+  }
+  let taskDetailFile = null;
+  let jobDetailFile = null;
+  const workButton = page.getByRole('button', { name: 'Work', exact: true });
+  if ((await workButton.count()) > 0) {
+    await workButton.click();
+    const jobRow = page.getByRole('button', {
+      name: /Open Avenge X regulator repair/,
+    });
+    if ((await jobRow.count()) > 0) {
+      await jobRow.click();
+      const jobDetail = page.getByRole('dialog', {
+        name: 'Avenge X regulator repair',
+      });
+      try {
+        await jobDetail.waitFor({ state: 'visible', timeout: 1_500 });
+        jobDetailFile = fileName.replace('.png', '-job-detail.png');
+        await page.screenshot({
+          path: join(outputDir, jobDetailFile),
+          fullPage: false,
+        });
+        await jobDetail.getByRole('button', {
+          name: 'Back',
+          exact: true,
+        }).click();
+      } catch {
+        // Older comparison baselines may not have a Job detail surface yet.
+      }
+    }
+  }
+
+  if ((await workButton.count()) > 0) {
+    await workButton.click();
+    const taskRow = page.getByRole('button', {
+      name: /Open Pressure-test regulator block/,
+    });
+    if ((await taskRow.count()) > 0) {
+      await taskRow.click();
+      const taskDetail = page.getByRole('dialog', {
+        name: 'Pressure-test regulator block',
+      });
+      try {
+        await taskDetail.waitFor({ state: 'visible', timeout: 1_500 });
+        taskDetailFile = fileName.replace('.png', '-task-detail.png');
+        await page.screenshot({
+          path: join(outputDir, taskDetailFile),
+          fullPage: false,
+        });
+        await taskDetail.getByRole('button', {
+          name: 'Back',
+          exact: true,
+        }).click();
+      } catch {
+        // Older comparison baselines may not have a Task detail surface yet.
+      }
+    }
+  }
+
+  const todayButton = page.getByRole('button', { name: 'Today', exact: true });
+  if ((await todayButton.count()) > 0) {
+    await todayButton.click();
+  }
+
+  let captureFiles = null;
+  const captureButton = page.getByRole('button', { name: 'Capture' });
+  if ((await captureButton.count()) > 0) {
+    await captureButton.click();
+    const captureDialog = page.getByRole('dialog', { name: 'Capture' });
+    await captureDialog.waitFor({ state: 'visible' });
+
+    const menuFile = fileName.replace('.png', '-capture.png');
+    await page.screenshot({
+      path: join(outputDir, menuFile),
+      fullPage: false,
+    });
+
+    let repairFile = null;
+    const repairChoice = page.getByRole('button', { name: /Repair \/ Job/ });
+    if ((await repairChoice.count()) > 0) {
+      await repairChoice.click();
+      const repairHeading = page.getByRole('heading', {
+        name: 'New repair / Job',
+      });
+      try {
+        await repairHeading.waitFor({ state: 'visible', timeout: 1_500 });
+        repairFile = fileName.replace('.png', '-capture-repair.png');
+        await page.screenshot({
+          path: join(outputDir, repairFile),
+          fullPage: false,
+        });
+      } catch {
+        // Older comparison baselines may expose Capture without a focused form.
+      }
+    }
+
+    await page.keyboard.press('Escape');
+    captureFiles = {
+      menu: `${label}/${menuFile}`,
+      repair: repairFile === null ? null : `${label}/${repairFile}`,
+    };
+  }
+
+  let searchFile = null;
+  const searchButton = page.getByRole('button', { name: 'Search' });
+  if ((await searchButton.count()) > 0) {
+    await searchButton.click();
+    const searchDialog = page.getByRole('dialog', { name: 'Search' });
+    await searchDialog.waitFor({ state: 'visible' });
+    const searchInput = page.getByPlaceholder('Job, serial, task, customer…');
+    if ((await searchInput.count()) > 0) {
+      await searchInput.fill('Avenge');
+    }
+    searchFile = fileName.replace('.png', '-search.png');
+    await page.screenshot({
+      path: join(outputDir, searchFile),
+      fullPage: false,
+    });
+    await page.keyboard.press('Escape');
+  }
+
   await context.close();
-  return { metrics, pageErrors, consoleErrors, failedRequests };
+  return {
+    metrics,
+    pageErrors,
+    consoleErrors,
+    failedRequests,
+    repairDetailFile:
+      repairDetailFile === null ? null : `${label}/${repairDetailFile}`,
+    surfaceFiles,
+    jobDetailFile:
+      jobDetailFile === null ? null : `${label}/${jobDetailFile}`,
+    taskDetailFile:
+      taskDetailFile === null ? null : `${label}/${taskDetailFile}`,
+    captureFiles,
+    searchFile: searchFile === null ? null : `${label}/${searchFile}`,
+  };
 }
 
 await mkdir(outputDir, { recursive: true });

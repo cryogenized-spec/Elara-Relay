@@ -85,8 +85,8 @@ hostileMutation(
   const absolute = join(root, path);
   const original = readFileSync(absolute, 'utf8');
   const hostile = original.replace(
-    "test('foundation shell renders without browser errors'",
-    "test.only('foundation shell renders without browser errors'",
+    "test('mobile operations shell renders and navigates without browser errors'",
+    "test.only('mobile operations shell renders and navigates without browser errors'",
   );
   if (hostile === original) {
     throw new Error('Mutation target disappeared: focused Playwright test');
@@ -130,8 +130,8 @@ hostileMutation(
   const absolute = join(root, path);
   const original = readFileSync(absolute, 'utf8');
   const hostile = original.replace(
-    '<main className="shell">',
-    '<main className="shell" dangerouslySetInnerHTML={{ __html: "<p>hostile</p>" }}>',
+    '<main className="appShell">',
+    '<main className="appShell" dangerouslySetInnerHTML={{ __html: "<p>hostile</p>" }}>',
   );
   if (hostile === original) {
     throw new Error('Mutation target disappeared: direct HTML injection');
