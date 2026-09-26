@@ -250,11 +250,14 @@ describe('Operations API mutation client', () => {
       updatedAt: '2026-09-26T05:00:00.000Z',
       revision: 1,
     };
-    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify(createdTask), {
-        status: 201,
-        headers: { 'content-type': 'application/json' },
-      }),
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(
+      () =>
+        Promise.resolve(
+          new Response(JSON.stringify(createdTask), {
+            status: 201,
+            headers: { 'content-type': 'application/json' },
+          }),
+        ),
     );
     const api = createOperationsApi({
       baseUrl: 'https://api.example.com',
