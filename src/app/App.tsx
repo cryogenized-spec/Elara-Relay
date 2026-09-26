@@ -1256,6 +1256,7 @@ function PreviewSave() {
 
 function CaptureSheet({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<CaptureMode>('menu');
+  const [busy, setBusy] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -1303,7 +1304,7 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
       aria-labelledby="capture-title"
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (!busy) onClose();
       }}
     >
       <div className="sheetHandle" aria-hidden="true" />
@@ -1314,6 +1315,7 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
               className="sheetBackButton"
               type="button"
               aria-label="Back"
+              disabled={busy}
               onClick={() => setMode('menu')}
             >
               <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
@@ -1323,7 +1325,12 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
             {captureTitles[mode]}
           </h2>
         </div>
-        <button className="textButton" type="button" onClick={onClose}>
+        <button
+          className="textButton"
+          type="button"
+          disabled={busy}
+          onClick={onClose}
+        >
           Cancel
         </button>
       </div>
@@ -2345,6 +2352,7 @@ function LiveTaskCaptureForm({
   onCommitted,
   onAuthorizationFailure,
   authorizationSessionId,
+  onBusyChange,
 }: {
   runtime: BrowserRuntime;
   jobs: LiveReadState['work']['jobs'];
@@ -2352,6 +2360,7 @@ function LiveTaskCaptureForm({
   onCommitted: () => Promise<void>;
   onAuthorizationFailure: AuthorizationFailureHandler;
   authorizationSessionId: string | null;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<'URGENT' | 'HIGH' | 'NORMAL' | 'LOW'>(
@@ -2386,6 +2395,7 @@ function LiveTaskCaptureForm({
     const requestAccessToken = runtime.auth.getAccessToken();
     setError(null);
     setState('saving');
+    onBusyChange(true);
 
     try {
       await runtime.api.createTask({
@@ -2393,9 +2403,11 @@ function LiveTaskCaptureForm({
         input,
       });
       pendingAttempt.current = null;
+      onBusyChange(false);
       onClose();
       await onCommitted();
     } catch (caught: unknown) {
+      onBusyChange(false);
       if (
         onAuthorizationFailure(
           caught,
@@ -2414,6 +2426,7 @@ function LiveTaskCaptureForm({
   return (
     <form
       className="captureForm"
+      aria-busy={state === 'saving'}
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
@@ -2428,6 +2441,7 @@ function LiveTaskCaptureForm({
           onChange={(event) => setTitle(event.target.value)}
           required
           maxLength={240}
+          disabled={state === 'saving'}
         />
       </label>
       <label className="formField">
@@ -2440,6 +2454,7 @@ function LiveTaskCaptureForm({
               event.target.value as 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW',
             )
           }
+          disabled={state === 'saving'}
         >
           <option value="URGENT">Urgent</option>
           <option value="HIGH">High</option>
@@ -2454,6 +2469,7 @@ function LiveTaskCaptureForm({
           type="datetime-local"
           value={dueLocal}
           onChange={(event) => setDueLocal(event.target.value)}
+          disabled={state === 'saving'}
         />
         <small>Africa/Johannesburg</small>
       </label>
@@ -2463,6 +2479,7 @@ function LiveTaskCaptureForm({
           name="task-job"
           value={jobId}
           onChange={(event) => setJobId(event.target.value)}
+          disabled={state === 'saving'}
         >
           <option value="">Standalone Task</option>
           {jobs
@@ -2505,6 +2522,7 @@ function LiveReminderCaptureForm({
   onCommitted,
   onAuthorizationFailure,
   authorizationSessionId,
+  onBusyChange,
 }: {
   runtime: BrowserRuntime;
   jobs: LiveReadState['work']['jobs'];
@@ -2512,6 +2530,7 @@ function LiveReminderCaptureForm({
   onCommitted: () => Promise<void>;
   onAuthorizationFailure: AuthorizationFailureHandler;
   authorizationSessionId: string | null;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const [title, setTitle] = useState('');
   const [runLocal, setRunLocal] = useState('');
@@ -2562,15 +2581,18 @@ function LiveReminderCaptureForm({
 
     setError(null);
     setState('saving');
+    onBusyChange(true);
     try {
       await runtime.api.createScheduledAction({
         mutationId: attempt.mutationId,
         input,
       });
       pendingAttempt.current = null;
+      onBusyChange(false);
       onClose();
       await onCommitted();
     } catch (caught: unknown) {
+      onBusyChange(false);
       if (
         onAuthorizationFailure(
           caught,
@@ -2589,6 +2611,7 @@ function LiveReminderCaptureForm({
   return (
     <form
       className="captureForm"
+      aria-busy={state === 'saving'}
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
@@ -2603,6 +2626,7 @@ function LiveReminderCaptureForm({
           onChange={(event) => setTitle(event.target.value)}
           maxLength={240}
           required
+          disabled={state === 'saving'}
         />
       </label>
       <label className="formField">
@@ -2613,6 +2637,7 @@ function LiveReminderCaptureForm({
           value={runLocal}
           onChange={(event) => setRunLocal(event.target.value)}
           required
+          disabled={state === 'saving'}
         />
         <small>Africa/Johannesburg</small>
       </label>
@@ -2624,6 +2649,7 @@ function LiveReminderCaptureForm({
           onChange={(event) =>
             setRepeat(event.target.value as 'once' | 'daily' | 'weekly')
           }
+          disabled={state === 'saving'}
         >
           <option value="once">One time</option>
           <option value="daily">Daily</option>
@@ -2636,6 +2662,7 @@ function LiveReminderCaptureForm({
           name="reminder-job"
           value={jobId}
           onChange={(event) => setJobId(event.target.value)}
+          disabled={state === 'saving'}
         >
           <option value="">No linked Job</option>
           {jobs
@@ -2811,6 +2838,7 @@ function LiveCaptureSheet({
           onCommitted={onCommitted}
           onAuthorizationFailure={onAuthorizationFailure}
           authorizationSessionId={authorizationSessionId}
+          onBusyChange={setBusy}
         />
       ) : mode === 'reminder' ? (
         <LiveReminderCaptureForm
@@ -2820,6 +2848,7 @@ function LiveCaptureSheet({
           onCommitted={onCommitted}
           onAuthorizationFailure={onAuthorizationFailure}
           authorizationSessionId={authorizationSessionId}
+          onBusyChange={setBusy}
         />
       ) : null}
     </dialog>
