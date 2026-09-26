@@ -532,6 +532,121 @@ export async function installLiveHarness(
       return;
     }
 
+    if (path === '/repair-cases' && route.request().method() === 'POST') {
+      const raw = route.request().postDataJSON() as {
+        mutation?: { mutationId?: unknown };
+        input?: {
+          party?: { mode?: unknown; partyId?: unknown; name?: unknown };
+          jobTitle?: unknown;
+          reportedFault?: unknown;
+          serialState?: unknown;
+          serialValue?: unknown;
+          storageLocation?: unknown;
+        };
+      };
+
+      if (
+        typeof raw.mutation?.mutationId !== 'string' ||
+        typeof raw.input?.jobTitle !== 'string' ||
+        typeof raw.input?.reportedFault !== 'string'
+      ) {
+        await route.fulfill(
+          json(
+            {
+              error: {
+                code: 'INVALID_REQUEST',
+                message: 'Repair-case fixture received invalid durable intent',
+              },
+            },
+            400,
+          ),
+        );
+        return;
+      }
+
+      let party: HarnessParty;
+      if (raw.input.party?.mode === 'EXISTING') {
+        const partyId =
+          typeof raw.input.party.partyId === 'string'
+            ? raw.input.party.partyId
+            : '';
+        const existing = allParties.find((candidate) => candidate.id === partyId);
+        if (existing === undefined) {
+          await route.fulfill(
+            json(
+              { error: { code: 'NOT_FOUND', message: 'Party not found' } },
+              404,
+            ),
+          );
+          return;
+        }
+        party = existing;
+      } else {
+        capturedParty ??= {
+          id: IDS.partyCaptured,
+          name:
+            typeof raw.input.party?.name === 'string'
+              ? raw.input.party.name
+              : 'Captured customer',
+          kind: 'CUSTOMER',
+          createdAt: '2026-09-26T05:00:00.000Z',
+          updatedAt: '2026-09-26T05:00:00.000Z',
+          revision: 1,
+        };
+        party = capturedParty;
+      }
+
+      capturedJob ??= {
+        id: IDS.jobCaptured,
+        key: 'JOB-CAPTURE1',
+        title: raw.input.jobTitle,
+        category: 'ACTIVE',
+        partyId: party.id,
+        createdAt: '2026-09-26T05:00:00.000Z',
+        updatedAt: '2026-09-26T05:00:00.000Z',
+        revision: 1,
+      };
+      capturedRepair ??= {
+        id: IDS.repairCaptured,
+        jobId: capturedJob.id,
+        stage: 'RECEIVED',
+        reportedFault: raw.input.reportedFault,
+        diagnosis: null,
+        currentFinding: null,
+        serialState:
+          raw.input.serialState === 'KNOWN'
+            ? 'KNOWN'
+            : raw.input.serialState === 'NOT_APPLICABLE'
+              ? 'NOT_APPLICABLE'
+              : 'UNKNOWN',
+        serialValue:
+          typeof raw.input.serialValue === 'string'
+            ? raw.input.serialValue
+            : null,
+        storageLocation:
+          typeof raw.input.storageLocation === 'string'
+            ? raw.input.storageLocation
+            : null,
+        waitingOn: null,
+        followUpAt: null,
+        finalTestResult: null,
+        finalTestDetail: null,
+        testedAt: null,
+        receivedAt: '2026-09-26T05:00:00.000Z',
+        readyAt: null,
+        collectedAt: null,
+        cancelledAt: null,
+        createdAt: '2026-09-26T05:00:00.000Z',
+        updatedAt: '2026-09-26T05:00:00.000Z',
+        revision: 1,
+      };
+
+      await route.fulfill(
+        json({ party, job: capturedJob, repair: capturedRepair }, 201),
+      );
+      return;
+    }
+
     if (path === '/tasks' && route.request().method() === 'POST') {
       const raw = route.request().postDataJSON() as {
         mutation?: { mutationId?: unknown };
