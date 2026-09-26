@@ -433,7 +433,7 @@ test('Capture stays locked while a durable Task save is unresolved', async ({
 });
 
 
-test('Repair Capture opens one replay-safe durable workshop case', async ({
+test('Repair Capture opens one atomic durable workshop case', async ({
   page,
 }) => {
   await installLiveHarness(page);
