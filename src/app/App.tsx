@@ -16,9 +16,11 @@ import type {
   RepairViewPayload,
   TaskViewPayload,
 } from '../contracts/read-model';
+import type { UpdateTaskPatch } from '../contracts/task';
 import type { BrowserRuntime } from './browser-runtime';
 import { classifyAuthorizationFailure } from './authorization-policy';
 import {
+  johannesburgIsoToLocalDateTimeInput,
   johannesburgLocalDateTimeToIso,
   resolveMutationAttempt,
   type PendingMutationAttempt,
@@ -1671,17 +1673,34 @@ function LiveTaskDetailSurface({
   runtime,
   taskId,
   onClose,
+  onCommitted,
   onAuthorizationFailure,
   authorizationSessionId,
 }: {
   runtime: BrowserRuntime;
   taskId: string;
   onClose: () => void;
+  onCommitted: () => Promise<void>;
   onAuthorizationFailure: AuthorizationFailureHandler;
   authorizationSessionId: string | null;
 }) {
   const [data, setData] = useState<TaskViewPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'view' | 'edit' | 'wait'>('view');
+  const [busy, setBusy] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editStatus, setEditStatus] = useState<'INBOX' | 'NEXT' | 'DOING'>(
+    'INBOX',
+  );
+  const [editPriority, setEditPriority] = useState<
+    'URGENT' | 'HIGH' | 'NORMAL' | 'LOW'
+  >('NORMAL');
+  const [editDueLocal, setEditDueLocal] = useState('');
+  const [editFollowUpLocal, setEditFollowUpLocal] = useState('');
+  const [waitingOn, setWaitingOn] = useState('');
+  const [waitingFollowUpLocal, setWaitingFollowUpLocal] = useState('');
+  const pendingAttempt = useRef<PendingMutationAttempt | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -1691,48 +1710,269 @@ function LiveTaskDetailSurface({
     if (data !== null) titleRef.current?.focus();
   }, [data]);
 
-  useEffect(() => {
-    let active = true;
+  const loadTask = useCallback(async () => {
     const requestAccessToken = runtime.auth.getAccessToken();
-    void runtime.api
-      .task(taskId)
-      .then((result) => {
-        if (active) setData(result);
-      })
-      .catch((caught: unknown) => {
-        if (
-          onAuthorizationFailure(
-            caught,
-            requestAccessToken,
-            authorizationSessionId,
-          )
-        ) {
-          return;
-        }
-        if (!active) return;
-        setError(readableError(caught));
-      });
-    return () => {
-      active = false;
+    try {
+      const result = await runtime.api.task(taskId);
+      setData(result);
+      setError(null);
+      return result;
+    } catch (caught: unknown) {
+      if (
+        onAuthorizationFailure(
+          caught,
+          requestAccessToken,
+          authorizationSessionId,
+        )
+      ) {
+        return null;
+      }
+      setError(readableError(caught));
+      return null;
+    }
+  }, [
+    authorizationSessionId,
+    onAuthorizationFailure,
+    runtime,
+    taskId,
+  ]);
+
+  useEffect(() => {
+    void loadTask();
+  }, [loadTask]);
+
+  const handleMutationFailure = async (
+    caught: unknown,
+    requestAccessToken: string | null,
+  ) => {
+    setBusy(false);
+    if (
+      onAuthorizationFailure(
+        caught,
+        requestAccessToken,
+        authorizationSessionId,
+      )
+    ) {
+      return;
+    }
+
+    if (caught instanceof OperationsApiError && caught.status === 409) {
+      pendingAttempt.current = null;
+      await loadTask();
+      setMode('view');
+      setMutationError(
+        'Task changed elsewhere. Current state was refreshed; review it and try again.',
+      );
+      return;
+    }
+
+    setMutationError(readableError(caught));
+  };
+
+  const beginEdit = () => {
+    if (data === null) return;
+    setMutationError(null);
+    setEditTitle(data.task.title);
+    setEditStatus(
+      data.task.status === 'INBOX' ||
+        data.task.status === 'NEXT' ||
+        data.task.status === 'DOING'
+        ? data.task.status
+        : 'NEXT',
+    );
+    setEditPriority(data.task.priority);
+    setEditDueLocal(johannesburgIsoToLocalDateTimeInput(data.task.dueAt));
+    setEditFollowUpLocal(
+      johannesburgIsoToLocalDateTimeInput(data.task.followUpAt),
+    );
+    setMode('edit');
+  };
+
+  const beginWaiting = () => {
+    if (data === null) return;
+    setMutationError(null);
+    setWaitingOn(data.task.waitingOn ?? '');
+    setWaitingFollowUpLocal(
+      johannesburgIsoToLocalDateTimeInput(data.task.followUpAt),
+    );
+    setMode('wait');
+  };
+
+  const submitEdit = async () => {
+    if (data === null) return;
+
+    let dueAt: string | null;
+    let followUpAt: string | null;
+    try {
+      dueAt = johannesburgLocalDateTimeToIso(editDueLocal);
+      followUpAt = johannesburgLocalDateTimeToIso(editFollowUpLocal);
+    } catch (caught: unknown) {
+      setMutationError(readableError(caught));
+      return;
+    }
+
+    const patch: UpdateTaskPatch = {};
+    const normalizedTitle = editTitle.trim();
+    if (normalizedTitle !== data.task.title) patch.title = normalizedTitle;
+    if (editPriority !== data.task.priority) patch.priority = editPriority;
+    if (dueAt !== data.task.dueAt) patch.dueAt = dueAt;
+    if (followUpAt !== data.task.followUpAt) patch.followUpAt = followUpAt;
+    if (
+      data.task.status !== 'WAITING' &&
+      editStatus !== data.task.status
+    ) {
+      patch.status = editStatus;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      setMutationError('No Task fields changed.');
+      return;
+    }
+
+    const intent = {
+      action: 'UPDATE_TASK',
+      taskId: data.task.id,
+      expectedRevision: data.task.revision,
+      patch,
     };
-  }, [authorizationSessionId, onAuthorizationFailure, runtime, taskId]);
+    const attempt = resolveMutationAttempt(pendingAttempt.current, intent);
+    pendingAttempt.current = attempt;
+    const requestAccessToken = runtime.auth.getAccessToken();
+
+    setBusy(true);
+    setMutationError(null);
+    try {
+      const task = await runtime.api.updateTask(data.task.id, {
+        mutationId: attempt.mutationId,
+        expectedRevision: data.task.revision,
+        patch,
+      });
+      pendingAttempt.current = null;
+      setData({ ...data, task });
+      setBusy(false);
+      setMode('view');
+      await onCommitted();
+    } catch (caught: unknown) {
+      await handleMutationFailure(caught, requestAccessToken);
+    }
+  };
+
+  const submitWaiting = async () => {
+    if (data === null) return;
+
+    const normalizedWaitingOn = waitingOn.trim();
+    if (normalizedWaitingOn === '') {
+      setMutationError('Waiting on is required.');
+      return;
+    }
+
+    let followUpAt: string | null;
+    try {
+      followUpAt = johannesburgLocalDateTimeToIso(waitingFollowUpLocal);
+    } catch (caught: unknown) {
+      setMutationError(readableError(caught));
+      return;
+    }
+
+    const input = {
+      waitingOn: normalizedWaitingOn,
+      followUpAt,
+    };
+    const intent = {
+      action: 'MARK_TASK_WAITING',
+      taskId: data.task.id,
+      expectedRevision: data.task.revision,
+      input,
+    };
+    const attempt = resolveMutationAttempt(pendingAttempt.current, intent);
+    pendingAttempt.current = attempt;
+    const requestAccessToken = runtime.auth.getAccessToken();
+
+    setBusy(true);
+    setMutationError(null);
+    try {
+      const task = await runtime.api.markTaskWaiting(data.task.id, {
+        mutationId: attempt.mutationId,
+        expectedRevision: data.task.revision,
+        input,
+      });
+      pendingAttempt.current = null;
+      setData({ ...data, task });
+      setBusy(false);
+      setMode('view');
+      await onCommitted();
+    } catch (caught: unknown) {
+      await handleMutationFailure(caught, requestAccessToken);
+    }
+  };
+
+  const submitTerminalAction = async (action: 'COMPLETE' | 'CANCEL') => {
+    if (data === null) return;
+
+    if (
+      action === 'CANCEL' &&
+      !window.confirm('Cancel this Task? This action is recorded in history.')
+    ) {
+      return;
+    }
+
+    const intent = {
+      action,
+      taskId: data.task.id,
+      expectedRevision: data.task.revision,
+    };
+    const attempt = resolveMutationAttempt(pendingAttempt.current, intent);
+    pendingAttempt.current = attempt;
+    const requestAccessToken = runtime.auth.getAccessToken();
+
+    setBusy(true);
+    setMutationError(null);
+    try {
+      if (action === 'COMPLETE') {
+        await runtime.api.completeTask(data.task.id, {
+          mutationId: attempt.mutationId,
+          expectedRevision: data.task.revision,
+        });
+      } else {
+        await runtime.api.cancelTask(data.task.id, {
+          mutationId: attempt.mutationId,
+          expectedRevision: data.task.revision,
+        });
+      }
+      pendingAttempt.current = null;
+      setBusy(false);
+      onClose();
+      await onCommitted();
+    } catch (caught: unknown) {
+      await handleMutationFailure(caught, requestAccessToken);
+    }
+  };
+
+  const terminal =
+    data?.task.status === 'DONE' || data?.task.status === 'CANCELLED';
 
   return (
     <dialog
       className="overlaySurface detailSurface"
       ref={dialogRef}
       aria-label={data?.task.title ?? 'Task detail'}
+      aria-busy={busy}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (!busy) onClose();
       }}
     >
       <div className="detailTopBar">
-        <button className="detailBackButton" type="button" onClick={onClose}>
+        <button
+          className="detailBackButton"
+          type="button"
+          disabled={busy}
+          onClick={onClose}
+        >
           <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
           <span>Back</span>
         </button>
-        <span className="liveReadState">Read only · 1G</span>
+        <span className="liveReadState">Live · 1H-B</span>
       </div>
       {error !== null ? (
         <section className="systemState">
@@ -1762,20 +2002,214 @@ function LiveTaskDetailSurface({
               </StatusBadge>
             </div>
           </section>
-          <section className="detailSection" aria-labelledby="live-task-state">
-            <div className="detailSection__heading">
-              <h2 id="live-task-state">Current state</h2>
-            </div>
-            <dl className="detailFields">
-              <div><dt>Status</dt><dd>{titleCase(data.task.status)}</dd></div>
-              <div><dt>Priority</dt><dd>{titleCase(data.task.priority)}</dd></div>
-              <div><dt>Due</dt><dd>{formatTimestamp(data.task.dueAt)}</dd></div>
-              <div><dt>Follow-up</dt><dd>{formatTimestamp(data.task.followUpAt)}</dd></div>
-              <div><dt>Waiting on</dt><dd>{data.task.waitingOn ?? 'None'}</dd></div>
-              <div><dt>Updated</dt><dd>{formatTimestamp(data.task.updatedAt)}</dd></div>
-              <div><dt>Revision</dt><dd className="detailValue--mono">{data.task.revision}</dd></div>
-            </dl>
-          </section>
+
+          {mutationError === null ? null : (
+            <p className="captureError taskMutationError" role="alert">
+              {mutationError}
+            </p>
+          )}
+
+          {mode === 'view' ? (
+            <>
+              <div className="detailActionBar" aria-label="Task actions">
+                <button type="button" disabled={busy || terminal} onClick={beginEdit}>
+                  Edit Task
+                </button>
+                <button type="button" disabled={busy || terminal} onClick={beginWaiting}>
+                  {data.task.status === 'WAITING' ? 'Update wait' : 'Mark waiting'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || terminal}
+                  onClick={() => {
+                    void submitTerminalAction('COMPLETE');
+                  }}
+                >
+                  Complete
+                </button>
+                <button
+                  className="destructiveButton"
+                  type="button"
+                  disabled={busy || terminal}
+                  onClick={() => {
+                    void submitTerminalAction('CANCEL');
+                  }}
+                >
+                  Cancel Task
+                </button>
+              </div>
+              <section className="detailSection" aria-labelledby="live-task-state">
+                <div className="detailSection__heading">
+                  <h2 id="live-task-state">Current state</h2>
+                </div>
+                <dl className="detailFields">
+                  <div><dt>Status</dt><dd>{titleCase(data.task.status)}</dd></div>
+                  <div><dt>Priority</dt><dd>{titleCase(data.task.priority)}</dd></div>
+                  <div><dt>Due</dt><dd>{formatTimestamp(data.task.dueAt)}</dd></div>
+                  <div><dt>Follow-up</dt><dd>{formatTimestamp(data.task.followUpAt)}</dd></div>
+                  <div><dt>Waiting on</dt><dd>{data.task.waitingOn ?? 'None'}</dd></div>
+                  <div><dt>Updated</dt><dd>{formatTimestamp(data.task.updatedAt)}</dd></div>
+                  <div><dt>Revision</dt><dd className="detailValue--mono">{data.task.revision}</dd></div>
+                </dl>
+              </section>
+            </>
+          ) : mode === 'edit' ? (
+            <form
+              className="taskMutationPanel"
+              aria-label="Edit Task"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitEdit();
+              }}
+            >
+              <label className="formField">
+                <span>Title</span>
+                <input
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  maxLength={240}
+                  required
+                  disabled={busy}
+                />
+              </label>
+              {data.task.status === 'WAITING' ? (
+                <div className="taskMutationNotice">
+                  Waiting status is managed through the waiting action.
+                </div>
+              ) : (
+                <label className="formField">
+                  <span>Status</span>
+                  <select
+                    value={editStatus}
+                    onChange={(event) =>
+                      setEditStatus(
+                        event.target.value as 'INBOX' | 'NEXT' | 'DOING',
+                      )
+                    }
+                    disabled={busy}
+                  >
+                    <option value="INBOX">Inbox</option>
+                    <option value="NEXT">Next</option>
+                    <option value="DOING">Doing</option>
+                  </select>
+                </label>
+              )}
+              <label className="formField">
+                <span>Priority</span>
+                <select
+                  value={editPriority}
+                  onChange={(event) =>
+                    setEditPriority(
+                      event.target.value as
+                        | 'URGENT'
+                        | 'HIGH'
+                        | 'NORMAL'
+                        | 'LOW',
+                    )
+                  }
+                  disabled={busy}
+                >
+                  <option value="URGENT">Urgent</option>
+                  <option value="HIGH">High</option>
+                  <option value="NORMAL">Normal</option>
+                  <option value="LOW">Low</option>
+                </select>
+              </label>
+              <label className="formField">
+                <span>Due</span>
+                <input
+                  type="datetime-local"
+                  value={editDueLocal}
+                  onChange={(event) => setEditDueLocal(event.target.value)}
+                  disabled={busy}
+                />
+              </label>
+              <label className="formField">
+                <span>Follow-up</span>
+                <input
+                  type="datetime-local"
+                  value={editFollowUpLocal}
+                  onChange={(event) => setEditFollowUpLocal(event.target.value)}
+                  disabled={busy}
+                />
+              </label>
+              <div className="taskMutationActions">
+                <button
+                  className="textButton"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    pendingAttempt.current = null;
+                    setMutationError(null);
+                    setMode('view');
+                  }}
+                >
+                  Discard
+                </button>
+                <button
+                  className="primaryButton"
+                  type="submit"
+                  disabled={busy || editTitle.trim() === ''}
+                >
+                  {busy ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form
+              className="taskMutationPanel"
+              aria-label="Mark Task waiting"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitWaiting();
+              }}
+            >
+              <label className="formField">
+                <span>Waiting on</span>
+                <input
+                  value={waitingOn}
+                  onChange={(event) => setWaitingOn(event.target.value)}
+                  placeholder="Supplier, customer, stock…"
+                  maxLength={240}
+                  required
+                  disabled={busy}
+                />
+              </label>
+              <label className="formField">
+                <span>Follow-up</span>
+                <input
+                  type="datetime-local"
+                  value={waitingFollowUpLocal}
+                  onChange={(event) =>
+                    setWaitingFollowUpLocal(event.target.value)
+                  }
+                  disabled={busy}
+                />
+                <small>Africa/Johannesburg</small>
+              </label>
+              <div className="taskMutationActions">
+                <button
+                  className="textButton"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    pendingAttempt.current = null;
+                    setMutationError(null);
+                    setMode('view');
+                  }}
+                >
+                  Discard
+                </button>
+                <button
+                  className="primaryButton"
+                  type="submit"
+                  disabled={busy || waitingOn.trim() === ''}
+                >
+                  {busy ? 'Saving…' : 'Save waiting state'}
+                </button>
+              </div>
+            </form>
+          )}
         </>
       )}
     </dialog>
@@ -2508,6 +2942,201 @@ function LiveTaskCaptureForm({
   );
 }
 
+function LiveRepairCaptureForm({
+  runtime,
+  parties,
+  onClose,
+  onCommitted,
+  onAuthorizationFailure,
+  authorizationSessionId,
+  onBusyChange,
+}: {
+  runtime: BrowserRuntime;
+  parties: LiveReadState['work']['parties'];
+  onClose: () => void;
+  onCommitted: () => Promise<void>;
+  onAuthorizationFailure: AuthorizationFailureHandler;
+  authorizationSessionId: string | null;
+  onBusyChange: (busy: boolean) => void;
+}) {
+  const [customer, setCustomer] = useState('');
+  const [itemTitle, setItemTitle] = useState('');
+  const [reportedFault, setReportedFault] = useState('');
+  const [serial, setSerial] = useState('');
+  const [storageLocation, setStorageLocation] = useState('');
+  const [state, setState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const pendingAttempt = useRef<PendingMutationAttempt | null>(null);
+
+  const submit = async () => {
+    const normalizedCustomer = customer.trim();
+    const normalizedItemTitle = itemTitle.trim();
+    const normalizedFault = reportedFault.trim();
+    const normalizedSerial = serial.trim();
+    const normalizedStorage = storageLocation.trim();
+
+    const exactParty =
+      parties.find(
+        (party) =>
+          party.kind === 'CUSTOMER' &&
+          party.name.trim().toLocaleLowerCase('en-ZA') ===
+            normalizedCustomer.toLocaleLowerCase('en-ZA'),
+      ) ?? null;
+
+    const input = {
+      party:
+        exactParty === null
+          ? {
+              mode: 'NEW_CUSTOMER' as const,
+              name: normalizedCustomer,
+            }
+          : {
+              mode: 'EXISTING' as const,
+              partyId: exactParty.id,
+            },
+      jobTitle: normalizedItemTitle,
+      reportedFault: normalizedFault,
+      serialState: normalizedSerial === '' ? ('UNKNOWN' as const) : ('KNOWN' as const),
+      serialValue: normalizedSerial === '' ? null : normalizedSerial,
+      storageLocation: normalizedStorage === '' ? null : normalizedStorage,
+    };
+
+    const attempt = resolveMutationAttempt(pendingAttempt.current, input);
+    pendingAttempt.current = attempt;
+    const requestAccessToken = runtime.auth.getAccessToken();
+
+    setError(null);
+    setState('saving');
+    onBusyChange(true);
+
+    try {
+      await runtime.api.createRepairCase({
+        mutationId: attempt.mutationId,
+        input,
+      });
+      pendingAttempt.current = null;
+      onBusyChange(false);
+      onClose();
+      await onCommitted();
+    } catch (caught: unknown) {
+      onBusyChange(false);
+      if (
+        onAuthorizationFailure(
+          caught,
+          requestAccessToken,
+          authorizationSessionId,
+        )
+      ) {
+        setState('idle');
+        return;
+      }
+      setError(readableError(caught));
+      setState('error');
+    }
+  };
+
+  return (
+    <form
+      className="captureForm"
+      aria-busy={state === 'saving'}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <label className="formField">
+        <span>Customer</span>
+        <input
+          name="repair-customer"
+          placeholder="Customer or Party"
+          value={customer}
+          onChange={(event) => setCustomer(event.target.value)}
+          required
+          maxLength={240}
+          disabled={state === 'saving'}
+        />
+        <small>
+          Exact existing customer names are reused; otherwise a new customer is created.
+        </small>
+      </label>
+      <label className="formField">
+        <span>Item / model</span>
+        <input
+          name="repair-item"
+          placeholder="What is being repaired?"
+          value={itemTitle}
+          onChange={(event) => setItemTitle(event.target.value)}
+          required
+          maxLength={240}
+          disabled={state === 'saving'}
+        />
+      </label>
+      <label className="formField">
+        <span>Reported fault</span>
+        <textarea
+          name="repair-fault"
+          placeholder="Describe the reported problem"
+          value={reportedFault}
+          onChange={(event) => setReportedFault(event.target.value)}
+          required
+          maxLength={4000}
+          disabled={state === 'saving'}
+        />
+      </label>
+      <label className="formField">
+        <span>Serial</span>
+        <input
+          name="repair-serial"
+          placeholder="Leave blank if unknown"
+          value={serial}
+          onChange={(event) => setSerial(event.target.value)}
+          maxLength={120}
+          disabled={state === 'saving'}
+        />
+      </label>
+      <label className="formField">
+        <span>Storage location</span>
+        <input
+          name="repair-storage"
+          placeholder="Optional shelf, bin or counter"
+          value={storageLocation}
+          onChange={(event) => setStorageLocation(event.target.value)}
+          maxLength={200}
+          disabled={state === 'saving'}
+        />
+      </label>
+
+      {error === null ? null : (
+        <p className="captureError" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="captureForm__footer">
+        <p>
+          Customer, Job and Repair are committed atomically through one replay-safe mutation.
+        </p>
+        <button
+          className="primaryButton"
+          type="submit"
+          disabled={
+            state === 'saving' ||
+            customer.trim() === '' ||
+            itemTitle.trim() === '' ||
+            reportedFault.trim() === ''
+          }
+        >
+          {state === 'saving'
+            ? 'Saving…'
+            : state === 'error'
+              ? 'Retry save'
+              : 'Open Repair'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function LiveReminderCaptureForm({
   runtime,
   jobs,
@@ -2801,7 +3430,11 @@ function LiveCaptureSheet({
             </span>
             <Icon icon={altArrowRightLinear} width={18} aria-hidden="true" />
           </button>
-          <button className="captureChoice" type="button" disabled>
+          <button
+            className="captureChoice"
+            type="button"
+            onClick={() => setMode('repair')}
+          >
             <Icon
               className="captureChoice__icon"
               icon={settingsLinear}
@@ -2810,8 +3443,9 @@ function LiveCaptureSheet({
             />
             <span>
               <strong>Repair / Job</strong>
-              <small>Durable workflow coming next in Pass 1H</small>
+              <small>Open a durable workshop case</small>
             </span>
+            <Icon icon={altArrowRightLinear} width={18} aria-hidden="true" />
           </button>
           <button
             className="captureChoice"
@@ -2835,6 +3469,16 @@ function LiveCaptureSheet({
         <LiveTaskCaptureForm
           runtime={runtime}
           jobs={work.jobs}
+          onClose={onClose}
+          onCommitted={onCommitted}
+          onAuthorizationFailure={onAuthorizationFailure}
+          authorizationSessionId={authorizationSessionId}
+          onBusyChange={setBusy}
+        />
+      ) : mode === 'repair' ? (
+        <LiveRepairCaptureForm
+          runtime={runtime}
+          parties={work.parties}
           onClose={onClose}
           onCommitted={onCommitted}
           onAuthorizationFailure={onAuthorizationFailure}
@@ -3232,6 +3876,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
           runtime={runtime}
           taskId={detail.id}
           onClose={() => setDetail(null)}
+          onCommitted={load}
           onAuthorizationFailure={handleAuthorizationFailure}
           authorizationSessionId={identity?.sessionId ?? null}
         />
