@@ -89,6 +89,7 @@ function apiMock() {
     createJob: vi.fn(),
     createTask: vi.fn(),
     createRepair: vi.fn(),
+    createRepairCase: vi.fn(),
     createScheduledAction: vi.fn(),
   } as unknown as OperationsApi;
 }
@@ -197,62 +198,59 @@ describe('capture commands', () => {
     );
   });
 
-  it('keeps all compound Repair mutation IDs stable across retries', async () => {
+  it('reuses one atomic Repair-case mutation ID across retries', async () => {
     const api = apiMock();
-    const newParty = {
-      id: '10000000-0000-4000-8000-000000000030',
-      name: 'New Customer',
-      kind: 'CUSTOMER' as const,
-      createdAt: '2026-09-26T03:00:00.000Z',
-      updatedAt: '2026-09-26T03:00:00.000Z',
-      revision: 1,
-    };
-    const createdJob = {
-      id: '10000000-0000-4000-8000-000000000031',
-      key: 'JOB-55667788',
-      title: 'P29 repair',
-      category: 'ACTIVE' as const,
-      partyId: newParty.id,
-      createdAt: '2026-09-26T03:00:00.000Z',
-      updatedAt: '2026-09-26T03:00:00.000Z',
-      revision: 1,
-    };
-    const createdRepair = {
-      id: REPAIR_ID,
-      jobId: createdJob.id,
-      stage: 'RECEIVED' as const,
-      reportedFault: 'Trigger fault',
-      diagnosis: null,
-      currentFinding: null,
-      serialState: 'UNKNOWN' as const,
-      serialValue: null,
-      storageLocation: null,
-      waitingOn: null,
-      followUpAt: null,
-      finalTestResult: null,
-      finalTestDetail: null,
-      testedAt: null,
-      receivedAt: '2026-09-26T03:00:00.000Z',
-      readyAt: null,
-      collectedAt: null,
-      cancelledAt: null,
-      createdAt: '2026-09-26T03:00:00.000Z',
-      updatedAt: '2026-09-26T03:00:00.000Z',
-      revision: 1,
+    const result = {
+      party: {
+        id: '10000000-0000-4000-8000-000000000030',
+        name: 'New Customer',
+        kind: 'CUSTOMER' as const,
+        createdAt: '2026-09-26T03:00:00.000Z',
+        updatedAt: '2026-09-26T03:00:00.000Z',
+        revision: 1,
+      },
+      job: {
+        id: '10000000-0000-4000-8000-000000000031',
+        key: 'JOB-55667788',
+        title: 'P29 repair',
+        category: 'ACTIVE' as const,
+        partyId: '10000000-0000-4000-8000-000000000030',
+        createdAt: '2026-09-26T03:00:00.000Z',
+        updatedAt: '2026-09-26T03:00:00.000Z',
+        revision: 1,
+      },
+      repair: {
+        id: REPAIR_ID,
+        jobId: '10000000-0000-4000-8000-000000000031',
+        stage: 'RECEIVED' as const,
+        reportedFault: 'Trigger fault',
+        diagnosis: null,
+        currentFinding: null,
+        serialState: 'UNKNOWN' as const,
+        serialValue: null,
+        storageLocation: null,
+        waitingOn: null,
+        followUpAt: null,
+        finalTestResult: null,
+        finalTestDetail: null,
+        testedAt: null,
+        receivedAt: '2026-09-26T03:00:00.000Z',
+        readyAt: null,
+        collectedAt: null,
+        cancelledAt: null,
+        createdAt: '2026-09-26T03:00:00.000Z',
+        updatedAt: '2026-09-26T03:00:00.000Z',
+        revision: 1,
+      },
     };
 
-    vi.mocked(api.createParty).mockResolvedValue(newParty);
-    vi.mocked(api.createJob).mockResolvedValue(createdJob);
-    vi.mocked(api.createRepair)
+    vi.mocked(api.createRepairCase)
       .mockRejectedValueOnce(new Error('network'))
-      .mockResolvedValueOnce(createdRepair);
+      .mockResolvedValueOnce(result);
 
-    const values = [
-      '33333333-3333-4333-8333-333333333331',
-      '33333333-3333-4333-8333-333333333332',
-      '33333333-3333-4333-8333-333333333333',
-    ];
-    const plan = createRepairCapturePlan(() => values.shift()!);
+    const plan = createRepairCapturePlan(
+      () => '33333333-3333-4333-8333-333333333333',
+    );
     const draft = {
       partyName: 'New Customer',
       itemTitle: 'P29 repair',
@@ -265,32 +263,19 @@ describe('capture commands', () => {
     ).rejects.toThrow('network');
     await submitRepairCapture(api, dashboard, draft, plan);
 
-    expect(api.createParty).toHaveBeenNthCalledWith(
-      1,
-      'MUT-33333333-3333-4333-8333-333333333331',
-      expect.anything(),
-    );
-    expect(api.createParty).toHaveBeenNthCalledWith(
-      2,
-      'MUT-33333333-3333-4333-8333-333333333331',
-      expect.anything(),
-    );
-    expect(api.createJob).toHaveBeenNthCalledWith(
-      1,
-      'MUT-33333333-3333-4333-8333-333333333332',
-      expect.anything(),
-    );
-    expect(api.createJob).toHaveBeenNthCalledWith(
-      2,
-      'MUT-33333333-3333-4333-8333-333333333332',
-      expect.anything(),
-    );
-    expect(api.createRepair).toHaveBeenNthCalledWith(
+    expect(api.createRepairCase).toHaveBeenCalledTimes(2);
+    expect(api.createRepairCase).toHaveBeenNthCalledWith(
       1,
       'MUT-33333333-3333-4333-8333-333333333333',
-      expect.anything(),
+      expect.objectContaining({
+        party: {
+          mode: 'NEW_CUSTOMER',
+          name: 'New Customer',
+        },
+        jobTitle: 'P29 repair',
+      }),
     );
-    expect(api.createRepair).toHaveBeenNthCalledWith(
+    expect(api.createRepairCase).toHaveBeenNthCalledWith(
       2,
       'MUT-33333333-3333-4333-8333-333333333333',
       expect.anything(),

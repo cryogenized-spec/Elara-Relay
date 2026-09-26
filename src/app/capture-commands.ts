@@ -1,12 +1,7 @@
-import {
-  createJobInputSchema,
-  type Job,
-} from '../contracts/job';
-import {
-  createPartyInputSchema,
-  type Party,
-} from '../contracts/party';
-import { createRepairInputSchema, type Repair } from '../contracts/repair';
+import type { Job } from '../contracts/job';
+import type { Party } from '../contracts/party';
+import { createRepairCaseInputSchema } from '../contracts/repair-case';
+import type { Repair } from '../contracts/repair';
 import {
   createScheduledActionInputSchema,
   type ScheduledAction,
@@ -50,9 +45,7 @@ export interface TaskCapturePlan {
 }
 
 export interface RepairCapturePlan {
-  partyMutationId: string;
-  jobMutationId: string;
-  repairMutationId: string;
+  mutationId: string;
 }
 
 export interface ReminderCapturePlan {
@@ -74,11 +67,7 @@ export function createTaskCapturePlan(
 export function createRepairCapturePlan(
   uuid?: () => string,
 ): RepairCapturePlan {
-  return {
-    partyMutationId: createMutationId(uuid),
-    jobMutationId: createMutationId(uuid),
-    repairMutationId: createMutationId(uuid),
-  };
+  return { mutationId: createMutationId(uuid) };
 }
 
 export function createReminderCapturePlan(
@@ -186,38 +175,28 @@ export async function submitRepairCapture(
   plan: RepairCapturePlan,
 ): Promise<{ party: Party; job: Job; repair: Repair }> {
   const existingParty = resolveParty(dashboard, draft.partyName);
-  const party =
-    existingParty ??
-    (await api.createParty(
-      plan.partyMutationId,
-      createPartyInputSchema.parse({
-        name: draft.partyName,
-        kind: 'CUSTOMER',
-      }),
-    ));
-
-  const job = await api.createJob(
-    plan.jobMutationId,
-    createJobInputSchema.parse({
-      title: draft.itemTitle,
-      category: 'ACTIVE',
-      partyId: party.id,
-    }),
-  );
-
   const serial = draft.serial.trim();
-  const repair = await api.createRepair(
-    plan.repairMutationId,
-    createRepairInputSchema.parse({
-      jobId: job.id,
+
+  return api.createRepairCase(
+    plan.mutationId,
+    createRepairCaseInputSchema.parse({
+      party:
+        existingParty === null
+          ? {
+              mode: 'NEW_CUSTOMER',
+              name: draft.partyName,
+            }
+          : {
+              mode: 'EXISTING',
+              partyId: existingParty.id,
+            },
+      jobTitle: draft.itemTitle,
       reportedFault: draft.reportedFault,
       serialState: serial === '' ? 'UNKNOWN' : 'KNOWN',
       serialValue: serial === '' ? null : serial,
       storageLocation: null,
     }),
   );
-
-  return { party, job, repair };
 }
 
 export async function submitReminderCapture(
