@@ -86,6 +86,105 @@ describe('domain kernel', () => {
     ).rejects.toBeInstanceOf(MutationReplayMismatchError);
   });
 
+  it('creates a Repair case atomically with unique child Event mutations', async () => {
+    const { kernel, store } = makeKernel();
+    const context = {
+      mutationId: 'MUT-repair-case-domain-0001',
+      actor: 'operator-ui' as const,
+    };
+    const input = {
+      party: {
+        mode: 'NEW_CUSTOMER' as const,
+        name: 'Workshop customer',
+      },
+      jobTitle: 'Spyder Victor service',
+      reportedFault: 'Valve leak',
+      serialState: 'UNKNOWN' as const,
+      serialValue: null,
+      storageLocation: 'Workshop shelf',
+    };
+
+    const first = await kernel.createRepairCase(context, input);
+    const replay = await kernel.createRepairCase(context, input);
+    expect(replay).toEqual(first);
+
+    const snapshot = await store.read(async (read) => ({
+      parties: await read.listParties(),
+      jobs: await read.listJobs(),
+      repairs: await read.listRepairs(),
+      events: await read.listEvents(),
+      rootReceipt: await read.getMutationReceipt(context.mutationId),
+    }));
+
+    expect(snapshot.parties).toHaveLength(1);
+    expect(snapshot.jobs).toHaveLength(1);
+    expect(snapshot.repairs).toHaveLength(1);
+    expect(snapshot.events.map((event) => event.eventType)).toEqual([
+      'PARTY_CREATED',
+      'JOB_CREATED',
+      'REPAIR_CREATED',
+    ]);
+    expect(new Set(snapshot.events.map((event) => event.mutationId)).size).toBe(3);
+    expect(
+      snapshot.events.some((event) => event.mutationId === context.mutationId),
+    ).toBe(false);
+    expect(snapshot.rootReceipt?.command).toBe('createRepairCase');
+    expect(snapshot.rootReceipt?.result).toEqual(first);
+  });
+
+  it('rolls a Repair case back completely when a later child write fails', async () => {
+    const store = new MemoryDomainStore();
+    let idIndex = 0;
+    const idsBeforeFailure = IDS.slice(0, 4);
+    const kernel = new DomainKernel(store, {
+      clock: () => '2026-09-24T09:00:00.000Z',
+      idGenerator: () => {
+        const id = idsBeforeFailure[idIndex];
+        if (id === undefined) {
+          throw new Error('Injected repair-id failure');
+        }
+        idIndex += 1;
+        return id;
+      },
+    });
+
+    await expect(
+      kernel.createRepairCase(
+        {
+          mutationId: 'MUT-repair-case-rollback-01',
+          actor: 'operator-ui',
+        },
+        {
+          party: {
+            mode: 'NEW_CUSTOMER',
+            name: 'Rollback customer',
+          },
+          jobTitle: 'Rollback repair',
+          reportedFault: 'Injected failure path',
+          serialState: 'UNKNOWN',
+          serialValue: null,
+          storageLocation: null,
+        },
+      ),
+    ).rejects.toThrow('Injected repair-id failure');
+
+    const snapshot = await store.read(async (read) => ({
+      parties: await read.listParties(),
+      jobs: await read.listJobs(),
+      repairs: await read.listRepairs(),
+      events: await read.listEvents(),
+      rootReceipt: await read.getMutationReceipt(
+        'MUT-repair-case-rollback-01',
+      ),
+    }));
+
+    expect(snapshot.parties).toEqual([]);
+    expect(snapshot.jobs).toEqual([]);
+    expect(snapshot.repairs).toEqual([]);
+    expect(snapshot.events).toEqual([]);
+    expect(snapshot.rootReceipt).toBeUndefined();
+  });
+
   it('rejects task creation against a nonexistent job atomically', async () => {
     const { kernel, store } = makeKernel();
 
