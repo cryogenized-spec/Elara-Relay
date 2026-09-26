@@ -1,5 +1,24 @@
 import { z, type ZodType } from 'zod';
 import { authIdentitySchema, type AuthIdentity } from '../auth/auth-verifier';
+import { jobSchema, type CreateJobInput, type Job } from '../contracts/job';
+import { partySchema, type CreatePartyInput, type Party } from '../contracts/party';
+import {
+  repairSchema,
+  type CreateRepairInput,
+  type Repair,
+} from '../contracts/repair';
+import {
+  scheduledActionSchema,
+  type CreateScheduledActionInput,
+  type ScheduledAction,
+} from '../contracts/scheduler';
+import {
+  taskSchema,
+  type CreateTaskInput,
+  type MarkTaskWaitingInput,
+  type Task,
+  type UpdateTaskPatch,
+} from '../contracts/task';
 import {
   dashboardResultSchema,
   jobViewSchema,
@@ -45,6 +64,36 @@ export class OperationsApiError extends Error {
 
 export interface OperationsApi {
   whoAmI(): Promise<AuthIdentity>;
+  createParty(mutationId: string, input: CreatePartyInput): Promise<Party>;
+  createJob(mutationId: string, input: CreateJobInput): Promise<Job>;
+  createTask(mutationId: string, input: CreateTaskInput): Promise<Task>;
+  createRepair(mutationId: string, input: CreateRepairInput): Promise<Repair>;
+  createScheduledAction(
+    mutationId: string,
+    input: CreateScheduledActionInput,
+  ): Promise<ScheduledAction>;
+  updateTask(
+    taskId: string,
+    mutationId: string,
+    expectedRevision: number,
+    patch: UpdateTaskPatch,
+  ): Promise<Task>;
+  markTaskWaiting(
+    taskId: string,
+    mutationId: string,
+    expectedRevision: number,
+    input: MarkTaskWaitingInput,
+  ): Promise<Task>;
+  completeTask(
+    taskId: string,
+    mutationId: string,
+    expectedRevision: number,
+  ): Promise<Task>;
+  cancelTask(
+    taskId: string,
+    mutationId: string,
+    expectedRevision: number,
+  ): Promise<Task>;
   dashboard(asOf: string): Promise<DashboardResultPayload>;
   today(asOf: string): Promise<TodayResultPayload>;
   work(): Promise<WorkResultPayload>;
@@ -83,7 +132,14 @@ export function createOperationsApi(
   const fetchImpl = options.fetchImpl ?? fetch;
   const baseUrl = options.baseUrl.replace(/\/$/, '');
 
-  async function request<T>(path: string, schema: ZodType<T>): Promise<T> {
+  async function request<T>(
+    path: string,
+    schema: ZodType<T>,
+    init?: {
+      method?: 'GET' | 'POST' | 'PATCH';
+      body?: unknown;
+    },
+  ): Promise<T> {
     const token = options.getAccessToken();
     if (token === null || token === '') {
       throw new OperationsApiError(
@@ -94,10 +150,17 @@ export function createOperationsApi(
     }
 
     const response = await fetchImpl(`${baseUrl}${path}`, {
+      method: init?.method ?? 'GET',
       headers: {
         authorization: `Bearer ${token}`,
         accept: 'application/json',
+        ...(init?.body === undefined
+          ? {}
+          : { 'content-type': 'application/json' }),
       },
+      ...(init?.body === undefined
+        ? {}
+        : { body: JSON.stringify(init.body) }),
     });
 
     if (response.status === 401 || response.status === 403) {
@@ -151,6 +214,78 @@ export function createOperationsApi(
 
   return {
     whoAmI: () => request('/auth/whoami', authIdentitySchema),
+    createParty: (mutationId, input) =>
+      request('/parties', partySchema, {
+        method: 'POST',
+        body: { mutation: { mutationId }, input },
+      }),
+    createJob: (mutationId, input) =>
+      request('/jobs', jobSchema, {
+        method: 'POST',
+        body: { mutation: { mutationId }, input },
+      }),
+    createTask: (mutationId, input) =>
+      request('/tasks', taskSchema, {
+        method: 'POST',
+        body: { mutation: { mutationId }, input },
+      }),
+    createRepair: (mutationId, input) =>
+      request('/repairs', repairSchema, {
+        method: 'POST',
+        body: { mutation: { mutationId }, input },
+      }),
+    createScheduledAction: (mutationId, input) =>
+      request('/schedule', scheduledActionSchema, {
+        method: 'POST',
+        body: { mutation: { mutationId }, input },
+      }),
+    updateTask: (taskId, mutationId, expectedRevision, patch) =>
+      request(`/tasks/${encodeURIComponent(taskId)}`, taskSchema, {
+        method: 'PATCH',
+        body: {
+          mutation: { mutationId, expectedRevision },
+          patch,
+        },
+      }),
+    markTaskWaiting: (
+      taskId,
+      mutationId,
+      expectedRevision,
+      input,
+    ) =>
+      request(
+        `/tasks/${encodeURIComponent(taskId)}/wait`,
+        taskSchema,
+        {
+          method: 'POST',
+          body: {
+            mutation: { mutationId, expectedRevision },
+            input,
+          },
+        },
+      ),
+    completeTask: (taskId, mutationId, expectedRevision) =>
+      request(
+        `/tasks/${encodeURIComponent(taskId)}/complete`,
+        taskSchema,
+        {
+          method: 'POST',
+          body: {
+            mutation: { mutationId, expectedRevision },
+          },
+        },
+      ),
+    cancelTask: (taskId, mutationId, expectedRevision) =>
+      request(
+        `/tasks/${encodeURIComponent(taskId)}/cancel`,
+        taskSchema,
+        {
+          method: 'POST',
+          body: {
+            mutation: { mutationId, expectedRevision },
+          },
+        },
+      ),
     dashboard: (asOf) =>
       request(
         `/dashboard?asOf=${encodeURIComponent(asOf)}`,

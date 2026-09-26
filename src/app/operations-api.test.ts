@@ -186,3 +186,142 @@ describe('Operations API browser client', () => {
     await expect(api.work()).rejects.toThrow();
   });
 });
+
+describe('Operations API browser mutations', () => {
+  it('sends stable mutation metadata with typed create payloads', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: '10000000-0000-4000-8000-000000000010',
+          jobId: null,
+          title: 'Check regulator stock',
+          status: 'INBOX',
+          priority: 'NORMAL',
+          dueAt: null,
+          followUpAt: null,
+          waitingOn: null,
+          waitingSince: null,
+          createdAt: '2026-09-26T03:00:00.000Z',
+          updatedAt: '2026-09-26T03:00:00.000Z',
+          revision: 1,
+        }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const api = createOperationsApi({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'session-token',
+      fetchImpl,
+    });
+
+    await api.createTask('MUT-1234567890abcdef', {
+      jobId: null,
+      title: 'Check regulator stock',
+      priority: 'NORMAL',
+      dueAt: null,
+      followUpAt: null,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.example.com/tasks',
+      {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer session-token',
+          accept: 'application/json',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          mutation: { mutationId: 'MUT-1234567890abcdef' },
+          input: {
+            jobId: null,
+            title: 'Check regulator stock',
+            priority: 'NORMAL',
+            dueAt: null,
+            followUpAt: null,
+          },
+        }),
+      },
+    );
+  });
+
+  it('sends optimistic revision metadata for Task updates', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: '10000000-0000-4000-8000-000000000010',
+          jobId: null,
+          title: 'Check regulator stock',
+          status: 'DOING',
+          priority: 'HIGH',
+          dueAt: null,
+          followUpAt: null,
+          waitingOn: null,
+          waitingSince: null,
+          createdAt: '2026-09-26T03:00:00.000Z',
+          updatedAt: '2026-09-26T03:05:00.000Z',
+          revision: 2,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const api = createOperationsApi({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'session-token',
+      fetchImpl,
+    });
+
+    await api.updateTask(
+      '10000000-0000-4000-8000-000000000010',
+      'MUT-fedcba0987654321',
+      1,
+      { status: 'DOING', priority: 'HIGH' },
+    );
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.example.com/tasks/10000000-0000-4000-8000-000000000010',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          mutation: {
+            mutationId: 'MUT-fedcba0987654321',
+            expectedRevision: 1,
+          },
+          patch: { status: 'DOING', priority: 'HIGH' },
+        }),
+      }),
+    );
+  });
+
+  it('preserves structured conflicts for optimistic-revision handling', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'CONFLICT',
+            message: 'Revision conflict',
+          },
+        }),
+        { status: 409, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const api = createOperationsApi({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'session-token',
+      fetchImpl,
+    });
+
+    await expect(
+      api.completeTask(
+        '10000000-0000-4000-8000-000000000010',
+        'MUT-aabbccddeeff0011',
+        3,
+      ),
+    ).rejects.toEqual(
+      new OperationsApiError(409, 'CONFLICT', 'Revision conflict'),
+    );
+  });
+});
