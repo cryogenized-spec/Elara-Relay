@@ -132,6 +132,34 @@ describe('domain kernel', () => {
     expect(snapshot.rootReceipt?.result).toEqual(first);
   });
 
+  it('rejects changed Repair-case intent under the same root mutation id', async () => {
+    const { kernel } = makeKernel();
+    const context = {
+      mutationId: 'MUT-repair-case-mismatch-01',
+      actor: 'operator-ui' as const,
+    };
+    const input = {
+      party: {
+        mode: 'NEW_CUSTOMER' as const,
+        name: 'Replay customer',
+      },
+      jobTitle: 'Original repair',
+      reportedFault: 'Valve leak',
+      serialState: 'UNKNOWN' as const,
+      serialValue: null,
+      storageLocation: null,
+    };
+
+    await kernel.createRepairCase(context, input);
+
+    await expect(
+      kernel.createRepairCase(context, {
+        ...input,
+        jobTitle: 'Changed repair',
+      }),
+    ).rejects.toBeInstanceOf(MutationReplayMismatchError);
+  });
+
   it('rolls a Repair case back completely when a later child write fails', async () => {
     const store = new MemoryDomainStore();
     let idIndex = 0;
