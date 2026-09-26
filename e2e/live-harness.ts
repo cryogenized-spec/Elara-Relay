@@ -854,6 +854,39 @@ export async function installLiveHarness(
       return;
     }
 
+    if (
+      (path === `/tasks/${IDS.taskPressure}/complete` ||
+        path === `/tasks/${IDS.taskPressure}/cancel`) &&
+      route.request().method() === 'POST'
+    ) {
+      const current =
+        mutatedPressureTask ??
+        tasks(asOf).find((task) => task.id === IDS.taskPressure)!;
+      const raw = route.request().postDataJSON() as {
+        mutation?: { expectedRevision?: unknown };
+      };
+      if (raw.mutation?.expectedRevision !== current.revision) {
+        await route.fulfill(
+          json(
+            { error: { code: 'CONFLICT', message: 'Revision conflict' } },
+            409,
+          ),
+        );
+        return;
+      }
+
+      mutatedPressureTask = {
+        ...current,
+        status: path.endsWith('/complete') ? 'DONE' : 'CANCELLED',
+        waitingOn: null,
+        waitingSince: null,
+        updatedAt: '2026-09-26T05:07:00.000Z',
+        revision: current.revision + 1,
+      };
+      await route.fulfill(json(mutatedPressureTask));
+      return;
+    }
+
     if (path === '/schedule' && route.request().method() === 'POST') {
       const raw = route.request().postDataJSON() as {
         mutation?: { mutationId?: unknown };
