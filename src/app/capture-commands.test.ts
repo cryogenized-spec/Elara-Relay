@@ -83,16 +83,57 @@ const dashboard = {
   },
 } satisfies DashboardResultPayload;
 
-function apiMock() {
-  return {
-    createParty: vi.fn(),
-    createJob: vi.fn(),
-    createTask: vi.fn(),
-    createRepair: vi.fn(),
-    createRepairCase: vi.fn(),
-    createScheduledAction: vi.fn(),
+function createApiMocks() {
+  const createTask = vi.fn<OperationsApi['createTask']>();
+  const createRepairCase = vi.fn<OperationsApi['createRepairCase']>();
+  const createScheduledAction = vi.fn<OperationsApi['createScheduledAction']>();
+
+  const api = {
+    createTask,
+    createRepairCase,
+    createScheduledAction,
   } as unknown as OperationsApi;
+
+  return {
+    api,
+    createTask,
+    createRepairCase,
+    createScheduledAction,
+  };
 }
+
+const existingRepairCase = {
+  party: dashboard.work.parties[0]!,
+  job: {
+    ...dashboard.work.jobs[0]!,
+    id: '10000000-0000-4000-8000-000000000020',
+    key: 'JOB-11223344',
+    title: 'Avenge X',
+  },
+  repair: {
+    id: REPAIR_ID,
+    jobId: '10000000-0000-4000-8000-000000000020',
+    stage: 'RECEIVED' as const,
+    reportedFault: 'Pressure loss',
+    diagnosis: null,
+    currentFinding: null,
+    serialState: 'KNOWN' as const,
+    serialValue: 'AVX-1',
+    storageLocation: null,
+    waitingOn: null,
+    followUpAt: null,
+    finalTestResult: null,
+    finalTestDetail: null,
+    testedAt: null,
+    receivedAt: '2026-09-26T03:00:00.000Z',
+    readyAt: null,
+    collectedAt: null,
+    cancelledAt: null,
+    createdAt: '2026-09-26T03:00:00.000Z',
+    updatedAt: '2026-09-26T03:00:00.000Z',
+    revision: 1,
+  },
+};
 
 describe('capture commands', () => {
   it('converts Johannesburg wall-clock values explicitly to UTC', () => {
@@ -105,8 +146,8 @@ describe('capture commands', () => {
   });
 
   it('resolves exact Job keys for Task capture', async () => {
-    const api = apiMock();
-    vi.mocked(api.createTask).mockResolvedValue({
+    const { api, createTask } = createApiMocks();
+    createTask.mockResolvedValue({
       id: TASK_ID,
       jobId: JOB_ID,
       title: 'Check stock',
@@ -121,7 +162,9 @@ describe('capture commands', () => {
       revision: 1,
     });
 
-    const plan = createTaskCapturePlan(() => '11111111-1111-4111-8111-111111111111');
+    const plan = createTaskCapturePlan(
+      () => '11111111-1111-4111-8111-111111111111',
+    );
     await submitTaskCapture(
       api,
       dashboard,
@@ -133,7 +176,7 @@ describe('capture commands', () => {
       plan,
     );
 
-    expect(api.createTask).toHaveBeenCalledWith(
+    expect(createTask).toHaveBeenCalledWith(
       'MUT-11111111-1111-4111-8111-111111111111',
       {
         jobId: JOB_ID,
@@ -145,40 +188,13 @@ describe('capture commands', () => {
     );
   });
 
-  it('reuses an exact Party match instead of creating a duplicate', async () => {
-    const api = apiMock();
-    const createdJob = {
-      ...dashboard.work.jobs[0]!,
-      id: '10000000-0000-4000-8000-000000000020',
-      key: 'JOB-11223344',
-      title: 'Avenge X',
-    };
-    vi.mocked(api.createJob).mockResolvedValue(createdJob);
-    vi.mocked(api.createRepair).mockResolvedValue({
-      id: REPAIR_ID,
-      jobId: createdJob.id,
-      stage: 'RECEIVED',
-      reportedFault: 'Pressure loss',
-      diagnosis: null,
-      currentFinding: null,
-      serialState: 'KNOWN',
-      serialValue: 'AVX-1',
-      storageLocation: null,
-      waitingOn: null,
-      followUpAt: null,
-      finalTestResult: null,
-      finalTestDetail: null,
-      testedAt: null,
-      receivedAt: '2026-09-26T03:00:00.000Z',
-      readyAt: null,
-      collectedAt: null,
-      cancelledAt: null,
-      createdAt: '2026-09-26T03:00:00.000Z',
-      updatedAt: '2026-09-26T03:00:00.000Z',
-      revision: 1,
-    });
+  it('reuses an exact Party match inside the atomic Repair case', async () => {
+    const { api, createRepairCase } = createApiMocks();
+    createRepairCase.mockResolvedValue(existingRepairCase);
 
-    const plan = createRepairCapturePlan(() => '22222222-2222-4222-8222-222222222222');
+    const plan = createRepairCapturePlan(
+      () => '22222222-2222-4222-8222-222222222222',
+    );
     await submitRepairCapture(
       api,
       dashboard,
@@ -191,15 +207,22 @@ describe('capture commands', () => {
       plan,
     );
 
-    expect(api.createParty).not.toHaveBeenCalled();
-    expect(api.createJob).toHaveBeenCalledWith(
+    expect(createRepairCase).toHaveBeenCalledWith(
       'MUT-22222222-2222-4222-8222-222222222222',
-      expect.objectContaining({ partyId: PARTY_ID }),
+      expect.objectContaining({
+        party: {
+          mode: 'EXISTING',
+          partyId: PARTY_ID,
+        },
+        jobTitle: 'Avenge X',
+        serialState: 'KNOWN',
+        serialValue: 'AVX-1',
+      }),
     );
   });
 
   it('reuses one atomic Repair-case mutation ID across retries', async () => {
-    const api = apiMock();
+    const { api, createRepairCase } = createApiMocks();
     const result = {
       party: {
         id: '10000000-0000-4000-8000-000000000030',
@@ -244,7 +267,7 @@ describe('capture commands', () => {
       },
     };
 
-    vi.mocked(api.createRepairCase)
+    createRepairCase
       .mockRejectedValueOnce(new Error('network'))
       .mockResolvedValueOnce(result);
 
@@ -263,8 +286,8 @@ describe('capture commands', () => {
     ).rejects.toThrow('network');
     await submitRepairCapture(api, dashboard, draft, plan);
 
-    expect(api.createRepairCase).toHaveBeenCalledTimes(2);
-    expect(api.createRepairCase).toHaveBeenNthCalledWith(
+    expect(createRepairCase).toHaveBeenCalledTimes(2);
+    expect(createRepairCase).toHaveBeenNthCalledWith(
       1,
       'MUT-33333333-3333-4333-8333-333333333333',
       expect.objectContaining({
@@ -275,7 +298,7 @@ describe('capture commands', () => {
         jobTitle: 'P29 repair',
       }),
     );
-    expect(api.createRepairCase).toHaveBeenNthCalledWith(
+    expect(createRepairCase).toHaveBeenNthCalledWith(
       2,
       'MUT-33333333-3333-4333-8333-333333333333',
       expect.anything(),
@@ -283,8 +306,8 @@ describe('capture commands', () => {
   });
 
   it('creates a Johannesburg reminder with reviewed recurrence', async () => {
-    const api = apiMock();
-    vi.mocked(api.createScheduledAction).mockResolvedValue({
+    const { api, createScheduledAction } = createApiMocks();
+    createScheduledAction.mockResolvedValue({
       id: ACTION_ID,
       jobId: JOB_ID,
       taskId: null,
@@ -302,7 +325,9 @@ describe('capture commands', () => {
       revision: 1,
     });
 
-    const plan = createReminderCapturePlan(() => '44444444-4444-4444-8444-444444444444');
+    const plan = createReminderCapturePlan(
+      () => '44444444-4444-4444-8444-444444444444',
+    );
     await submitReminderCapture(
       api,
       dashboard,
@@ -315,7 +340,7 @@ describe('capture commands', () => {
       plan,
     );
 
-    expect(api.createScheduledAction).toHaveBeenCalledWith(
+    expect(createScheduledAction).toHaveBeenCalledWith(
       'MUT-44444444-4444-4444-8444-444444444444',
       expect.objectContaining({
         jobId: JOB_ID,
