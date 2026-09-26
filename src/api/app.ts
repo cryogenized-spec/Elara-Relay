@@ -252,28 +252,27 @@ function registerDomainRoutes(
       await requestJson(context),
     );
     const rootMutationId = request.mutation.mutationId;
+    const partyInput = request.input.party;
 
     const party =
-      request.input.party.mode === 'NEW_CUSTOMER'
+      partyInput.mode === 'NEW_CUSTOMER'
         ? await kernel.createParty(
             operatorMutation({
               mutationId: await childMutationId(rootMutationId, 'party'),
             }),
             {
-              name: request.input.party.name,
+              name: partyInput.name,
               kind: 'CUSTOMER',
             },
           )
         : (await kernel.getWork()).parties.find(
-            (candidate) => candidate.id === request.input.party.partyId,
+            (candidate) => candidate.id === partyInput.partyId,
           );
 
     if (party === undefined) {
       throw new DomainNotFoundError(
         'Party',
-        request.input.party.mode === 'EXISTING'
-          ? request.input.party.partyId
-          : 'unknown',
+        partyInput.mode === 'EXISTING' ? partyInput.partyId : 'unknown',
       );
     }
 
