@@ -216,7 +216,7 @@ Phase 1 is complete when a user can:
 
 ## 7. Phase 1 implementation state
 
-Completed foundations:
+Completed foundations and product slices:
 
 - Pass 0 — Fortress Floor
 - Pass 1A — Transactional Domain Kernel
@@ -224,13 +224,26 @@ Completed foundations:
 - Pass 1C — Application Authentication Boundary
 - Pass 1D — First-class Repairs Domain
 - Pass 1E — Scheduler and Delivery Kernel
+- Pass 1F — Mobile UI Foundation
+- Pass 1F0 — Visual Evidence Bootstrap
+- Pass 1G — Live Auth and Authenticated Read Model
+- Pass 1H-A — Durable Task and Reminder Capture
+
+Current application state:
+
+- mobile-first dark application shell is live
+- Supabase session restoration and server authorization are live
+- Today / Work / Repairs / Schedule / Search read durable operational state
+- Job / Task / Repair detail reads are live
+- Task Capture persists durably
+- Reminder Capture persists durably
+- browser writes use replay-safe mutation IDs and strict response validation
 
 Remaining Phase 1 product work:
 
-- real mobile application shell
-- real sign-in experience
-- Today / Work / Repairs / Schedule / Search UI
-- persistent Capture flow
+- durable Repair / Job Capture
+- Task update / waiting / complete / cancel UI
+- Repair progression and final-test UI
 - production API deployment
 - production web/PWA deployment
 - secret/runtime configuration
