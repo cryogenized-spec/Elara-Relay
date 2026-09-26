@@ -40,5 +40,11 @@ describe('Capture mutation intent', () => {
     );
     expect(johannesburgLocalDateTimeToIso('')).toBeNull();
     expect(() => johannesburgLocalDateTimeToIso('26/09/2026 14:30')).toThrow();
+    expect(() => johannesburgLocalDateTimeToIso('2026-02-31T14:30')).toThrow(
+      'Date and time is invalid',
+    );
+    expect(() => johannesburgLocalDateTimeToIso('2026-09-26T24:00')).toThrow(
+      'Date and time is invalid',
+    );
   });
 });
