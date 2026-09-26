@@ -179,6 +179,20 @@ function operatorMutation(mutation: z.infer<typeof mutationRequestSchema>) {
   };
 }
 
+async function childMutationId(
+  rootMutationId: string,
+  step: 'party' | 'job' | 'repair',
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${rootMutationId}:${step}`),
+  );
+  const hex = [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+  return mutationIdSchema.parse(`MUT-${hex}`);
+}
+
 function operatorVersionedMutation(
   mutation: z.infer<typeof versionedMutationRequestSchema>,
 ) {
@@ -237,13 +251,57 @@ function registerDomainRoutes(
     const request = createRepairCaseRequestSchema.parse(
       await requestJson(context),
     );
-    return context.json(
-      await kernel.createRepairCase(
-        operatorMutation(request.mutation),
-        request.input,
-      ),
-      201,
+    const rootMutationId = request.mutation.mutationId;
+
+    const party =
+      request.input.party.mode === 'NEW_CUSTOMER'
+        ? await kernel.createParty(
+            operatorMutation({
+              mutationId: await childMutationId(rootMutationId, 'party'),
+            }),
+            {
+              name: request.input.party.name,
+              kind: 'CUSTOMER',
+            },
+          )
+        : (await kernel.getWork()).parties.find(
+            (candidate) => candidate.id === request.input.party.partyId,
+          );
+
+    if (party === undefined) {
+      throw new DomainNotFoundError(
+        'Party',
+        request.input.party.mode === 'EXISTING'
+          ? request.input.party.partyId
+          : 'unknown',
+      );
+    }
+
+    const job = await kernel.createJob(
+      operatorMutation({
+        mutationId: await childMutationId(rootMutationId, 'job'),
+      }),
+      {
+        title: request.input.jobTitle,
+        category: 'ACTIVE',
+        partyId: party.id,
+      },
     );
+
+    const repair = await kernel.createRepair(
+      operatorMutation({
+        mutationId: await childMutationId(rootMutationId, 'repair'),
+      }),
+      {
+        jobId: job.id,
+        reportedFault: request.input.reportedFault,
+        serialState: request.input.serialState,
+        serialValue: request.input.serialValue,
+        storageLocation: request.input.storageLocation,
+      },
+    );
+
+    return context.json({ party, job, repair }, 201);
   });
 
   app.post('/repairs', async (context) => {
