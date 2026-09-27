@@ -101,6 +101,44 @@ create table public.chat_messages (
   )
 );
 
+create function public.enforce_chat_message_transition()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'chat messages are append-only';
+  end if;
+
+  if old.status <> 'PENDING'
+    or old.role <> 'ASSISTANT'
+    or new.status not in ('COMPLETED', 'FAILED')
+  then
+    raise exception 'chat message transition is invalid';
+  end if;
+
+  if new.id <> old.id
+    or new.thread_id <> old.thread_id
+    or new.owner_id <> old.owner_id
+    or new.turn_id <> old.turn_id
+    or new.role <> old.role
+    or new.provider_id <> old.provider_id
+    or new.model_id <> old.model_id
+    or new.generation_id <> old.generation_id
+    or new.created_at <> old.created_at
+  then
+    raise exception 'chat message identity and provenance are immutable';
+  end if;
+
+  return new;
+end;
+$;
+
+create trigger chat_messages_append_only
+before update or delete on public.chat_messages
+for each row execute function public.enforce_chat_message_transition();
+
 create index chat_messages_thread_order_idx
   on public.chat_messages (thread_id, created_at, id);
 
