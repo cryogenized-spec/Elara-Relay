@@ -374,6 +374,136 @@ Reminders.
 
 ---
 
+### 2026-09-27 04:40:45 UTC
+### 2026-09-27 06:40:45 SAST
+
+**Pass 1H-B — Durable Repair Capture and Task Mutations**
+
+PR #16 merged.
+
+Commit:
+
+`fb172d260539c007e0748bb2ec4cb2084257b9cc`
+
+Established:
+
+- durable Repair and Job capture
+- Task edit, waiting, complete, and cancel mutations
+- atomic Party → Job → Repair creation
+
+State after milestone:
+
+Elara's mobile client could durably capture workshop Repairs and manage Task
+state.
+
+---
+
+### 2026-09-27 06:51:26 UTC
+### 2026-09-27 08:51:26 SAST
+
+**Pass 1H-B — Adversarial Hardening**
+
+PR #17 merged.
+
+Commit:
+
+`46969d7631f31ba71a1809c299ebfeeb5c5c2501`
+
+Established:
+
+- timestamp validation and consistent duplicate handling
+- scheduler exponential backoff
+- safer persisted-row error handling
+- bounded authentication requests and database statements
+- request-body size limits
+- additional scheduler, PostgreSQL, and browser verification
+
+Verification:
+
+- Certification run #372 passed in full
+
+---
+
+### 2026-09-27 06:59:02 UTC
+### 2026-09-27 08:59:02 SAST
+
+**Pass 1I-A — Provider-Neutral AI Memory Boundary**
+
+PR #18 merged.
+
+Commit:
+
+`bb0727fbedfd456e9bb1aec017e505a7fd854062`
+
+Established:
+
+- provider-neutral `MemoryProvider` retain/recall contract
+- explicit no-memory implementation
+- authority and provenance rules separating memory context from operational truth
+- owner scoping, secret screening, and best-effort failure policy
+
+Verification:
+
+- Certification run #373 passed in full
+
+---
+
+### 2026-09-27 07:10:32 UTC
+### 2026-09-27 09:10:32 SAST
+
+**Pass 1I-B — Provider-Neutral Streaming Chat Contract**
+
+PR #19 merged.
+
+Commit:
+
+`971c8cb2c029c5fe93eb8c01b3b9cd7ac3f4838e`
+
+Established:
+
+- first-class Elara model identities for `gpt-6-luna` and
+  `muse-spark-1.3-contributor`
+- separate provider adapter and model identity
+- asynchronous streaming event contract and cancellation signal
+- explicit assistant generation provenance
+- architecture contract for durable chat, owner isolation, SSE, and secrets
+
+Verification:
+
+- Certification run #375 passed in full
+
+---
+
+### 2026-09-27 07:21:10 UTC
+### 2026-09-27 09:21:10 SAST
+
+**Pass 1I-C — Durable Chat Record Schema**
+
+PR #20 merged.
+
+Commit:
+
+`7283ca93b34a064ffdacef2b128041a17b3e06fd`
+
+Established:
+
+- additive migration `0006_ai_chat`
+- owner-scoped PostgreSQL Chat Threads and Messages
+- per-turn role uniqueness and provider/model provenance constraints
+- pending/completed/failed assistant lifecycle
+- append-only completed conversation records
+- RLS and revoked browser-role table privileges
+- live PostgreSQL owner-isolation and lifecycle proof
+
+Verification:
+
+- Certification run #376 passed in full
+
+The migration is in the repository. It has not yet been applied to the live
+Supabase database.
+
+---
+
 ## Current Phase 1 state
 
 Completed:
