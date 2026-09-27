@@ -31,6 +31,41 @@ const findings = [];
 const read = (path) => readFileSync(join(root, path), 'utf8');
 const fail = (message) => findings.push(message);
 
+/**
+ * Report a gate failure as a workflow annotation.
+ *
+ * CI logs are not always reachable from the environment that triaged the run,
+ * so a failure also has to surface through the check-run annotation channel.
+ * Findings never contain a secret value: the gate asserts that separately.
+ */
+function annotate(message) {
+  if (process.env.GITHUB_ACTIONS !== 'true') return;
+  const flattened = message.replace(/\r?\n/g, ' | ').slice(0, 900);
+  process.stdout.write(`::error::production deployment gate: ${flattened}\n`);
+}
+
+/**
+ * Render captured startup output for a finding.
+ *
+ * Gate-only placeholder credentials are stripped even though the gate asserts
+ * separately that they never appear: a diagnostic must not become the leak.
+ */
+function describeOutput(text) {
+  return text
+    .replaceAll(GATE_PASSWORD, '[redacted]')
+    .replaceAll(GATE_PUBLISHABLE_KEY, '[redacted]')
+    .replace(/\r?\n/g, ' | ')
+    .slice(0, 600);
+}
+
+function artifactBytes() {
+  try {
+    return statSync(join(root, SERVER_ARTIFACT)).size;
+  } catch {
+    return -1;
+  }
+}
+
 const SERVER_ARTIFACT = 'dist-server/server.mjs';
 const ENTRYPOINT = 'src/runtime/node/main.ts';
 
@@ -459,11 +494,15 @@ async function expectRefusal(label, env, expectations) {
     ]);
     const output = run.output();
     if (code !== 1) {
-      fail(`${label}: expected exit code 1, received ${code}`);
+      fail(
+        `${label}: expected exit code 1, received ${code} (saw: ${describeOutput(output)})`,
+      );
     }
     for (const expected of expectations) {
       if (!output.includes(expected)) {
-        fail(`${label}: startup output is missing "${expected}"`);
+        fail(
+          `${label}: startup output is missing "${expected}" (saw: ${describeOutput(output)})`,
+        );
       }
     }
     for (const secret of [GATE_PASSWORD, GATE_PUBLISHABLE_KEY]) {
@@ -488,12 +527,16 @@ async function certifyLiveBoot(databaseUrl) {
 
   try {
     if (!(await run.waitForLog(/listening on 127\.0\.0\.1:/))) {
-      fail(`live boot: artifact never reported listening\n${run.output()}`);
+      fail(
+        `live boot: artifact never reported listening (saw: ${describeOutput(run.output())})`,
+      );
       return;
     }
 
     const health = await fetch(`${baseUrl}/health`);
-    if (health.status !== 200) fail('live boot: /health must answer 200');
+    if (health.status !== 200) {
+      fail(`live boot: /health must answer 200, received ${health.status}`);
+    }
     const healthBody = await health.text();
     if (
       healthBody !== '{"service":"elara-relay","status":"ok","schemaVersion":1}'
@@ -520,7 +563,11 @@ async function certifyLiveBoot(databaseUrl) {
       fail(`live boot: unauthenticated read must be 401, received ${anonymous.status}`);
     }
     if (anonymous.headers.get('www-authenticate') !== 'Bearer') {
-      fail('live boot: unauthenticated read must advertise Bearer');
+      fail(
+        `live boot: unauthenticated read must advertise Bearer, received ${String(
+          anonymous.headers.get('www-authenticate'),
+        )}`,
+      );
     }
 
     const unknown = await fetch(`${baseUrl}/admin/service-role`);
@@ -540,7 +587,11 @@ async function certifyLiveBoot(databaseUrl) {
       fail(`live boot: trusted-origin preflight must be 204, received ${allowedPreflight.status}`);
     }
     if (allowedPreflight.headers.get('access-control-allow-origin') !== GATE_ORIGIN) {
-      fail('live boot: trusted origin did not receive CORS authorization');
+      fail(
+        `live boot: trusted origin did not receive CORS authorization, received ${String(
+          allowedPreflight.headers.get('access-control-allow-origin'),
+        )}`,
+      );
     }
 
     const deniedPreflight = await fetch(`${baseUrl}/work`, {
@@ -551,7 +602,11 @@ async function certifyLiveBoot(databaseUrl) {
       },
     });
     if (deniedPreflight.headers.get('access-control-allow-origin') !== null) {
-      fail('live boot: an untrusted origin received CORS authorization');
+      fail(
+        `live boot: an untrusted origin received CORS authorization: ${String(
+          deniedPreflight.headers.get('access-control-allow-origin'),
+        )}`,
+      );
     }
 
     const heavy = await fetch(`${baseUrl}/tasks`, {
@@ -563,30 +618,54 @@ async function certifyLiveBoot(databaseUrl) {
       fail(`live boot: oversized unauthenticated write must be 401, received ${heavy.status}`);
     }
     if (heavy.headers.get('connection') !== 'close') {
-      fail('live boot: an unread request body must not be reusable');
+      fail(
+        `live boot: an unread request body must not be reusable, connection=${String(
+          heavy.headers.get('connection'),
+        )}`,
+      );
     }
 
     const noStore = await fetch(`${baseUrl}/health`);
     if (noStore.headers.get('cache-control') !== 'no-store') {
-      fail('live boot: responses must not be cacheable by an intermediary');
+      fail(
+        `live boot: responses must not be cacheable by an intermediary, cache-control=${String(
+          noStore.headers.get('cache-control'),
+        )}`,
+      );
     }
 
-    const { code } = await run.stop('SIGTERM');
-    if (code !== 0) {
-      fail(`live boot: SIGTERM must exit 0 after draining, received ${code}`);
-    }
+    const { code, signal } = await run.stop('SIGTERM');
     const output = run.output();
+    if (code !== 0) {
+      fail(
+        `live boot: SIGTERM must exit 0 after draining, received code=${String(
+          code,
+        )} signal=${String(signal)} (saw: ${describeOutput(output)})`,
+      );
+    }
     for (const expected of [
       'shutdown started (SIGTERM)',
       'shutdown complete',
     ]) {
       if (!output.includes(expected)) {
-        fail(`live boot: shutdown log is missing "${expected}"`);
+        fail(
+          `live boot: shutdown log is missing "${expected}" (saw: ${describeOutput(output)})`,
+        );
       }
     }
     if (output.includes(GATE_PASSWORD) || output.includes(GATE_PUBLISHABLE_KEY)) {
       fail('live boot: lifecycle log leaked a configured secret value');
     }
+  } catch (error) {
+    // A dead artifact surfaces as a failed fetch; the artifact's own log is
+    // the only evidence of why, so it belongs in the finding.
+    const detail =
+      error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    fail(
+      `live boot: check aborted by ${detail} (artifact output: ${describeOutput(
+        run.output(),
+      )})`,
+    );
   } finally {
     run.child.kill('SIGKILL');
   }
@@ -684,6 +763,10 @@ async function main() {
   }
 
   if (findings.length > 0) {
+    annotate(
+      `environment node=${process.version} artifactBytes=${artifactBytes()} findings=${findings.length}`,
+    );
+    for (const finding of findings) annotate(finding);
     process.stderr.write(
       `Production deployment gate failed (${findings.length}):\n${findings
         .map((finding) => `- ${finding}`)
@@ -697,4 +780,16 @@ async function main() {
   );
 }
 
-await main();
+try {
+  await main();
+} catch (error) {
+  const detail =
+    error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  annotate(`crashed before completing: ${detail}`);
+  process.stderr.write(
+    `Production deployment gate crashed: ${detail}\n${
+      error instanceof Error && error.stack !== undefined ? error.stack : ''
+    }\n`,
+  );
+  process.exit(1);
+}
