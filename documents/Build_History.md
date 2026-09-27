@@ -347,8 +347,6 @@ Established:
 - optimistic Task revision context
 - durable Task Capture
 - durable Reminder Capture
-- durable Repair / Job Capture
-- interactive Task update / waiting / complete / cancel UI
 - Africa/Johannesburg datetime conversion and validity checks
 - post-mutation dashboard refresh
 - pending-write Capture locking
