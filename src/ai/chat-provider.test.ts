@@ -6,6 +6,7 @@ import {
   findChatModel,
   resolveChatProvider,
   type ChatProvider,
+  type ChatStreamEvent,
 } from './chat-provider';
 
 const openAiProvider: ChatProvider = {
@@ -58,7 +59,7 @@ describe('provider-neutral chat contract', () => {
   });
 
   it('provides a typed streaming contract with a terminal completion event', async () => {
-    const events = [];
+    const events: ChatStreamEvent[] = [];
     for await (const event of openAiProvider.stream(
       {
         model: { providerId: 'openai', modelId: 'gpt-6-luna' },
