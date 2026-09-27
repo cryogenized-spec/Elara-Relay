@@ -242,6 +242,9 @@ Current application state:
 - Task edit / waiting / complete / cancel mutations are live
 - browser writes use replay-safe mutation IDs and strict response validation
 - stale Task conflicts refresh before an edit is discarded
+- public liveness/readiness reports safe component and build metadata
+- provider-neutral structured logs correlate failures without recording secrets
+- optional-provider degradation does not block manual API readiness
 
 Remaining Phase 1 product work:
 
@@ -249,7 +252,6 @@ Remaining Phase 1 product work:
 - production API deployment
 - production web/PWA deployment
 - secret/runtime configuration
-- richer health/observability boundary
 - backup/export deployment operation (workflow implemented; operational rollout pending)
 - restore proof on production-equivalent infrastructure (disposable CI proof implemented)
 - final Phase 1 adversarial / recovery kill-test
