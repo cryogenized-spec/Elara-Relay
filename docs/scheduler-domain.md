@@ -28,19 +28,25 @@ Every intended occurrence receives one deterministic `occurrenceKey`.
 `scheduled_action_runs.occurrence_key` is unique at the database layer.
 
 The first claim also freezes a delivery snapshot containing the title, action
-type, typed payload, and timezone. Retries reuse that snapshot even if an
-operator later edits the Scheduled Action, so one occurrence never changes
-meaning halfway through its retry lifecycle.
+type, typed payload, and timezone. A re-claim of the same occurrence reuses
+that snapshot even if an operator later edits the Scheduled Action, so one
+occurrence never changes meaning halfway through its retry lifecycle.
 
 Workers claim an occurrence with a lease token and expiry. Another worker
-cannot claim a live lease. A stale claim or failed delivery reuses the same run
-row and occurrence key, increments the attempt counter, and rotates the lease
-token.
+cannot claim a live lease. A stale claim reuses the same run row and
+occurrence key, increments the attempt counter, and rotates the lease token.
+
+A recorded failure is different: it backs the action off exponentially (five
+minutes, doubling per consecutive failure, capped at twenty-four hours) and
+advances the revision, so the retry becomes a new occurrence with its own
+occurrence key and a snapshot of the then-current action. The consecutive
+failure count resets to zero on success, survives operator edits, and is left
+untouched on terminal actions, whose schedule stays frozen.
 
 Delivery providers receive the occurrence key as their idempotency key. This is
 the crash-after-send protection boundary: if a worker sends successfully and
-dies before recording success, a retry presents the same provider idempotency
-key instead of inventing another logical delivery.
+dies before recording success, a re-claim presents the same provider
+idempotency key instead of inventing another logical delivery.
 
 A stale worker cannot record success or failure after another worker has
 reclaimed the occurrence because completion requires the current lease token.

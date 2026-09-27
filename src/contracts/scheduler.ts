@@ -70,6 +70,7 @@ const scheduledActionObjectSchema = z
     runAt: timestampSchema,
     nextRunAt: timestampSchema.nullable(),
     lastRunAt: timestampSchema.nullable(),
+    consecutiveFailures: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
     revision: revisionSchema,

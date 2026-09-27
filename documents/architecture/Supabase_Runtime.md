@@ -20,6 +20,7 @@ PostgreSQL service, or another compatible PostgreSQL host.
 - `ELARA_DB_POOL_MAX`: maximum pool size, default 5, maximum 20.
 - `ELARA_DB_IDLE_TIMEOUT_MS`: idle connection timeout, default 30000.
 - `ELARA_DB_CONNECTION_TIMEOUT_MS`: connect timeout, default 10000.
+- `ELARA_DB_STATEMENT_TIMEOUT_MS`: per-statement timeout, default 10000, maximum 60000.
 
 The checked-in `.env.example` contains local placeholders only. Never commit
 a production database password or Supabase service-role credential.
@@ -62,6 +63,10 @@ project's modern publishable key rather than storing the legacy JWT secret.
 `ELARA_ALLOWED_USER_IDS` is mandatory and must contain at least one Supabase
 Auth user UUID. This keeps the initial deployment owner-only even if project-level
 signup configuration changes unexpectedly.
+
+Both JWKS and user-endpoint fetches are bounded by
+`ELARA_AUTH_REQUEST_TIMEOUT_MS` (default 5000, maximum 30000) so a stalled
+Auth server fails closed instead of stalling request workers.
 
 Mutation actor provenance is server-owned. Browser requests do not submit
 `actor`; the authenticated operator API records `operator-ui`. Future

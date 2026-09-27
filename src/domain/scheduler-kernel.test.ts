@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryDomainStore } from '../db/memory/memory-store';
 import { DomainKernel } from './kernel';
-import { nextOccurrenceAfter } from './scheduler-recurrence';
+import {
+  nextOccurrenceAfter,
+  nextRetryAt,
+  retryBackoffMs,
+} from './scheduler-recurrence';
 
 function makeKernel() {
   const store = new MemoryDomainStore();
@@ -144,7 +148,7 @@ describe('Scheduler domain', () => {
     ).rejects.toThrow('lease expired before completion');
   });
 
-  it('reclaims stale and failed leases without creating a second occurrence', async () => {
+  it('reclaims a stale lease without creating a second occurrence', async () => {
     const { kernel, store } = makeKernel();
     const action = await createReminder(kernel, 'MUT-schedule-create-002');
 
@@ -194,26 +198,183 @@ describe('Scheduler domain', () => {
       ),
     ).rejects.toThrow('lease token no longer owns');
 
+    const snapshot = await store.read((read) =>
+      read.listScheduledActionRuns(),
+    );
+    expect(snapshot).toHaveLength(1);
+  });
+
+  it('backs failed deliveries off exponentially across new occurrences', async () => {
+    const { kernel, store } = makeKernel();
+    const action = await createReminder(kernel, 'MUT-schedule-create-007');
+
+    const first = await kernel.claimScheduledAction(
+      {
+        mutationId: 'MUT-schedule-backoff-claim1',
+        actor: 'system',
+      },
+      action.id,
+      {
+        asOf: '2026-09-24T07:00:00.000Z',
+        workerId: 'worker-a',
+        leaseSeconds: 60,
+      },
+    );
     const failed = await kernel.recordScheduledActionFailure(
       {
-        mutationId: 'MUT-schedule-failure-01',
+        mutationId: 'MUT-schedule-backoff-fail1',
         actor: 'system',
       },
       {
-        runId: second.id,
-        leaseToken: second.leaseToken,
-        completedAt: '2026-09-24T07:02:30.000Z',
+        runId: first.id,
+        leaseToken: first.leaseToken,
+        completedAt: '2026-09-24T07:00:30.000Z',
         errorCode: 'TEMPORARY',
         errorDetail: 'Provider unavailable',
       },
     );
     expect(failed.status).toBe('FAILED');
 
-    await kernel.updateScheduledAction(
+    const afterFirstFailure = await store.read((read) =>
+      read.getScheduledAction(action.id),
+    );
+    expect(afterFirstFailure?.consecutiveFailures).toBe(1);
+    expect(afterFirstFailure?.nextRunAt).toBe('2026-09-24T07:05:30.000Z');
+    expect(afterFirstFailure?.revision).toBe(2);
+
+    const failureEvents = await store.read((read) => read.listEvents());
+    const failureEvent = failureEvents.find(
+      (event) => event.eventType === 'SCHEDULED_ACTION_RUN_FAILED',
+    );
+    expect(failureEvent?.changes).toEqual({
+      consecutiveFailures: { before: 0, after: 1 },
+      nextRunAt: {
+        before: '2026-09-24T07:00:00.000Z',
+        after: '2026-09-24T07:05:30.000Z',
+      },
+    });
+    expect(failureEvent?.revisionAfter).toBe(2);
+
+    await expect(
+      kernel.claimScheduledAction(
+        {
+          mutationId: 'MUT-schedule-backoff-early',
+          actor: 'system',
+        },
+        action.id,
+        {
+          asOf: '2026-09-24T07:01:00.000Z',
+          workerId: 'worker-b',
+          leaseSeconds: 60,
+        },
+      ),
+    ).rejects.toThrow('not due and active');
+
+    const second = await kernel.claimScheduledAction(
+      {
+        mutationId: 'MUT-schedule-backoff-claim2',
+        actor: 'system',
+      },
+      action.id,
+      {
+        asOf: '2026-09-24T07:05:30.000Z',
+        workerId: 'worker-b',
+        leaseSeconds: 60,
+      },
+    );
+    expect(second.id).not.toBe(first.id);
+    expect(second.occurrenceKey).not.toBe(first.occurrenceKey);
+    expect(second.attempt).toBe(1);
+
+    await kernel.recordScheduledActionFailure(
+      {
+        mutationId: 'MUT-schedule-backoff-fail2',
+        actor: 'system',
+      },
+      {
+        runId: second.id,
+        leaseToken: second.leaseToken,
+        completedAt: '2026-09-24T07:05:45.000Z',
+        errorCode: 'TEMPORARY',
+        errorDetail: 'Provider unavailable',
+      },
+    );
+
+    const afterSecondFailure = await store.read((read) =>
+      read.getScheduledAction(action.id),
+    );
+    expect(afterSecondFailure?.consecutiveFailures).toBe(2);
+    expect(afterSecondFailure?.nextRunAt).toBe('2026-09-24T07:15:45.000Z');
+    expect(afterSecondFailure?.revision).toBe(3);
+
+    const third = await kernel.claimScheduledAction(
+      {
+        mutationId: 'MUT-schedule-backoff-claim3',
+        actor: 'system',
+      },
+      action.id,
+      {
+        asOf: '2026-09-24T07:15:45.000Z',
+        workerId: 'worker-c',
+        leaseSeconds: 60,
+      },
+    );
+    const completed = await kernel.recordScheduledActionSuccess(
+      {
+        mutationId: 'MUT-schedule-backoff-win',
+        actor: 'system',
+      },
+      {
+        runId: third.id,
+        leaseToken: third.leaseToken,
+        completedAt: '2026-09-24T07:16:00.000Z',
+        providerMessageId: 'delivery-002',
+      },
+    );
+    expect(completed.consecutiveFailures).toBe(0);
+    expect(completed.status).toBe('COMPLETED');
+
+    const runs = await store.read((read) =>
+      read.listScheduledActionRuns(),
+    );
+    expect(runs).toHaveLength(3);
+  });
+
+  it('applies operator edits to the next occurrence after a backed-off failure', async () => {
+    const { kernel } = makeKernel();
+    const action = await createReminder(kernel, 'MUT-schedule-create-008');
+
+    const first = await kernel.claimScheduledAction(
+      {
+        mutationId: 'MUT-schedule-edit-claim1',
+        actor: 'system',
+      },
+      action.id,
+      {
+        asOf: '2026-09-24T07:00:00.000Z',
+        workerId: 'worker-a',
+        leaseSeconds: 60,
+      },
+    );
+    await kernel.recordScheduledActionFailure(
+      {
+        mutationId: 'MUT-schedule-edit-fail1',
+        actor: 'system',
+      },
+      {
+        runId: first.id,
+        leaseToken: first.leaseToken,
+        completedAt: '2026-09-24T07:00:30.000Z',
+        errorCode: 'TEMPORARY',
+        errorDetail: 'Provider unavailable',
+      },
+    );
+
+    const edited = await kernel.updateScheduledAction(
       {
         mutationId: 'MUT-schedule-retry-edit',
         actor: 'operator-ui',
-        expectedRevision: action.revision,
+        expectedRevision: 2,
       },
       action.id,
       {
@@ -223,6 +384,9 @@ describe('Scheduler domain', () => {
         },
       },
     );
+    expect(edited.revision).toBe(3);
+    expect(edited.nextRunAt).toBe('2026-09-24T07:05:30.000Z');
+    expect(edited.consecutiveFailures).toBe(1);
 
     const retry = await kernel.claimScheduledAction(
       {
@@ -231,23 +395,65 @@ describe('Scheduler domain', () => {
       },
       action.id,
       {
-        asOf: '2026-09-24T07:03:00.000Z',
+        asOf: '2026-09-24T07:05:30.000Z',
         workerId: 'worker-c',
         leaseSeconds: 60,
       },
     );
-    expect(retry.id).toBe(first.id);
-    expect(retry.occurrenceKey).toBe(first.occurrenceKey);
-    expect(retry.attempt).toBe(3);
-    expect(retry.deliverySnapshot).toEqual(first.deliverySnapshot);
+    expect(retry.id).not.toBe(first.id);
+    expect(retry.attempt).toBe(1);
     expect(retry.deliverySnapshot.payload).toMatchObject({
-      message: 'Check seal order',
+      message: 'Edited after the original occurrence was claimed',
     });
+  });
 
-    const snapshot = await store.read((read) =>
-      read.listScheduledActionRuns(),
+  it('records failures on cancelled actions without rescheduling', async () => {
+    const { kernel, store } = makeKernel();
+    const action = await createReminder(kernel, 'MUT-schedule-create-009');
+
+    const run = await kernel.claimScheduledAction(
+      {
+        mutationId: 'MUT-schedule-cancel-claim1',
+        actor: 'system',
+      },
+      action.id,
+      {
+        asOf: '2026-09-24T07:00:00.000Z',
+        workerId: 'worker-a',
+        leaseSeconds: 300,
+      },
     );
-    expect(snapshot).toHaveLength(1);
+    await kernel.cancelScheduledAction(
+      {
+        mutationId: 'MUT-schedule-cancel-001',
+        actor: 'operator-ui',
+        expectedRevision: 1,
+      },
+      action.id,
+    );
+
+    const failed = await kernel.recordScheduledActionFailure(
+      {
+        mutationId: 'MUT-schedule-cancel-fail1',
+        actor: 'system',
+      },
+      {
+        runId: run.id,
+        leaseToken: run.leaseToken,
+        completedAt: '2026-09-24T07:01:00.000Z',
+        errorCode: 'TEMPORARY',
+        errorDetail: 'Provider unavailable',
+      },
+    );
+    expect(failed.status).toBe('FAILED');
+
+    const current = await store.read((read) =>
+      read.getScheduledAction(action.id),
+    );
+    expect(current?.status).toBe('CANCELLED');
+    expect(current?.nextRunAt).toBeNull();
+    expect(current?.consecutiveFailures).toBe(0);
+    expect(current?.revision).toBe(2);
   });
 
   it('skips accumulated recurrence backlog after one catch-up delivery', async () => {
@@ -316,6 +522,68 @@ describe('Scheduler domain', () => {
 
     expect(next.status).toBe('ACTIVE');
     expect(next.nextRunAt).toBe('2026-09-28T07:00:00.000Z');
+  });
+
+  it('keeps recurring cadence anchored to runAt after a backoff retry', async () => {
+    const { kernel } = makeKernel();
+    const action = await kernel.createScheduledAction(
+      {
+        mutationId: 'MUT-schedule-recur-retry-create',
+        actor: 'operator-ui',
+      },
+      {
+        jobId: null,
+        taskId: null,
+        title: 'Daily digest with retry',
+        actionType: 'DIGEST',
+        payload: { kind: 'DIGEST', scope: 'TODAY' },
+        timezone: 'Africa/Johannesburg',
+        recurrenceRule: 'FREQ=DAILY;INTERVAL=1',
+        runAt: '2026-09-24T07:00:00.000Z',
+      },
+    );
+
+    const first = await kernel.claimScheduledAction(
+      { mutationId: 'MUT-schedule-recur-retry-claim1', actor: 'system' },
+      action.id,
+      {
+        asOf: '2026-09-24T07:00:00.000Z',
+        workerId: 'worker-a',
+        leaseSeconds: 300,
+      },
+    );
+    await kernel.recordScheduledActionFailure(
+      { mutationId: 'MUT-schedule-recur-retry-fail1', actor: 'system' },
+      {
+        runId: first.id,
+        leaseToken: first.leaseToken,
+        completedAt: '2026-09-24T07:01:00.000Z',
+        errorCode: 'TEMPORARY',
+        errorDetail: 'Provider unavailable',
+      },
+    );
+
+    const retry = await kernel.claimScheduledAction(
+      { mutationId: 'MUT-schedule-recur-retry-claim2', actor: 'system' },
+      action.id,
+      {
+        asOf: '2026-09-24T07:06:00.000Z',
+        workerId: 'worker-b',
+        leaseSeconds: 300,
+      },
+    );
+    await kernel.recordScheduledActionSuccess(
+      { mutationId: 'MUT-schedule-recur-retry-success', actor: 'system' },
+      {
+        runId: retry.id,
+        leaseToken: retry.leaseToken,
+        completedAt: '2026-09-24T07:07:00.000Z',
+        providerMessageId: null,
+      },
+    );
+
+    const completed = await kernel.getSchedule('2026-09-24T07:07:00.000Z');
+    expect(completed.upcoming[0]?.nextRunAt).toBe('2026-09-25T07:00:00.000Z');
   });
 
   it('preserves an operator reschedule while an older occurrence is in flight', async () => {
@@ -543,6 +811,26 @@ describe('Scheduler domain', () => {
         },
       ),
     ).rejects.toThrow('Job not found');
+  });
+
+  it('doubles the retry delay per consecutive failure up to a daily cap', () => {
+    expect(retryBackoffMs(1)).toBe(300_000);
+    expect(retryBackoffMs(2)).toBe(600_000);
+    expect(retryBackoffMs(3)).toBe(1_200_000);
+    expect(retryBackoffMs(9)).toBe(76_800_000);
+    expect(retryBackoffMs(10)).toBe(86_400_000);
+    expect(retryBackoffMs(100)).toBe(86_400_000);
+    expect(nextRetryAt('2026-09-24T07:00:30.000Z', 1)).toBe(
+      '2026-09-24T07:05:30.000Z',
+    );
+    expect(nextRetryAt('2026-09-24T07:05:45.000Z', 2)).toBe(
+      '2026-09-24T07:15:45.000Z',
+    );
+    for (const invalid of [0, -1, 1.5, Number.NaN]) {
+      expect(() => retryBackoffMs(invalid)).toThrow(
+        'positive safe integer',
+      );
+    }
   });
 
   it('rejects execution commands from non-system actors', async () => {

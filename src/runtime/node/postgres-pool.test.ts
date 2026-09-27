@@ -1,0 +1,52 @@
+import { describe, expect, it } from 'vitest';
+import { createNodePostgresResources } from './postgres-pool';
+
+describe('node postgres pool', () => {
+  it('applies the configured statement timeout to pooled connections', async () => {
+    const resources = createNodePostgresResources({
+      databaseUrl:
+        'postgresql://postgres:postgres@127.0.0.1:5432/elara?sslmode=disable',
+      poolMax: 5,
+      idleTimeoutMs: 30_000,
+      connectionTimeoutMs: 10_000,
+      statementTimeoutMs: 7_500,
+    });
+    try {
+      expect(resources.rawPool.options.statement_timeout).toBe(7_500);
+      expect(resources.rawPool.options.max).toBe(5);
+      expect(resources.rawPool.options.idleTimeoutMillis).toBe(30_000);
+      expect(resources.rawPool.options.connectionTimeoutMillis).toBe(10_000);
+    } finally {
+      await resources.close();
+    }
+  });
+
+  it('survives idle client failures instead of crashing the process', async () => {
+    const resources = createNodePostgresResources({
+      databaseUrl:
+        'postgresql://postgres:postgres@127.0.0.1:5432/elara?sslmode=disable',
+      poolMax: 5,
+      idleTimeoutMs: 30_000,
+      connectionTimeoutMs: 10_000,
+      statementTimeoutMs: 10_000,
+    });
+    const writes: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = function (chunk: unknown): boolean {
+      writes.push(typeof chunk === 'string' ? chunk : '[binary]');
+      return true;
+    };
+    try {
+      expect(() =>
+        resources.rawPool.emit(
+          'error',
+          new Error('Connection terminated unexpectedly'),
+        ),
+      ).not.toThrow();
+      expect(writes.join('')).toContain('idle postgres client failed');
+    } finally {
+      process.stderr.write = originalWrite;
+      await resources.close();
+    }
+  });
+});

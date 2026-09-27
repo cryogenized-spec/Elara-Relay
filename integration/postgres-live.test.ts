@@ -63,6 +63,7 @@ beforeAll(async () => {
     'src/db/migrations/0002_security_hardening.sql',
     'src/db/migrations/0003_repairs_domain.sql',
     'src/db/migrations/0004_scheduler.sql',
+    'src/db/migrations/0005_scheduler_backoff.sql',
   ] as const;
 
   for (const migrationFile of migrationFiles) {
@@ -373,6 +374,21 @@ describe('live PostgreSQL runtime', () => {
       },
     );
 
+    await expect(
+      schedulerKernel.claimScheduledAction(
+        {
+          mutationId: 'MUT-live-schedule-early1',
+          actor: 'system',
+        },
+        scheduledAction.id,
+        {
+          asOf: '2026-09-24T06:02:00.000Z',
+          workerId: 'worker-early',
+          leaseSeconds: 300,
+        },
+      ),
+    ).rejects.toThrow('not due and active');
+
     const retryRun = await schedulerKernel.claimScheduledAction(
       {
         mutationId: 'MUT-live-schedule-retry1',
@@ -380,14 +396,14 @@ describe('live PostgreSQL runtime', () => {
       },
       scheduledAction.id,
       {
-        asOf: '2026-09-24T06:02:00.000Z',
+        asOf: '2026-09-24T06:06:00.000Z',
         workerId: 'worker-c',
         leaseSeconds: 300,
       },
     );
-    expect(retryRun.id).toBe(firstRun.id);
-    expect(retryRun.occurrenceKey).toBe(firstRun.occurrenceKey);
-    expect(retryRun.attempt).toBe(2);
+    expect(retryRun.id).not.toBe(firstRun.id);
+    expect(retryRun.occurrenceKey).not.toBe(firstRun.occurrenceKey);
+    expect(retryRun.attempt).toBe(1);
 
     const completedAction =
       await schedulerKernel.recordScheduledActionSuccess(
@@ -398,12 +414,13 @@ describe('live PostgreSQL runtime', () => {
         {
           runId: retryRun.id,
           leaseToken: retryRun.leaseToken,
-          completedAt: '2026-09-24T06:03:00.000Z',
+          completedAt: '2026-09-24T06:07:00.000Z',
           providerMessageId: 'integration-delivery-1',
         },
       );
     expect(completedAction.status).toBe('COMPLETED');
     expect(completedAction.nextRunAt).toBeNull();
+    expect(completedAction.consecutiveFailures).toBe(0);
 
     const completionBodies = [
       {
@@ -476,7 +493,7 @@ describe('live PostgreSQL runtime', () => {
       parties: '1',
       repairs: '1',
       scheduled_actions: '1',
-      scheduled_action_runs: '1',
+      scheduled_action_runs: '2',
       receipts: '15',
       events: '15',
     });

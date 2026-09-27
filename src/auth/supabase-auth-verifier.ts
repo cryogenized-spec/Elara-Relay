@@ -1,5 +1,6 @@
 import {
   createRemoteJWKSet,
+  customFetch,
   decodeJwt,
   decodeProtectedHeader,
   jwtVerify,
@@ -38,12 +39,19 @@ export interface SupabaseAuthVerifierConfig {
   supabaseUrl: string;
   publishableKey: string;
   allowedUserIds: ReadonlySet<string>;
+  requestTimeoutMs: number;
 }
 
 export interface SupabaseAuthVerifierOptions {
   fetch?: typeof fetch;
   now?: () => number;
+  allowInsecureIssuer?: boolean;
 }
+
+// Tokens genuinely issued within the last minute are accepted even if their
+// embedded issued-at runs slightly ahead of this server's clock. Anything
+// further in the future is rejected rather than trusted.
+const MAX_CLOCK_SKEW_MS = 60_000;
 
 function normalizedOrigin(raw: string): string {
   return new URL(raw).origin;
@@ -66,12 +74,35 @@ export class SupabaseAuthVerifier implements AuthVerifier {
     private readonly config: SupabaseAuthVerifierConfig,
     options: SupabaseAuthVerifierOptions = {},
   ) {
+    // Auth fetches bound every request handler, so a missing or absurd
+    // timeout fails closed at construction instead of hanging workers.
+    if (
+      !Number.isInteger(config.requestTimeoutMs) ||
+      config.requestTimeoutMs <= 0
+    ) {
+      throw new Error('requestTimeoutMs must be a positive integer');
+    }
     this.origin = normalizedOrigin(config.supabaseUrl);
+    // JWKS and user-info fetches authenticate the issuer, so a plaintext
+    // issuer would let a network attacker mint trusted tokens. Production
+    // wiring must stay HTTPS; only local tests may opt out explicitly.
+    if (
+      this.origin.startsWith('http://') &&
+      options.allowInsecureIssuer !== true
+    ) {
+      throw new Error(
+        'Supabase issuer must use HTTPS outside local tests',
+      );
+    }
     this.issuer = `${this.origin}/auth/v1`;
     this.fetchFn = options.fetch ?? fetch;
     this.now = options.now ?? (() => Date.now());
     this.jwks = createRemoteJWKSet(
       new URL(`${this.issuer}/.well-known/jwks.json`),
+      {
+        timeoutDuration: config.requestTimeoutMs,
+        [customFetch]: this.fetchFn,
+      },
     );
   }
 
@@ -111,6 +142,7 @@ export class SupabaseAuthVerifier implements AuthVerifier {
         authorization: `Bearer ${accessToken}`,
       },
       redirect: 'error',
+      signal: AbortSignal.timeout(this.config.requestTimeoutMs),
     });
 
     if (!response.ok) {
@@ -134,6 +166,7 @@ export class SupabaseAuthVerifier implements AuthVerifier {
       claims.iss !== this.issuer ||
       !audienceIncludesAuthenticated(claims.aud) ||
       claims.exp * 1000 <= this.now() ||
+      claims.iat * 1000 > this.now() + MAX_CLOCK_SKEW_MS ||
       claims.is_anonymous
     ) {
       throw new AuthenticationError();

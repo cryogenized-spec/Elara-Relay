@@ -5,7 +5,12 @@ import type {
 } from '../auth/auth-verifier';
 import { AuthenticationError } from '../auth/errors';
 import { MemoryDomainStore } from '../db/memory/memory-store';
+import {
+  DuplicateEntityError,
+  StoredRecordError,
+} from '../domain/errors';
 import { DomainKernel } from '../domain/kernel';
+import type { DomainStore } from '../domain/store';
 import { api, createApi } from './app';
 
 const ACCESS_TOKEN = 'header.payload.signature';
@@ -616,4 +621,121 @@ describe('API foundation', () => {
     });
     expect(conflict.status).toBe(409);
   });
+
+  it('maps malformed timestamps to 400 instead of an internal failure', async () => {
+    const app = makeApi();
+
+    for (const path of [
+      '/dashboard?asOf=',
+      '/dashboard?asOf=garbage',
+      '/today?asOf=yesterday',
+      '/schedule?asOf=2026-13-45',
+    ]) {
+      const response = await app.request(path, {
+        headers: authorizationHeaders(),
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'INVALID_REQUEST' },
+      });
+    }
+
+    const badDueAt = await jsonRequest(app, '/tasks', 'POST', {
+      mutation: { mutationId: 'MUT-api-bad-timestamp-1' },
+      input: { title: 'Bad due date', dueAt: 'not-a-timestamp' },
+    });
+    expect(badDueAt.status).toBe(400);
+
+    const badRunAt = await jsonRequest(app, '/schedule', 'POST', {
+      mutation: { mutationId: 'MUT-api-bad-timestamp-2' },
+      input: {
+        title: 'Bad run date',
+        actionType: 'REMINDER',
+        payload: { kind: 'REMINDER', message: 'hi' },
+        runAt: '',
+      },
+    });
+    expect(badRunAt.status).toBe(400);
+  });
+
+  it('maps durable-store conflicts to 409 instead of an internal failure', async () => {
+    const kernel = new DomainKernel(new AlwaysConflictingStore(), {
+      clock: () => '2026-09-24T09:00:00.000Z',
+      idGenerator: () => '10000000-0000-4000-8000-000000000099',
+    });
+    const app = createApi(kernel, new TestAuthVerifier());
+
+    const conflict = await jsonRequest(app, '/parties', 'POST', {
+      mutation: { mutationId: 'MUT-api-store-conflict-1' },
+      input: { name: 'Racing write', kind: 'OTHER' },
+    });
+    expect(conflict.status).toBe(409);
+    await expect(conflict.json()).resolves.toMatchObject({
+      error: { code: 'CONFLICT' },
+    });
+  });
+
+  it('rejects oversized request bodies instead of buffering them', async () => {
+    const app = makeApi();
+
+    const oversized = await app.request('/parties', {
+      method: 'POST',
+      headers: {
+        ...authorizationHeaders(),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        mutation: { mutationId: 'MUT-api-huge-body-1' },
+        input: { name: 'x'.repeat(1_500_000), kind: 'OTHER' },
+      }),
+    });
+    expect(oversized.status).toBe(400);
+    await expect(oversized.json()).resolves.toMatchObject({
+      error: { code: 'INVALID_REQUEST' },
+    });
+
+    // A body exactly at the boundary still parses and validates normally.
+    const boundary = await jsonRequest(app, '/parties', 'POST', {
+      mutation: { mutationId: 'MUT-api-body-boundary-1' },
+      input: { name: 'Boundary', kind: 'OTHER' },
+    });
+    expect(boundary.status).toBe(201);
+  });
+
+  it('maps corrupt stored records to a generic 500 instead of echoing values', async () => {
+    const kernel = new DomainKernel(new CorruptStore(), {
+      clock: () => '2026-09-24T09:00:00.000Z',
+      idGenerator: () => '10000000-0000-4000-8000-000000000099',
+    });
+    const app = createApi(kernel, new TestAuthVerifier());
+
+    const response = await app.request(
+      '/tasks/10000000-0000-4000-8000-000000000001',
+      { headers: authorizationHeaders() },
+    );
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'INTERNAL_ERROR', message: 'Unexpected server error' },
+    });
+  });
 });
+
+class AlwaysConflictingStore implements DomainStore {
+  public transact<T>(): Promise<T> {
+    throw new DuplicateEntityError('Party', 'duplicate');
+  }
+
+  public read<T>(): Promise<T> {
+    throw new Error('unreachable in this test');
+  }
+}
+
+class CorruptStore implements DomainStore {
+  public transact<T>(): Promise<T> {
+    throw new Error('unreachable in this test');
+  }
+
+  public read<T>(): Promise<T> {
+    throw new StoredRecordError('Task');
+  }
+}

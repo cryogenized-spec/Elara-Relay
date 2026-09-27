@@ -1,3 +1,4 @@
+import type { ZodType } from 'zod';
 import { eventSchema, type DomainEvent } from '../../contracts/event';
 import { jobSchema, type Job } from '../../contracts/job';
 import {
@@ -13,7 +14,11 @@ import {
   type ScheduledActionRun,
 } from '../../contracts/scheduler';
 import { taskSchema, type Task } from '../../contracts/task';
-import { DomainNotFoundError } from '../../domain/errors';
+import {
+  DomainNotFoundError,
+  DuplicateEntityError,
+  StoredRecordError,
+} from '../../domain/errors';
 import type {
   DomainRead,
   DomainStore,
@@ -69,21 +74,36 @@ function jsonValue(value: unknown): unknown {
   return JSON.parse(value) as unknown;
 }
 
+// Stored rows are server-side data, so a validation failure must never echo
+// row values back to the caller the way a raw ZodError would (it would also
+// misreport server corruption as a 400). The entity label is safe to keep.
+function parseStoredRow<Output>(
+  schema: ZodType<Output>,
+  value: unknown,
+  entity: string,
+): Output {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    throw new StoredRecordError(entity);
+  }
+  return result.data;
+}
+
 function mapParty(row: unknown): Party {
   const value = rowRecord(row);
-  return partySchema.parse({
+  return parseStoredRow(partySchema, {
     id: value['id'],
     name: value['name'],
     kind: value['kind'],
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
-  });
+  }, 'Party');
 }
 
 function mapJob(row: unknown): Job {
   const value = rowRecord(row);
-  return jobSchema.parse({
+  return parseStoredRow(jobSchema, {
     id: value['id'],
     key: value['key'],
     title: value['title'],
@@ -92,12 +112,12 @@ function mapJob(row: unknown): Job {
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
-  });
+  }, 'Job');
 }
 
 function mapTask(row: unknown): Task {
   const value = rowRecord(row);
-  return taskSchema.parse({
+  return parseStoredRow(taskSchema, {
     id: value['id'],
     jobId: value['jobId'] ?? null,
     title: value['title'],
@@ -111,12 +131,12 @@ function mapTask(row: unknown): Task {
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
-  });
+  }, 'Task');
 }
 
 function mapRepair(row: unknown): Repair {
   const value = rowRecord(row);
-  return repairSchema.parse({
+  return parseStoredRow(repairSchema, {
     id: value['id'],
     jobId: value['jobId'],
     stage: value['stage'],
@@ -143,12 +163,12 @@ function mapRepair(row: unknown): Repair {
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
-  });
+  }, 'Repair');
 }
 
 function mapScheduledAction(row: unknown): ScheduledAction {
   const value = rowRecord(row);
-  return scheduledActionSchema.parse({
+  return parseStoredRow(scheduledActionSchema, {
     id: value['id'],
     jobId: value['jobId'] ?? null,
     taskId: value['taskId'] ?? null,
@@ -163,15 +183,16 @@ function mapScheduledAction(row: unknown): ScheduledAction {
       value['nextRunAt'] === null ? null : timestamp(value['nextRunAt']),
     lastRunAt:
       value['lastRunAt'] === null ? null : timestamp(value['lastRunAt']),
+    consecutiveFailures: integer(value['consecutiveFailures']),
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
-  });
+  }, 'ScheduledAction');
 }
 
 function mapScheduledActionRun(row: unknown): ScheduledActionRun {
   const value = rowRecord(row);
-  return scheduledActionRunSchema.parse({
+  return parseStoredRow(scheduledActionRunSchema, {
     id: value['id'],
     scheduledActionId: value['scheduledActionId'],
     occurrenceKey: value['occurrenceKey'],
@@ -188,12 +209,12 @@ function mapScheduledActionRun(row: unknown): ScheduledActionRun {
     claimedAt: timestamp(value['claimedAt']),
     completedAt:
       value['completedAt'] === null ? null : timestamp(value['completedAt']),
-  });
+  }, 'ScheduledActionRun');
 }
 
 function mapEvent(row: unknown): DomainEvent {
   const value = rowRecord(row);
-  return eventSchema.parse({
+  return parseStoredRow(eventSchema, {
     id: value['id'],
     mutationId: value['mutationId'],
     entityType: value['entityType'],
@@ -204,18 +225,18 @@ function mapEvent(row: unknown): DomainEvent {
     detail: value['detail'] ?? null,
     changes: jsonValue(value['changes']),
     revisionAfter: integer(value['revisionAfter']),
-  });
+  }, 'Event');
 }
 
 function mapReceipt(row: unknown): MutationReceipt {
   const value = rowRecord(row);
-  return mutationReceiptSchema.parse({
+  return parseStoredRow(mutationReceiptSchema, {
     mutationId: value['mutationId'],
     command: value['command'],
     fingerprint: value['fingerprint'],
     result: jsonValue(value['result']),
     committedAt: timestamp(value['committedAt']),
-  });
+  }, 'MutationReceipt');
 }
 
 const PARTY_SELECT = `
@@ -299,6 +320,7 @@ const SCHEDULED_ACTION_SELECT = `
     run_at as "runAt",
     next_run_at as "nextRunAt",
     last_run_at as "lastRunAt",
+    consecutive_failures::text as "consecutiveFailures",
     created_at as "createdAt",
     updated_at as "updatedAt",
     revision::text as "revision"
@@ -718,10 +740,10 @@ class PostgresTransaction
       `insert into scheduled_actions
         (id, job_id, task_id, title, action_type, payload, timezone,
          recurrence_rule, status, run_at, next_run_at, last_run_at,
-         created_at, updated_at, revision)
+         consecutive_failures, created_at, updated_at, revision)
        values (
          $1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11,
-         $12, $13, $14, $15
+         $12, $13, $14, $15, $16
        )`,
       [
         action.id,
@@ -736,6 +758,7 @@ class PostgresTransaction
         action.runAt,
         action.nextRunAt,
         action.lastRunAt,
+        action.consecutiveFailures,
         action.createdAt,
         action.updatedAt,
         action.revision,
@@ -751,7 +774,8 @@ class PostgresTransaction
        set job_id = $2, task_id = $3, title = $4, action_type = $5,
            payload = $6::jsonb, timezone = $7, recurrence_rule = $8,
            status = $9, run_at = $10, next_run_at = $11,
-           last_run_at = $12, updated_at = $13, revision = $14
+           last_run_at = $12, consecutive_failures = $13,
+           updated_at = $14, revision = $15
        where id = $1`,
       [
         action.id,
@@ -766,6 +790,7 @@ class PostgresTransaction
         action.runAt,
         action.nextRunAt,
         action.lastRunAt,
+        action.consecutiveFailures,
         action.updatedAt,
         action.revision,
       ],
@@ -880,6 +905,62 @@ class PostgresTransaction
   }
 }
 
+function postgresDiagnostic(
+  error: unknown,
+  key: 'code' | 'constraint' | 'table',
+): string | null {
+  if (typeof error !== 'object' || error === null) return null;
+  const value: unknown = (error as Record<string, unknown>)[key];
+  return typeof value === 'string' ? value : null;
+}
+
+// Mirrors the in-memory store's DuplicateEntityError labels so conflicts read
+// identically (HTTP 409) regardless of which durable adapter serves them.
+const UNIQUE_CONFLICT_LABELS: Readonly<Record<string, string>> = {
+  jobs_job_key_key: 'JobKey',
+  repairs_job_id_key: 'RepairJob',
+  events_mutation_id_key: 'EventMutation',
+  mutation_receipts_pkey: 'MutationReceipt',
+  scheduled_action_runs_occurrence_key_key: 'ScheduledActionOccurrence',
+  scheduled_action_runs_lease_token_key: 'ScheduledActionRunLease',
+};
+
+const UNIQUE_TABLE_LABELS: Readonly<Record<string, string>> = {
+  parties: 'Party',
+  jobs: 'Job',
+  tasks: 'Task',
+  repairs: 'Repair',
+  events: 'Event',
+  mutation_receipts: 'MutationReceipt',
+  scheduled_actions: 'ScheduledAction',
+  scheduled_action_runs: 'ScheduledActionRun',
+};
+
+function duplicateEntityForUniqueViolation(
+  error: unknown,
+): DuplicateEntityError {
+  const constraint = postgresDiagnostic(error, 'constraint');
+  const table = postgresDiagnostic(error, 'table');
+  const byConstraint =
+    constraint === null ? undefined : UNIQUE_CONFLICT_LABELS[constraint];
+  const byTable =
+    table === null ? undefined : UNIQUE_TABLE_LABELS[table];
+  return new DuplicateEntityError(
+    byConstraint ?? byTable ?? 'Record',
+    'duplicate',
+  );
+}
+
+function mapPostgresError(error: unknown): unknown {
+  // Unique violations are client-meaningful conflicts (concurrent duplicate
+  // writes, random key collisions), not server failures. Everything else
+  // passes through untouched so genuine faults still surface as 500s.
+  if (postgresDiagnostic(error, 'code') === '23505') {
+    return duplicateEntityForUniqueViolation(error);
+  }
+  return error;
+}
+
 async function rollback(
   client: SqlClient,
   originalError: unknown,
@@ -910,7 +991,7 @@ export class PostgresDomainStore implements DomainStore {
         await client.query('commit');
         return result;
       } catch (error) {
-        return await rollback(client, error);
+        return await rollback(client, mapPostgresError(error));
       }
     } finally {
       client.release();

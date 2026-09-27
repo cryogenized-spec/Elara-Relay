@@ -5,6 +5,8 @@ import {
 import { timestampSchema } from '../contracts/shared';
 
 const DAY_MS = 86_400_000;
+const FAILURE_BACKOFF_BASE_MS = 300_000;
+const FAILURE_BACKOFF_CAP_MS = DAY_MS;
 
 interface ParsedRecurrence {
   frequency: 'DAILY' | 'WEEKLY';
@@ -50,6 +52,33 @@ export function occurrenceKeyFor(
   scheduledFor: string,
 ): string {
   return `OCC-${action.id}-${timestampSchema.parse(scheduledFor)}`;
+}
+
+// A failing provider must not be hammered: each consecutive failure doubles
+// the delay before the action becomes due again, from five minutes up to a
+// capped twenty-four hours. A success resets the count to zero.
+export function retryBackoffMs(consecutiveFailures: number): number {
+  if (
+    !Number.isInteger(consecutiveFailures) ||
+    consecutiveFailures < 1 ||
+    consecutiveFailures > Number.MAX_SAFE_INTEGER
+  ) {
+    throw new Error('Consecutive failures must be a positive safe integer');
+  }
+  return Math.min(
+    FAILURE_BACKOFF_BASE_MS * 2 ** (consecutiveFailures - 1),
+    FAILURE_BACKOFF_CAP_MS,
+  );
+}
+
+export function nextRetryAt(
+  completedAt: string,
+  consecutiveFailures: number,
+): string {
+  const completed = new Date(timestampSchema.parse(completedAt)).getTime();
+  return new Date(
+    completed + retryBackoffMs(consecutiveFailures),
+  ).toISOString();
 }
 
 export function leaseExpiry(

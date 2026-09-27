@@ -25,3 +25,10 @@ export class DomainValidationError extends Error {
     this.name = 'DomainValidationError';
   }
 }
+
+export class StoredRecordError extends Error {
+  public constructor(public readonly entity: string) {
+    super(`Stored ${entity} record failed validation`);
+    this.name = 'StoredRecordError';
+  }
+}

@@ -17,6 +17,7 @@ describe('auth runtime config', () => {
 
     expect(config.supabaseUrl).toBe('https://example.supabase.co');
     expect([...config.allowedUserIds]).toEqual([USER_A, USER_B]);
+    expect(config.requestTimeoutMs).toBe(5_000);
   });
 
   it('rejects insecure URLs, legacy keys, missing users, and duplicate users', () => {
@@ -51,6 +52,36 @@ describe('auth runtime config', () => {
         ELARA_ALLOWED_USER_IDS: `${USER_A},${USER_A}`,
       }),
     ).toThrow('must not contain duplicates');
+  });
+
+  it('bounds auth fetches with a strict request timeout', () => {
+    const custom = readAuthRuntimeConfig({
+      SUPABASE_URL: 'https://example.supabase.co',
+      SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example',
+      ELARA_ALLOWED_USER_IDS: USER_A,
+      ELARA_AUTH_REQUEST_TIMEOUT_MS: '2500',
+    });
+    expect(custom.requestTimeoutMs).toBe(2500);
+
+    for (const raw of ['0', '-5', '1.5', 'never']) {
+      expect(() =>
+        readAuthRuntimeConfig({
+          SUPABASE_URL: 'https://example.supabase.co',
+          SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example',
+          ELARA_ALLOWED_USER_IDS: USER_A,
+          ELARA_AUTH_REQUEST_TIMEOUT_MS: raw,
+        }),
+      ).toThrow('must be a positive integer');
+    }
+
+    expect(() =>
+      readAuthRuntimeConfig({
+        SUPABASE_URL: 'https://example.supabase.co',
+        SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example',
+        ELARA_ALLOWED_USER_IDS: USER_A,
+        ELARA_AUTH_REQUEST_TIMEOUT_MS: '30001',
+      }),
+    ).toThrow('may not exceed 30000');
   });
 });
 

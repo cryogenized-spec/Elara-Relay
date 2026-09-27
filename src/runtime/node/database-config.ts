@@ -7,6 +7,7 @@ export interface DatabaseRuntimeConfig {
   poolMax: number;
   idleTimeoutMs: number;
   connectionTimeoutMs: number;
+  statementTimeoutMs: number;
 }
 
 function parsePositiveInteger(
@@ -95,10 +96,22 @@ export function readDatabaseRuntimeConfig(
     'ELARA_DB_CONNECTION_TIMEOUT_MS',
   );
 
+  // Every statement is bounded so one wedged query (or lock wait) cannot pin
+  // a pool slot indefinitely and starve the remaining connections.
+  const statementTimeoutMs = parsePositiveInteger(
+    env['ELARA_DB_STATEMENT_TIMEOUT_MS'],
+    10_000,
+    'ELARA_DB_STATEMENT_TIMEOUT_MS',
+  );
+  if (statementTimeoutMs > 60_000) {
+    throw new Error('ELARA_DB_STATEMENT_TIMEOUT_MS may not exceed 60000');
+  }
+
   return {
     databaseUrl,
     poolMax,
     idleTimeoutMs,
     connectionTimeoutMs,
+    statementTimeoutMs,
   };
 }
