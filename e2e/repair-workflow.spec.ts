@@ -3,6 +3,7 @@ import { createApi } from '../src/api/app';
 import { MemoryDomainStore } from '../src/db/memory/memory-store';
 import { DomainKernel } from '../src/domain/kernel';
 import { installLiveHarness, signInOwner } from './live-harness';
+import { reportVisualDifference } from './visual-diagnostics';
 
 const now = '2026-09-27T10:00:00.000Z';
 
@@ -329,7 +330,12 @@ test('Repair workflow is usable and visually stable at required viewports', asyn
 }, info) => {
   const { dialog } = await setup(page);
   await dialog.evaluate((element) => { element.scrollTop = 0; });
-  await expect(page).toHaveScreenshot('repair-workflow.png');
+  try {
+    await expect(page).toHaveScreenshot('repair-workflow.png');
+  } catch (error: unknown) {
+    await reportVisualDifference(page, info, 'repair-workflow.png');
+    throw error;
+  }
   await dialog
     .getByRole('button', { name: 'Change stage', exact: true })
     .click();
