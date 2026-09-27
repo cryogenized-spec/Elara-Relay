@@ -159,6 +159,17 @@ describe('live PostgreSQL runtime', () => {
     expect(functionConfig.rows[0]?.proconfig).toContain(
       'search_path=pg_catalog, public',
     );
+
+    const chatFunctionConfig = await resources.rawPool.query<{
+      proconfig: string[] | null;
+    }>(`
+      select proconfig
+      from pg_proc
+      where oid = 'public.enforce_chat_message_transition()'::regprocedure
+    `);
+    expect(chatFunctionConfig.rows[0]?.proconfig).toContain(
+      'search_path=pg_catalog, public',
+    );
   });
 
   it('enforces owner-bound chat records and terminal message lifecycle', async () => {
