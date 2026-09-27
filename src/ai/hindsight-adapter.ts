@@ -140,6 +140,10 @@ export class HindsightMemoryProvider implements MemoryProvider {
   }
 
   public async recall(input: MemoryRecallRequest): Promise<MemoryRecallResult> {
+    // Recall queries and filters also cross the external provider boundary.
+    const outbound = [input.query, input.queryTimestamp ?? '', ...input.scope.tags];
+    const matches = outbound.flatMap((value) => screenForSecrets(value).matches);
+    if (matches.length > 0) throw new SecretDetectedError(matches);
     const bankId = await deriveBankId(input.scope.ownerId);
     const response = await this.post(`/v1/default/banks/${encodeURIComponent(bankId)}/memories/recall`, {
       query: input.query, max_tokens: input.maxTokens,
@@ -155,9 +159,16 @@ export class HindsightMemoryProvider implements MemoryProvider {
   private async post(path: string, body: unknown): Promise<unknown> {
     const signal = AbortSignal.timeout(this.options.requestTimeoutMs);
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      };
+      if (this.options.apiKey !== '') {
+        headers['Authorization'] = `Bearer ${this.options.apiKey}`;
+      }
       const response = await this.fetchFn(`${this.options.url}${path}`, {
         method: 'POST', redirect: 'error', signal,
-        headers: { Authorization: `Bearer ${this.options.apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers,
         body: JSON.stringify(body),
       });
       if (!response.ok) throw new MemoryProviderFault('http', response.status);
