@@ -12,6 +12,7 @@ import {
 const openAiProvider: ChatProvider = {
   providerId: 'openai',
   async *stream() {
+    await Promise.resolve();
     yield { type: 'text-delta', text: 'Hello' };
     yield { type: 'completed', usage: { inputTokens: 3, outputTokens: 1 } };
   },
@@ -20,6 +21,7 @@ const openAiProvider: ChatProvider = {
 const museProvider: ChatProvider = {
   providerId: 'muse',
   async *stream() {
+    await Promise.resolve();
     yield { type: 'text-delta', text: 'Kia ora' };
     yield { type: 'completed' };
   },
