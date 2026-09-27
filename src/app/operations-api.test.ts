@@ -303,6 +303,95 @@ describe('Operations API mutation client', () => {
     }
   });
 
+  it('sends one atomic Repair-case mutation and validates the compound result', async () => {
+    const partyId = '10000000-0000-4000-8000-000000000020';
+    const jobId = '10000000-0000-4000-8000-000000000021';
+    const repairId = '10000000-0000-4000-8000-000000000022';
+    const now = '2026-09-26T05:10:00.000Z';
+    const result = {
+      party: {
+        id: partyId,
+        name: 'Workshop Customer',
+        kind: 'CUSTOMER',
+        createdAt: now,
+        updatedAt: now,
+        revision: 1,
+      },
+      job: {
+        id: jobId,
+        key: 'JOB-10000000',
+        title: 'P29 repair',
+        category: 'ACTIVE',
+        partyId,
+        createdAt: now,
+        updatedAt: now,
+        revision: 1,
+      },
+      repair: {
+        id: repairId,
+        jobId,
+        stage: 'RECEIVED',
+        reportedFault: 'Trigger fault',
+        diagnosis: null,
+        currentFinding: null,
+        serialState: 'UNKNOWN',
+        serialValue: null,
+        storageLocation: null,
+        waitingOn: null,
+        followUpAt: null,
+        finalTestResult: null,
+        finalTestDetail: null,
+        testedAt: null,
+        receivedAt: now,
+        readyAt: null,
+        collectedAt: null,
+        cancelledAt: null,
+        createdAt: now,
+        updatedAt: now,
+        revision: 1,
+      },
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(result), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = createOperationsApi({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'session-token',
+      fetchImpl,
+    });
+    const command = {
+      mutationId: 'MUT-10000000-0000-4000-8000-000000000020',
+      input: {
+        party: { mode: 'NEW_CUSTOMER' as const, name: 'Workshop Customer' },
+        jobTitle: 'P29 repair',
+        reportedFault: 'Trigger fault',
+        serialState: 'UNKNOWN' as const,
+        serialValue: null,
+        storageLocation: null,
+      },
+    };
+
+    await expect(api.createRepairCase(command)).resolves.toEqual(result);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.example.com/repair-cases',
+      {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer session-token',
+          accept: 'application/json',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          mutation: { mutationId: command.mutationId },
+          input: command.input,
+        }),
+      },
+    );
+  });
+
   it('sends optimistic revision context for Task updates', async () => {
     const updatedTask = {
       id: TASK_ID,

@@ -22,6 +22,7 @@ export interface BrowserAuthSession {
 
 export interface BrowserAuthClient {
   getAccessToken(): string | null;
+  getSessionId(): string | null;
   restoreSession(): Promise<BrowserAuthSession | null>;
   refreshSession(): Promise<BrowserAuthSession | null>;
   subscribe(
@@ -78,6 +79,10 @@ export function createSupabaseBrowserAuth(
   return {
     getAccessToken() {
       return currentSession?.accessToken ?? null;
+    },
+
+    getSessionId() {
+      return currentSession?.sessionId ?? null;
     },
 
     async restoreSession() {

@@ -727,6 +727,47 @@ button.workRow:active {
   font-size: 10.5px;
 }
 
+.detailActionBar .destructiveButton {
+  border-color: rgba(255, 107, 119, 0.22);
+  color: #ff8d97;
+  background: var(--danger-soft);
+}
+
+.taskMutationError {
+  margin: 12px 0 0;
+}
+
+.taskMutationPanel {
+  display: grid;
+  margin-top: 14px;
+  padding-top: 14px;
+  gap: 13px;
+  border-top: 1px solid var(--border);
+}
+
+.taskMutationNotice {
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.taskMutationActions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.taskMutationActions .textButton,
+.taskMutationActions .primaryButton {
+  width: 100%;
+  min-height: 44px;
+}
+
 .detailSection {
   display: grid;
   margin-top: 22px;

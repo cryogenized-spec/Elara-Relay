@@ -16,6 +16,11 @@ import {
   type Repair,
 } from '../contracts/repair';
 import {
+  repairCaseResultSchema,
+  type CreateRepairCaseInput,
+  type RepairCaseResult,
+} from '../contracts/repair-case';
+import {
   scheduledActionSchema,
   type CreateScheduledActionInput,
   type ScheduledAction,
@@ -116,6 +121,9 @@ export interface OperationsApi {
   createRepair(
     command: CreateMutationCommand<CreateRepairInput>,
   ): Promise<Repair>;
+  createRepairCase(
+    command: CreateMutationCommand<CreateRepairCaseInput>,
+  ): Promise<RepairCaseResult>;
   createScheduledAction(
     command: CreateMutationCommand<CreateScheduledActionInput>,
   ): Promise<ScheduledAction>;
@@ -318,6 +326,14 @@ export function createOperationsApi(
       }),
     createRepair: (command) =>
       request('/repairs', repairSchema, {
+        method: 'POST',
+        body: {
+          mutation: { mutationId: command.mutationId },
+          input: command.input,
+        },
+      }),
+    createRepairCase: (command) =>
+      request('/repair-cases', repairCaseResultSchema, {
         method: 'POST',
         body: {
           mutation: { mutationId: command.mutationId },

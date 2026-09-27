@@ -11,6 +11,7 @@ import {
   AuthorizationError,
 } from '../auth/errors';
 import { createJobInputSchema } from '../contracts/job';
+import { createRepairCaseInputSchema } from '../contracts/repair-case';
 import { mutationIdSchema } from '../contracts/mutation';
 import { createPartyInputSchema } from '../contracts/party';
 import {
@@ -81,6 +82,13 @@ const createTaskRequestSchema = z
   .object({
     mutation: mutationRequestSchema,
     input: createTaskInputSchema,
+  })
+  .strict();
+
+const createRepairCaseRequestSchema = z
+  .object({
+    mutation: mutationRequestSchema,
+    input: createRepairCaseInputSchema,
   })
   .strict();
 
@@ -224,6 +232,19 @@ function registerDomainRoutes(
   app.get('/tasks/:taskId', async (context) =>
     context.json(await kernel.getTask(context.req.param('taskId'))),
   );
+
+  app.post('/repair-cases', async (context) => {
+    const request = createRepairCaseRequestSchema.parse(
+      await requestJson(context),
+    );
+    return context.json(
+      await kernel.createRepairCase(
+        operatorMutation(request.mutation),
+        request.input,
+      ),
+      201,
+    );
+  });
 
   app.post('/repairs', async (context) => {
     const request = createRepairRequestSchema.parse(await requestJson(context));

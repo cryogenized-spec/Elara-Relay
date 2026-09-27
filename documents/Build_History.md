@@ -393,8 +393,6 @@ Completed:
 
 Still required before Phase 1 freeze:
 
-- durable Repair / Job Capture
-- interactive Task update / waiting / complete / cancel UI
 - interactive Repair progression/test UI
 - production API deployment
 - production web/PWA deployment

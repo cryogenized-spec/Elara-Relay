@@ -433,6 +433,248 @@ test('Capture stays locked while a durable Task save is unresolved', async ({
 });
 
 
+test('Repair Capture opens one atomic durable workshop case', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  let repairCaseBody: unknown = null;
+  page.on('request', (request) => {
+    if (
+      request.url().includes('/api-test/repair-cases') &&
+      request.method() === 'POST'
+    ) {
+      repairCaseBody = request.postDataJSON();
+    }
+  });
+
+  await page.goto('/');
+  await signInOwner(page);
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Capture' }).click();
+  const capture = page.getByRole('dialog', { name: 'Capture' });
+  await capture.getByRole('button', { name: /^Repair \/ Job/ }).click();
+  const repairCapture = page.getByRole('dialog', {
+    name: 'New repair / Job',
+  });
+
+  await expect(repairCapture.getByLabel('Customer')).toHaveAttribute(
+    'maxlength',
+    '200',
+  );
+  await repairCapture.getByLabel('Customer').fill('Demo workshop customer');
+  await repairCapture.getByLabel('Item / model').fill('Spyder Victor service');
+  await repairCapture
+    .getByLabel('Reported fault')
+    .fill('CO₂ leak around valve body');
+  await repairCapture.getByLabel('Serial').fill('SV-TEST-01');
+  await repairCapture
+    .getByLabel('Storage location')
+    .fill('Workshop test shelf');
+  await repairCapture.getByRole('button', { name: 'Open Repair' }).click();
+
+  await expect(repairCapture).toHaveCount(0);
+  expect(repairCaseBody).toMatchObject({
+    mutation: { mutationId: expect.any(String) },
+    input: {
+      party: {
+        mode: 'EXISTING',
+        partyId: '10000000-0000-4000-8000-000000000001',
+      },
+      jobTitle: 'Spyder Victor service',
+      reportedFault: 'CO₂ leak around valve body',
+      serialState: 'KNOWN',
+      serialValue: 'SV-TEST-01',
+      storageLocation: 'Workshop test shelf',
+    },
+  });
+
+  await page.getByRole('button', { name: 'Repairs' }).click();
+  await expect(
+    page.getByText('Spyder Victor service', { exact: true }),
+  ).toBeVisible();
+});
+
+
+test('Task detail can edit, wait, and complete through versioned writes', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  const taskPatchBodies: Record<string, unknown>[] = [];
+  page.on('request', (request) => {
+    if (
+      request.method() === 'PATCH' &&
+      /\/tasks\//.test(request.url())
+    ) {
+      taskPatchBodies.push(request.postDataJSON() as Record<string, unknown>);
+    }
+  });
+  await page.goto('/');
+  await signInOwner(page);
+  await page.getByRole('button', { name: 'Work' }).click();
+
+  await page
+    .getByRole('button', { name: /Open Pressure-test regulator block/ })
+    .click();
+  const taskDetail = page.locator('dialog.detailSurface');
+  await expect(taskDetail).toHaveAttribute(
+    'aria-label',
+    'Pressure-test regulator block',
+  );
+
+  await taskDetail.getByRole('button', { name: 'Edit Task' }).click();
+  const edit = taskDetail.getByRole('form', { name: 'Edit Task' });
+  await edit.getByLabel('Title').fill('Pressure-test regulator block today');
+  await edit.getByLabel('Priority').selectOption('NORMAL');
+  await edit.getByRole('button', { name: 'Save changes' }).click();
+  expect(taskPatchBodies[0]?.['patch']).not.toHaveProperty('dueAt');
+  expect(taskPatchBodies[0]?.['patch']).not.toHaveProperty('followUpAt');
+
+  await expect(taskDetail).toHaveAttribute(
+    'aria-label',
+    'Pressure-test regulator block today',
+  );
+  await expect(
+    taskDetail.getByText('Normal', { exact: true }),
+  ).toBeVisible();
+
+  await taskDetail.getByRole('button', { name: 'Mark waiting' }).click();
+  const waiting = taskDetail.getByRole('form', {
+    name: 'Mark Task waiting',
+  });
+  await waiting.getByLabel('Waiting on').fill('Seal supplier');
+  await waiting.getByLabel('Follow-up').fill('2026-09-26T15:00');
+  await waiting.getByRole('button', { name: 'Save waiting state' }).click();
+
+  await expect(
+    taskDetail.getByText('Waiting', { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    taskDetail.getByText('Seal supplier', { exact: true }),
+  ).toBeVisible();
+
+  await taskDetail.getByRole('button', { name: 'Edit Task' }).click();
+  const resume = taskDetail.getByRole('form', { name: 'Edit Task' });
+  await expect(resume.getByLabel('Status')).toHaveValue('WAITING');
+  await resume.getByLabel('Status').selectOption('NEXT');
+  await resume.getByRole('button', { name: 'Save changes' }).click();
+
+  await expect(
+    taskDetail.getByText('Next', { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    taskDetail.getByText('Seal supplier', { exact: true }),
+  ).toHaveCount(0);
+
+  await taskDetail.getByRole('button', { name: 'Complete' }).click();
+  await expect(taskDetail).toHaveCount(0);
+});
+
+
+test('Task conflict keeps the edit recoverable when refresh fails', async ({
+  page,
+}) => {
+  await installLiveHarness(page, {
+    failTaskConflictRefresh: true,
+  });
+  await page.goto('/');
+  await signInOwner(page);
+  await page.getByRole('button', { name: 'Work' }).click();
+  await page
+    .getByRole('button', { name: /Open Pressure-test regulator block/ })
+    .click();
+
+  const taskDetail = page.locator('dialog.detailSurface');
+  await taskDetail.getByRole('button', { name: 'Edit Task' }).click();
+  const edit = taskDetail.getByRole('form', { name: 'Edit Task' });
+  await edit
+    .getByLabel('Title')
+    .fill('Pressure-test regulator block with unsaved recovery');
+  await edit.getByRole('button', { name: 'Save changes' }).click();
+
+  await expect(edit).toBeVisible();
+  await expect(edit.getByLabel('Title')).toHaveValue(
+    'Pressure-test regulator block with unsaved recovery',
+  );
+  await expect(taskDetail.getByRole('alert')).toContainText(
+    'current state could not be refreshed',
+  );
+});
+
+
+test('Repair harness preserves replay semantics across mutation ids', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+
+  const result = await page.evaluate(async () => {
+    const endpoint = '/api-test/repair-cases';
+    const input = {
+      party: {
+        mode: 'NEW_CUSTOMER',
+        name: 'Harness replay customer',
+      },
+      jobTitle: 'Harness repair one',
+      reportedFault: 'Replay fixture test',
+      serialState: 'UNKNOWN',
+      serialValue: null,
+      storageLocation: null,
+    };
+
+    const send = async (mutationId: string, bodyInput: typeof input) => {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mutation: { mutationId },
+          input: bodyInput,
+        }),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as {
+          job?: { id: string };
+          repair?: { id: string };
+          error?: { code: string };
+        },
+      };
+    };
+
+    const mutationId = 'MUT-playwright-repair-case-replay-01';
+    const first = await send(mutationId, input);
+    const replay = await send(mutationId, input);
+    const mismatch = await send(mutationId, {
+      ...input,
+      jobTitle: 'Changed replay intent',
+    });
+    const distinct = await send(
+      'MUT-playwright-repair-case-replay-02',
+      {
+        ...input,
+        jobTitle: 'Harness repair two',
+      },
+    );
+
+    return { first, replay, mismatch, distinct };
+  });
+
+  expect(result.first.status).toBe(201);
+  expect(result.replay.status).toBe(201);
+  expect(result.replay.body).toEqual(result.first.body);
+  expect(result.mismatch.status).toBe(409);
+  expect(result.mismatch.body.error?.code).toBe(
+    'MUTATION_REPLAY_MISMATCH',
+  );
+  expect(result.distinct.status).toBe(201);
+  expect(result.distinct.body.job?.id).not.toBe(result.first.body.job?.id);
+  expect(result.distinct.body.repair?.id).not.toBe(
+    result.first.body.repair?.id,
+  );
+});
+
+
 test('Reminder Capture persists recurrence and Job context', async ({ page }) => {
   await installLiveHarness(page);
   await page.goto('/');

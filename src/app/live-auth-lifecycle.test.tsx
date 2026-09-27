@@ -32,6 +32,7 @@ const mutationApiStubs = {
   completeTask: () => Promise.reject(new Error('not used')),
   cancelTask: () => Promise.reject(new Error('not used')),
   createRepair: () => Promise.reject(new Error('not used')),
+  createRepairCase: () => Promise.reject(new Error('not used')),
   createScheduledAction: () => Promise.reject(new Error('not used')),
 };
 
@@ -55,6 +56,7 @@ describe('live authorization lifecycle', () => {
     const runtime: BrowserRuntime = {
       auth: {
         getAccessToken: () => currentSession.accessToken,
+        getSessionId: () => currentSession.sessionId,
         restoreSession: () => Promise.resolve(currentSession),
         refreshSession: () => Promise.resolve(currentSession),
         subscribe: (next) => {
@@ -147,6 +149,7 @@ describe('live authorization lifecycle', () => {
     const runtime: BrowserRuntime = {
       auth: {
         getAccessToken: () => currentSession?.accessToken ?? null,
+        getSessionId: () => currentSession?.sessionId ?? null,
         restoreSession: () => Promise.resolve(null),
         refreshSession: () => Promise.resolve(currentSession),
         subscribe: (next) => {
