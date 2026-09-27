@@ -317,6 +317,41 @@ describe('chat turn orchestration', () => {
     });
   });
 
+  it('durably cancels a claimed turn when transport stops consuming before finalization', async () => {
+    const harness = makeHarness([
+      script([
+        { type: 'text-delta', text: 'should never be delivered' },
+        { type: 'completed' },
+      ]),
+    ]);
+
+    const turn = await startTurn(harness);
+    const events = harness.orchestrator.generate(
+      turn,
+      new AbortController().signal,
+    );
+
+    expect((await events.next()).value).toMatchObject({
+      type: 'message.started',
+    });
+
+    // Model the HTTP/SSE layer losing its socket while writeSSE is handling
+    // the first yielded event. Closing the generator alone used to strand the
+    // already-claimed assistant Message in PENDING forever.
+    await events.return(undefined);
+    await harness.orchestrator.abandon(turn);
+
+    const stored = await harness.kernel.listMessages(OWNER, THREAD);
+    expect(stored[1]).toMatchObject({
+      status: 'FAILED',
+      content: '',
+      failureCode: 'GENERATION_CANCELLED',
+    });
+
+    // A second cleanup race is safe and cannot rewrite terminal history.
+    await expect(harness.orchestrator.abandon(turn)).resolves.toBeUndefined();
+  });
+
   it('records a server-side turn deadline as a provider timeout', async () => {
     const hanging: ChatProvider = {
       providerId: 'openai',

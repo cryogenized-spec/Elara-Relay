@@ -27,8 +27,11 @@ Chat API (src/api/chat-api.ts)
 ## Current deployment state
 
 No provider adapter is configured yet. `GET /chat/models` reports every catalog
-model as unavailable, and a turn request for an unavailable model is refused
-before any conversation is written. Every manual Elara workflow is unaffected.
+model as unavailable. A turn request for a catalog model with no configured
+adapter is claimed durably, then records its assistant attempt as
+`FAILED/PROVIDER_UNAVAILABLE` and returns `503 MODEL_UNAVAILABLE`; the failed
+attempt remains replayable history rather than a pending generation. Every
+manual Elara workflow is unaffected.
 
 Migration `0006_ai_chat` is present in the repository and applied by the
 PostgreSQL integration suite. It has **not** been applied to the live Supabase

@@ -7,7 +7,11 @@ import {
   type ChatModel,
   type ChatTurnEvent,
 } from '../contracts/chat';
-import type { ChatKernel, ChatTurnRecord } from '../domain/chat-kernel';
+import {
+  ChatTurnConflictError,
+  type ChatKernel,
+  type ChatTurnRecord,
+} from '../domain/chat-kernel';
 import { StoredRecordError } from '../domain/errors';
 import {
   CHAT_MODEL_CATALOG,
@@ -424,6 +428,34 @@ export class ChatTurnOrchestrator {
       threadRevision,
       replay: false,
     });
+  }
+
+  /**
+   * Finalize a claimed generation when the transport stops consuming the
+   * stream before the orchestrator can emit its terminal event.
+   *
+   * The durable Chat kernel remains the only state-transition authority. A
+   * terminal race is harmless: if the generation already completed or failed,
+   * this operation becomes a no-op instead of rewriting history.
+   */
+  public async abandon(turn: ChatTurnStarted): Promise<void> {
+    if (turn.kind === 'replay') return;
+
+    try {
+      await this.kernel.failGeneration({
+        ownerId: turn.thread.ownerId,
+        messageId: turn.assistantMessage.id,
+        failureCode: 'GENERATION_CANCELLED',
+      });
+    } catch (error) {
+      if (
+        error instanceof ChatTurnConflictError &&
+        error.reason === 'GENERATION_FINALIZED'
+      ) {
+        return;
+      }
+      throw error;
+    }
   }
 
   /**

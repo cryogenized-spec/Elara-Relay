@@ -133,9 +133,17 @@ export function createChatApi(
           });
         }
       } catch {
-        // The response is already established. Record only safe,
-        // request-correlated failure metadata; the client re-reads durable
-        // Thread state and no provider/internal detail crosses the boundary.
+        // A write/socket failure can close the async generator while it is
+        // suspended at a yielded event. Abort provider work and make sure the
+        // already-claimed assistant Message cannot remain PENDING forever.
+        controller.abort();
+        try {
+          await orchestrator.abandon(turn);
+        } catch {
+          // A database outage may prevent durable finalization. Preserve the
+          // safe request-correlated failure record and let the client re-read
+          // authoritative Thread state when storage recovers.
+        }
         logSafely(logger, {
           event: 'api.failure',
           requestId: context.get('requestId'),
