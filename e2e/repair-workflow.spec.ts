@@ -329,13 +329,14 @@ test('Repair workflow is usable and visually stable at required viewports', asyn
   page,
 }, info) => {
   const { dialog } = await setup(page);
+  const screenshot = async (name: string) => {
+    const errorsBefore = info.errors.length;
+    // Soft assertions still fail CI, but collect every visual state in one run.
+    await expect.soft(page).toHaveScreenshot(name);
+    if (info.errors.length > errorsBefore) await reportVisualDifference(page, info, name);
+  };
   await dialog.evaluate((element) => { element.scrollTop = 0; });
-  try {
-    await expect(page).toHaveScreenshot('repair-workflow.png');
-  } catch (error: unknown) {
-    await reportVisualDifference(page, info, 'repair-workflow.png');
-    throw error;
-  }
+  await screenshot('repair-workflow.png');
   await dialog
     .getByRole('button', { name: 'Change stage', exact: true })
     .click();
@@ -350,7 +351,7 @@ test('Repair workflow is usable and visually stable at required viewports', asyn
     .getByRole('button', { name: 'Save stage' })
     .scrollIntoViewIfNeeded();
   await dialog.evaluate((element) => { element.scrollTop = 0; });
-  await expect(page).toHaveScreenshot('repair-waiting-form.png');
+  await screenshot('repair-waiting-form.png');
   for (const control of await dialog.locator('button, input, select').all()) {
     const bounds = await control.boundingBox();
     if (bounds !== null) {
@@ -381,7 +382,7 @@ test('Repair workflow is usable and visually stable at required viewports', asyn
     .getByRole('button', { name: 'Save final test' })
     .scrollIntoViewIfNeeded();
   await dialog.evaluate((element) => { element.scrollTop = 0; });
-  await expect(page).toHaveScreenshot('repair-final-test-form.png');
+  await screenshot('repair-final-test-form.png');
   await dialog.getByRole('button', { name: 'Save final test' }).click();
   await stage(dialog, 'READY');
   await expect(dialog.getByRole('alert')).toContainText(
@@ -394,7 +395,7 @@ test('Repair workflow is usable and visually stable at required viewports', asyn
   await dialog.evaluate((element) => {
     element.scrollTop = 0;
   });
-  await expect(page).toHaveScreenshot('repair-ready-blocked.png');
+  await screenshot('repair-ready-blocked.png');
 });
 
 test('final test conflict preserves observed result and Ready rework invalidates a passing test', async ({
