@@ -315,7 +315,7 @@ for (const marker of [
 for (const table of ['chat_threads', 'chat_messages']) {
   if (
     !new RegExp(
-      `alter\\\\s+table\\\\s+public\\\\.${table}\\\\s+enable\\\\s+row\\\\s+level\\\\s+security`,
+      `alter\\s+table\\s+public\\.${table}\\s+enable\\s+row\\s+level\\s+security`,
       'i',
     ).test(chatSql)
   ) {
@@ -325,7 +325,7 @@ for (const table of ['chat_threads', 'chat_messages']) {
 
 for (const role of ['anon', 'authenticated']) {
   const revoke = new RegExp(
-    `revoke[\\\\s\\\\S]*public\\\\.chat_threads[\\\\s\\\\S]*public\\\\.chat_messages[\\\\s\\\\S]*from\\\\s+${role}`,
+    `revoke[\\s\\S]*public\\.chat_threads[\\s\\S]*public\\.chat_messages[\\s\\S]*from\\s+${role}`,
     'i',
   );
   if (!revoke.test(chatSql)) {
