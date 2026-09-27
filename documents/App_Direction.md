@@ -252,8 +252,8 @@ Remaining Phase 1 product work:
 - production API deployment
 - production web/PWA deployment
 - secret/runtime configuration
-- backup/export
-- restore proof
+- backup/export deployment operation (workflow implemented; operational rollout pending)
+- restore proof on production-equivalent infrastructure (disposable CI proof implemented)
 - final Phase 1 adversarial / recovery kill-test
 
 ## 8. UI direction
@@ -359,6 +359,17 @@ Before Phase 1 is frozen:
 - scheduler duplicate delivery protections must survive adversarial testing
 - expired/malformed authentication must fail
 - browser bundles must contain no server secrets
+
+### Portable recovery decision
+
+Elara's PostgreSQL backup is a versioned plain-SQL application-data export
+with reviewed migrations, snapshot-bound manifest, and disposable-database
+restore proof. Supabase Auth/deployment secrets are outside that export.
+Restoration preserves Events and scheduler ledgers verbatim; delivery workers
+remain off until claims and overdue occurrences are reconciled. See
+`docs/postgres-backup-restore.md`. This closes the implementation gap for
+backup/export and restore proof, not the remaining deployment or kill-test
+work.
 
 ## 13. Product constraint
 

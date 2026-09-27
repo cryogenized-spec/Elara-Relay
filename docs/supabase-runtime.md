@@ -95,3 +95,9 @@ therefore enables CORS only for exact origins listed in
   token.
 - A disallowed origin receives no CORS authorization; it does not expand the
   server-side identity allowlist.
+
+## Portable data recovery
+
+The provider-neutral plain-SQL export and restore-proof runbook is
+[`postgres-backup-restore.md`](postgres-backup-restore.md). It exports only
+Elara-owned application tables, not Supabase Auth or deployment secrets.
