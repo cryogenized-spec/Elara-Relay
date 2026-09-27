@@ -38,10 +38,24 @@ import {
 } from '../domain/errors';
 import type { DomainKernel } from '../domain/kernel';
 import { RevisionConflictError } from '../domain/revision';
+import type {
+  ApiHealthOptions,
+  AuthenticationConfigurationStatus,
+  DatabaseHealthStatus,
+  ReadinessBody,
+  SchedulerHealthStatus,
+} from '../observability/health';
+import {
+  logSafely,
+  noopStructuredLogger,
+  type ApiFailureCategory,
+  type StructuredLogger,
+} from '../observability/logger';
 
 type ApiEnv = {
   Variables: {
     authIdentity: AuthIdentity;
+    requestId: string;
   };
 };
 
@@ -49,6 +63,8 @@ type ApiContext = Context<ApiEnv>;
 
 export interface ApiOptions {
   allowedOrigins?: readonly string[] | undefined;
+  health?: ApiHealthOptions | undefined;
+  logger?: StructuredLogger | undefined;
 }
 
 const mutationRequestSchema = z
@@ -496,6 +512,94 @@ function registerProtectedDomainApi(
   app.route('/', protectedApp);
 }
 
+const versionPattern =
+  /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+const buildShaPattern = /^[0-9a-f]{7,40}$/i;
+const optionalProviderNames = [
+  'memory',
+  'ai',
+  'chat',
+  'delivery',
+  'email',
+  'storage',
+  'workspace',
+  'calendar',
+  'notifications',
+] as const;
+
+function publicVersion(value: string | undefined): string {
+  return value !== undefined && value.length <= 64 && versionPattern.test(value)
+    ? value
+    : 'unknown';
+}
+
+function publicBuildSha(value: string | undefined): string {
+  return value !== undefined && buildShaPattern.test(value)
+    ? value.toLowerCase()
+    : 'unknown';
+}
+
+function isAuthenticationConfigurationStatus(
+  value: unknown,
+): value is 'valid' | 'invalid' | 'not_configured' {
+  return (
+    value === 'valid' ||
+    value === 'invalid' ||
+    value === 'not_configured'
+  );
+}
+
+function isOptionalProviderHealthStatus(
+  value: unknown,
+): value is 'configured' | 'unavailable' | 'disabled' {
+  return (
+    value === 'configured' ||
+    value === 'unavailable' ||
+    value === 'disabled'
+  );
+}
+
+function safeOptionalProviderStatuses(
+  health: ApiHealthOptions,
+): Readonly<Record<string, 'configured' | 'unavailable' | 'disabled'>> {
+  const result: Record<string, 'configured' | 'unavailable' | 'disabled'> = {
+    memory: 'disabled',
+  };
+  if (health.optionalProviders === undefined) return result;
+
+  try {
+    const candidates: unknown = health.optionalProviders();
+    if (typeof candidates !== 'object' || candidates === null) return result;
+    const values = candidates as Record<string, unknown>;
+    for (const name of optionalProviderNames) {
+      const status = values[name];
+      if (isOptionalProviderHealthStatus(status)) result[name] = status;
+    }
+  } catch {
+    return { memory: 'unavailable' };
+  }
+  return result;
+}
+
+function setHealthResponseHeaders(context: ApiContext): void {
+  context.header('Cache-Control', 'no-store');
+  context.header('X-Content-Type-Options', 'nosniff');
+}
+
+function logApiFailure(
+  logger: StructuredLogger,
+  context: ApiContext,
+  category: ApiFailureCategory,
+  status: number,
+): void {
+  logSafely(logger, {
+    event: 'api.failure',
+    requestId: context.get('requestId'),
+    category,
+    status,
+  });
+}
+
 export function createApi(
   kernel?: DomainKernel,
   authVerifier?: AuthVerifier,
@@ -503,6 +607,17 @@ export function createApi(
 ): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
   const allowedOrigins = [...(options.allowedOrigins ?? [])];
+  const logger = options.logger ?? noopStructuredLogger;
+  const health = options.health ?? {};
+  const version = publicVersion(health.version);
+  const buildSha = publicBuildSha(health.buildSha);
+
+  app.use('*', async (context, next) => {
+    const requestId = crypto.randomUUID();
+    context.set('requestId', requestId);
+    context.header('X-Request-ID', requestId);
+    await next();
+  });
 
   if (allowedOrigins.length > 0) {
     app.use(
@@ -511,18 +626,97 @@ export function createApi(
         origin: allowedOrigins,
         allowHeaders: ['Authorization', 'Content-Type'],
         allowMethods: ['GET', 'HEAD', 'POST', 'PATCH', 'OPTIONS'],
+        exposeHeaders: ['X-Request-ID'],
         maxAge: 600,
       }),
     );
   }
 
-  app.get('/health', (context) =>
-    context.json({
+  const liveness = (context: ApiContext) => {
+    setHealthResponseHeaders(context);
+    return context.json({
       service: 'elara-relay',
       status: 'ok',
+      version,
+      buildSha,
       schemaVersion: 1,
-    }),
-  );
+    });
+  };
+
+  app.get('/health', liveness);
+  app.get('/health/live', liveness);
+  app.get('/health/ready', async (context) => {
+    setHealthResponseHeaders(context);
+
+    let databaseStatus: DatabaseHealthStatus = 'not_configured';
+    if (health.databaseProbe !== undefined) {
+      try {
+        await health.databaseProbe();
+        databaseStatus = 'available';
+      } catch {
+        databaseStatus = 'unavailable';
+        logSafely(logger, {
+          event: 'health.dependency_unavailable',
+          requestId: context.get('requestId'),
+          dependency: 'database',
+          category: 'readiness_probe_failed',
+        });
+      }
+    }
+
+    const configuredAuthStatus = health.authenticationConfiguration;
+    const authenticationStatus: AuthenticationConfigurationStatus =
+      isAuthenticationConfigurationStatus(configuredAuthStatus)
+        ? configuredAuthStatus
+        : authVerifier === undefined
+          ? 'not_configured'
+          : 'valid';
+
+    let schedulerStatus: SchedulerHealthStatus = 'not_configured';
+    if (health.schedulerProbe !== undefined) {
+      try {
+        const candidate: unknown = await health.schedulerProbe();
+        schedulerStatus =
+          candidate === 'operational' ||
+          candidate === 'unavailable' ||
+          candidate === 'disabled' ||
+          candidate === 'not_configured'
+            ? candidate
+            : 'unavailable';
+      } catch {
+        schedulerStatus = 'unavailable';
+      }
+      if (schedulerStatus === 'unavailable') {
+        logSafely(logger, {
+          event: 'health.dependency_unavailable',
+          requestId: context.get('requestId'),
+          dependency: 'scheduler',
+          category: 'readiness_probe_failed',
+        });
+      }
+    }
+
+    const ready =
+      kernel !== undefined &&
+      authVerifier !== undefined &&
+      databaseStatus === 'available' &&
+      authenticationStatus === 'valid';
+    const body: ReadinessBody = {
+      service: 'elara-relay',
+      status: ready ? 'ready' : 'not_ready',
+      version,
+      buildSha,
+      schemaVersion: 1,
+      checks: {
+        database: databaseStatus,
+        authentication: authenticationStatus,
+        scheduler: schedulerStatus,
+        optionalProviders: safeOptionalProviderStatuses(health),
+      },
+    };
+
+    return context.json(body, ready ? 200 : 503);
+  });
 
   if (kernel !== undefined) {
     if (authVerifier === undefined) {
@@ -535,6 +729,7 @@ export function createApi(
 
   app.onError((error, context) => {
     if (error instanceof AuthenticationError) {
+      logApiFailure(logger, context, 'authentication', 401);
       context.header('WWW-Authenticate', 'Bearer');
       return context.json(
         {
@@ -548,6 +743,7 @@ export function createApi(
     }
 
     if (error instanceof AuthorizationError) {
+      logApiFailure(logger, context, 'authorization', 403);
       return context.json(
         {
           error: {
@@ -560,6 +756,7 @@ export function createApi(
     }
 
     if (error instanceof ZodError || error instanceof DomainValidationError) {
+      logApiFailure(logger, context, 'validation', 400);
       return context.json(
         {
           error: {
@@ -572,6 +769,7 @@ export function createApi(
     }
 
     if (error instanceof DomainNotFoundError) {
+      logApiFailure(logger, context, 'not_found', 404);
       return context.json(
         {
           error: {
@@ -588,6 +786,7 @@ export function createApi(
       error instanceof MutationReplayMismatchError ||
       error instanceof DuplicateEntityError
     ) {
+      logApiFailure(logger, context, 'conflict', 409);
       return context.json(
         {
           error: {
@@ -599,6 +798,7 @@ export function createApi(
       );
     }
 
+    logApiFailure(logger, context, 'unexpected', 500);
     return context.json(
       {
         error: {
