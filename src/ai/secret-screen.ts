@@ -96,7 +96,7 @@ const SECRET_PATTERNS: readonly SecretPattern[] = [
   },
   {
     label: 'github_token',
-    pattern: new RegExp(asciiTokenPattern('gh[ps]_[A-Za-z0-9_]{20,}'), 'g'),
+    pattern: new RegExp(asciiTokenPattern('gh[pousr]_[A-Za-z0-9_]{20,}'), 'g'),
   },
   {
     label: 'gitlab_pat',
