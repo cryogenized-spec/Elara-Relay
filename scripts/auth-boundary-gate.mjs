@@ -50,6 +50,8 @@ for (const marker of [
   'createChatThreadRequestSchema.parse',
   'startChatTurnRequestSchema.parse',
   'streamSSE(',
+  "context.get('requestId')",
+  "event: 'api.failure'",
 ]) {
   if (!chatApi.includes(marker)) {
     findings.push(`Chat API lost required control: ${marker}`);
@@ -111,9 +113,10 @@ for (const marker of [
 for (const marker of [
   'new SupabaseAuthVerifier',
   'readAuthRuntimeConfig(env)',
-  'app: createApi(kernel, authVerifier, { allowedOrigins })',
+  'app: createApi(kernel, authVerifier, {\n      allowedOrigins,\n      health,\n      logger,\n    })',
+  "authenticationConfiguration: 'valid'",
   'new PostgresChatStore(resources.sqlPool)',
-  'createChatApi(chatKernel, chatOrchestrator, authVerifier)',
+  'createChatApi(chatKernel, chatOrchestrator, authVerifier, logger)',
 ]) {
   if (!persistent.includes(marker)) {
     findings.push(`Persistent runtime lost auth wiring: ${marker}`);

@@ -11,6 +11,11 @@ import {
   startChatTurnRequestSchema,
 } from '../contracts/chat';
 import type { ChatKernel } from '../domain/chat-kernel';
+import {
+  logSafely,
+  noopStructuredLogger,
+  type StructuredLogger,
+} from '../observability/logger';
 import type { ApiEnv } from './app';
 import { requestJson } from './request-body';
 
@@ -44,6 +49,7 @@ export function createChatApi(
   kernel: ChatKernel,
   orchestrator: ChatTurnOrchestrator,
   verifier: AuthVerifier,
+  logger: StructuredLogger = noopStructuredLogger,
 ): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
 
@@ -127,14 +133,15 @@ export function createChatApi(
           });
         }
       } catch {
-        // The response is already established. Ending the stream without a
-        // terminal event tells the client to re-read authoritative Thread
-        // state; internal failure detail never crosses the boundary.
-        if (!stream.closed && !stream.aborted) {
-          process.stderr.write(
-            'elara-relay: chat turn stream ended without a terminal event\n',
-          );
-        }
+        // The response is already established. Record only safe,
+        // request-correlated failure metadata; the client re-reads durable
+        // Thread state and no provider/internal detail crosses the boundary.
+        logSafely(logger, {
+          event: 'api.failure',
+          requestId: context.get('requestId'),
+          category: 'unexpected',
+          status: 500,
+        });
       }
     });
   });

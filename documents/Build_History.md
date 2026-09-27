@@ -522,6 +522,7 @@ Completed:
 - durable Reminder Capture
 - durable Repair/Job Capture
 - Task edit, waiting, complete, and cancel mutations
+- public liveness/readiness and secret-safe structured observability boundary
 
 Still required before Phase 1 freeze:
 
@@ -529,7 +530,6 @@ Still required before Phase 1 freeze:
 - production API deployment
 - production web/PWA deployment
 - production secret/runtime wiring
-- richer health/observability boundary
 - backup/export
 - restore proof
 - final Phase 1 adversarial/recovery kill-test

@@ -50,9 +50,12 @@ role-level search path.
 
 ## Application authentication boundary
 
-Operational API routes require a Supabase Auth access token. The public
-`/health` endpoint remains unauthenticated; Parties, Jobs, Tasks, Today,
-Search, and identity inspection are protected.
+Operational API routes require a Supabase Auth access token. `/health`,
+`/health/live`, and `/health/ready` are unauthenticated and expose only safe
+service/build metadata and component states; liveness does not probe
+PostgreSQL, while readiness performs a constant-only `SELECT 1`. Parties, Jobs,
+Tasks, Today, Search, and identity inspection remain protected. The exact
+response and logging contract is documented in `observability-runtime.md`.
 
 The server verifies asymmetric Supabase session JWTs against the project's
 JWKS endpoint and validates issuer, audience, expiry, role, anonymous-session
@@ -92,3 +95,9 @@ therefore enables CORS only for exact origins listed in
   token.
 - A disallowed origin receives no CORS authorization; it does not expand the
   server-side identity allowlist.
+
+## Portable data recovery
+
+The provider-neutral plain-SQL export and restore-proof runbook is
+[`postgres-backup-restore.md`](postgres-backup-restore.md). It exports only
+Elara-owned application tables, not Supabase Auth or deployment secrets.
