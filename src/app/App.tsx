@@ -1710,7 +1710,7 @@ function LiveTaskDetailSurface({
     if (data !== null) titleRef.current?.focus();
   }, [data]);
 
-  const loadTask = useCallback(async () => {
+  const loadTask = useCallback(async (surfaceError = true) => {
     const requestAccessToken = runtime.auth.getAccessToken();
     try {
       const result = await runtime.api.task(taskId);
@@ -1727,7 +1727,7 @@ function LiveTaskDetailSurface({
       ) {
         return null;
       }
-      setError(readableError(caught));
+      if (surfaceError) setError(readableError(caught));
       return null;
     }
   }, [
@@ -1786,8 +1786,15 @@ function LiveTaskDetailSurface({
     }
 
     if (caught instanceof OperationsApiError && caught.status === 409) {
+      const refreshed = await loadTask(false);
+      if (refreshed === null) {
+        setMutationError(
+          'Task changed elsewhere, but current state could not be refreshed. Your unsaved changes are still open; retry when the connection recovers.',
+        );
+        return;
+      }
+
       pendingAttempt.current = null;
-      await loadTask();
       setMode('view');
       setMutationError(
         'Task changed elsewhere. Current state was refreshed; review it and try again.',
@@ -3025,43 +3032,77 @@ function LiveRepairCaptureForm({
             },
       jobTitle: normalizedItemTitle,
       reportedFault: normalizedFault,
-      serialState: normalizedSerial === '' ? ('UNKNOWN' as const) : ('KNOWN' as const),
+      serialState:
+        normalizedSerial === '' ? ('UNKNOWN' as const) : ('KNOWN' as const),
       serialValue: normalizedSerial === '' ? null : normalizedSerial,
       storageLocation: normalizedStorage === '' ? null : normalizedStorage,
     };
 
     const attempt = resolveMutationAttempt(pendingAttempt.current, input);
     pendingAttempt.current = attempt;
-    const requestAccessToken = runtime.auth.getAccessToken();
+    const command = {
+      mutationId: attempt.mutationId,
+      input,
+    };
 
     setError(null);
     setState('saving');
     onBusyChange(true);
 
+    let requestAccessToken = runtime.auth.getAccessToken();
     try {
-      await runtime.api.createRepairCase({
-        mutationId: attempt.mutationId,
-        input,
-      });
-      pendingAttempt.current = null;
-      onBusyChange(false);
-      onClose();
-      await onCommitted();
+      await runtime.api.createRepairCase(command);
     } catch (caught: unknown) {
-      onBusyChange(false);
-      if (
-        onAuthorizationFailure(
-          caught,
-          requestAccessToken,
-          authorizationSessionId,
-        )
-      ) {
-        setState('idle');
+      const classification = classifyAuthorizationFailure(
+        caught,
+        requestAccessToken,
+        runtime.auth.getAccessToken(),
+        authorizationSessionId,
+        runtime.auth.getSessionId(),
+      );
+
+      if (classification === 'RETRY_CURRENT_SESSION') {
+        requestAccessToken = runtime.auth.getAccessToken();
+        try {
+          await runtime.api.createRepairCase(command);
+        } catch (retryCaught: unknown) {
+          onBusyChange(false);
+          if (
+            onAuthorizationFailure(
+              retryCaught,
+              requestAccessToken,
+              authorizationSessionId,
+            )
+          ) {
+            setState('idle');
+            return;
+          }
+          setError(readableError(retryCaught));
+          setState('error');
+          return;
+        }
+      } else {
+        onBusyChange(false);
+        if (
+          onAuthorizationFailure(
+            caught,
+            requestAccessToken,
+            authorizationSessionId,
+          )
+        ) {
+          setState('idle');
+          return;
+        }
+        setError(readableError(caught));
+        setState('error');
         return;
       }
-      setError(readableError(caught));
-      setState('error');
     }
+
+    pendingAttempt.current = null;
+    onBusyChange(false);
+    onClose();
+    await onCommitted();
   };
 
   return (
