@@ -236,14 +236,25 @@ export class ChatTurnOrchestrator {
       throw new ChatModelUnavailableError();
     }
 
-    const hits = await this.recall(command.ownerId, command.message);
-    const prompt = await this.assemblePrompt(
-      command.ownerId,
-      command.threadId,
-      hits,
-    );
+    try {
+      const hits = await this.recall(command.ownerId, command.message);
+      const prompt = await this.assemblePrompt(
+        command.ownerId,
+        command.threadId,
+        hits,
+      );
 
-    return { ...record, provider, prompt, memoryHitCount: hits.length };
+      return { ...record, provider, prompt, memoryHitCount: hits.length };
+    } catch (error) {
+      // The durable claim already exists. A post-claim prompt/history failure
+      // must never strand its assistant Message in PENDING.
+      await this.kernel.failGeneration({
+        ownerId: command.ownerId,
+        messageId: record.assistantMessage.id,
+        failureCode: 'PROVIDER_FAILED',
+      });
+      throw error;
+    }
   }
 
   /**
@@ -294,7 +305,13 @@ export class ChatTurnOrchestrator {
     const forwardAbort = (): void => {
       controller.abort();
     };
-    signal.addEventListener('abort', forwardAbort, { once: true });
+    if (signal.aborted) {
+      // AbortSignal listeners are not retroactive. A disconnect can happen
+      // while message.started is being written, before this code resumes.
+      controller.abort();
+    } else {
+      signal.addEventListener('abort', forwardAbort, { once: true });
+    }
 
     let content = '';
     let usage: ChatUsage | undefined;
