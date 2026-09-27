@@ -69,6 +69,25 @@ Visual baselines were generated with that alternate build. Review any difference
 on the official pinned CI browser; do not automatically accept replacement
 baselines. The existing production bundle size warning also remains.
 
+## GitHub certification follow-up
+
+[Certification run 36319117484](https://github.com/cryogenized-spec/Elara-Relay/actions/runs/36319117484)
+for implementation head `26b51cfef4ee452de4bcd15ba47ff35f91092bd0`
+passed all steps through PostgreSQL, production build and pinned Chromium
+installation, then **failed the Playwright step**. This is an unresolved
+certification failure, not a successful pinned-browser run.
+
+Both `gh run view --log-failed` and `gh run download --name playwright-report`
+were attempted. The sandbox received EOF from GitHub's results-receiver and
+Azure artifact-storage endpoints. The public job page exposes only exit code 1,
+not the failed assertions. The exact cause is therefore unconfirmed; do not
+assume it is merely the alternate-browser baseline.
+
+[PR #35](https://github.com/cryogenized-spec/Elara-Relay/pull/35) remains draft.
+Next step: obtain that run's `playwright-report` artifact/logs, diagnose the
+failed assertions, review any visual differences, then rerun the unchanged
+pinned-browser certification. No snapshot threshold or gate was relaxed.
+
 ## Visual evidence
 
 Before (read-only Repair detail at base main):
