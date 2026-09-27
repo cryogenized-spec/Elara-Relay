@@ -40,23 +40,38 @@ describe('memory runtime config', () => {
       ELARA_HINDSIGHT_API_KEY: 'hsk_test_key_123',
     } as const;
 
-    it('requires ELARA_HINDSIGHT_API_KEY', () => {
-      expect(() =>
+    it('allows an unauthenticated loopback Hindsight instance', () => {
+      expect(
         readMemoryRuntimeConfig({
           ELARA_MEMORY_PROVIDER: 'hindsight',
           ELARA_HINDSIGHT_URL: 'http://localhost:8888',
         }),
-      ).toThrow('ELARA_HINDSIGHT_API_KEY is required');
+      ).toMatchObject({
+        provider: 'hindsight',
+        url: 'http://localhost:8888',
+        apiKey: '',
+      });
     });
 
-    it('rejects empty API key', () => {
+    it('requires an API key for non-loopback Hindsight', () => {
+      expect(() =>
+        readMemoryRuntimeConfig({
+          ELARA_MEMORY_PROVIDER: 'hindsight',
+          ELARA_HINDSIGHT_URL: 'https://api.hindsight.vectorize.io',
+        }),
+      ).toThrow(
+        'ELARA_HINDSIGHT_API_KEY is required for non-loopback Hindsight',
+      );
+    });
+
+    it('rejects API keys containing newlines', () => {
       expect(() =>
         readMemoryRuntimeConfig({
           ELARA_MEMORY_PROVIDER: 'hindsight',
           ELARA_HINDSIGHT_URL: 'http://localhost:8888',
-          ELARA_HINDSIGHT_API_KEY: '   ',
+          ELARA_HINDSIGHT_API_KEY: 'first\nsecond',
         }),
-      ).toThrow('ELARA_HINDSIGHT_API_KEY is required');
+      ).toThrow('ELARA_HINDSIGHT_API_KEY must not contain newlines');
     });
 
     it('requires ELARA_HINDSIGHT_URL when provider is hindsight', () => {
