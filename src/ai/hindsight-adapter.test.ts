@@ -165,6 +165,24 @@ describe('Hindsight HTTP adapter', () => {
     const timed = new HindsightMemoryProvider({ url: 'http://localhost:8888', apiKey: 'key', requestTimeoutMs: 15, fetchFn: stalled });
     await expect(timed.recall(recall)).rejects.toMatchObject({ code: 'timeout' });
   });
+  it('does not call a configured provider unavailable for a local secret block', async () => {
+    const reports: string[] = [];
+    const optional = new OptionalMemoryProvider(provider(), (_operation, code) => {
+      reports.push(code);
+    });
+    const secretWrite: MemoryWrite = {
+      ...write,
+      content:
+        'sk-' +
+        'proj-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+    };
+
+    await expect(optional.retain(secretWrite)).resolves.toBeUndefined();
+    expect(optional.healthStatus).toBe('configured');
+    expect(reports).toEqual(['secret-blocked']);
+    expect(calls).toEqual([]);
+  });
+
   it('degrades provider failure, reports only safe codes and leaves operations isolated', async () => {
     const report = vi.fn();
     const optional = new OptionalMemoryProvider(provider(), report);
@@ -173,6 +191,15 @@ describe('Hindsight HTTP adapter', () => {
     expect(await optional.recall(recall)).toEqual({ hits: [], truncated: false });
     expect(report).toHaveBeenCalledWith('retain', 'http');
     expect(report).toHaveBeenCalledWith('recall', 'http');
+    expect(optional.healthStatus).toBe('unavailable');
     expect(JSON.stringify(report.mock.calls)).not.toContain('private memory');
+
+    status = 200;
+    response = { results: [] };
+    await expect(optional.recall(recall)).resolves.toEqual({
+      hits: [],
+      truncated: false,
+    });
+    expect(optional.healthStatus).toBe('configured');
   });
 });

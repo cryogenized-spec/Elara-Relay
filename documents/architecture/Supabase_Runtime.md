@@ -51,8 +51,12 @@ role-level search path.
 
 ## Application authentication boundary
 
-Operational API routes require a Supabase Auth access token. The public
-`/health` endpoint remains unauthenticated; operational domain routes are protected.
+Operational API routes require a Supabase Auth access token. `/health`,
+`/health/live`, and `/health/ready` remain unauthenticated and report only safe
+liveness/readiness, build metadata, and component states. Liveness does not
+probe PostgreSQL; readiness performs a constant-only `SELECT 1`. Operational
+domain routes are protected. See `docs/observability-runtime.md` for the exact
+contract.
 
 The server verifies asymmetric Supabase session JWTs against the project's
 JWKS endpoint and validates issuer, audience, expiry, role, anonymous-session

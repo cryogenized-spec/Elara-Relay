@@ -246,13 +246,15 @@ Current application state:
   final-test recording, Ready/Collected and cancellation through existing intents
 - Repair conflicts refresh without discarding drafts; unchanged network retries
   reuse mutation IDs, and successful writes refresh detail, history and lists
+- public liveness/readiness reports safe component and build metadata
+- provider-neutral structured logs correlate failures without recording secrets
+- optional-provider degradation does not block manual API readiness
 
 Remaining Phase 1 product work:
 
 - production API deployment
 - production web/PWA deployment
 - secret/runtime configuration
-- richer health/observability boundary
 - backup/export
 - restore proof
 - final Phase 1 adversarial / recovery kill-test
