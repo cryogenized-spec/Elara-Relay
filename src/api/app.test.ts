@@ -520,4 +520,40 @@ describe('API foundation', () => {
     });
     expect(conflict.status).toBe(409);
   });
+
+  it('maps malformed timestamps to 400 instead of an internal failure', async () => {
+    const app = makeApi();
+
+    for (const path of [
+      '/dashboard?asOf=',
+      '/dashboard?asOf=garbage',
+      '/today?asOf=yesterday',
+      '/schedule?asOf=2026-13-45',
+    ]) {
+      const response = await app.request(path, {
+        headers: authorizationHeaders(),
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'INVALID_REQUEST' },
+      });
+    }
+
+    const badDueAt = await jsonRequest(app, '/tasks', 'POST', {
+      mutation: { mutationId: 'MUT-api-bad-timestamp-1' },
+      input: { title: 'Bad due date', dueAt: 'not-a-timestamp' },
+    });
+    expect(badDueAt.status).toBe(400);
+
+    const badRunAt = await jsonRequest(app, '/schedule', 'POST', {
+      mutation: { mutationId: 'MUT-api-bad-timestamp-2' },
+      input: {
+        title: 'Bad run date',
+        actionType: 'REMINDER',
+        payload: { kind: 'REMINDER', message: 'hi' },
+        runAt: '',
+      },
+    });
+    expect(badRunAt.status).toBe(400);
+  });
 });
