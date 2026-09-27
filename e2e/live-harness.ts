@@ -109,6 +109,7 @@ export interface LiveHarnessOptions {
   firstWhoAmIUnauthorized?: boolean;
   malformedWork?: boolean;
   failFirstTaskCreate?: boolean;
+  failTaskConflictRefresh?: boolean;
 }
 
 function isoOffset(asOf: string, minutes: number): string {
@@ -456,6 +457,7 @@ export async function installLiveHarness(
   >();
   let repairCaseSequence = 0;
   let taskCreateAttempts = 0;
+  let taskConflictTriggered = false;
   let firstTaskIntent:
     | { mutationId: string; inputJson: string }
     | null = null;
@@ -825,6 +827,20 @@ export async function installLiveHarness(
       path === `/tasks/${IDS.taskPressure}` &&
       route.request().method() === 'PATCH'
     ) {
+      if (
+        options.failTaskConflictRefresh === true &&
+        taskConflictTriggered === false
+      ) {
+        taskConflictTriggered = true;
+        await route.fulfill(
+          json(
+            { error: { code: 'CONFLICT', message: 'Revision conflict' } },
+            409,
+          ),
+        );
+        return;
+      }
+
       const current =
         mutatedPressureTask ??
         tasks(asOf).find((task) => task.id === IDS.taskPressure)!;
@@ -1097,6 +1113,24 @@ export async function installLiveHarness(
     }
 
     if (path === `/tasks/${IDS.taskPressure}`) {
+      if (
+        options.failTaskConflictRefresh === true &&
+        taskConflictTriggered
+      ) {
+        await route.fulfill(
+          json(
+            {
+              error: {
+                code: 'TRANSIENT_TEST_FAILURE',
+                message: 'Task refresh unavailable',
+              },
+            },
+            503,
+          ),
+        );
+        return;
+      }
+
       await route.fulfill(
         json({
           task: allTasks.find((task) => task.id === IDS.taskPressure),
