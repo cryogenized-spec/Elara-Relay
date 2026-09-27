@@ -30,6 +30,7 @@ import {
   type PendingMutationAttempt,
 } from './capture-intent';
 import { OperationsApiError } from './operations-api';
+import { RepairWorkflow } from './RepairWorkflow';
 import {
   buildRepairsView,
   buildScheduleView,
@@ -2504,12 +2505,14 @@ function LiveRepairDetailSurface({
   runtime,
   repairId,
   onClose,
+  onCommitted,
   onAuthorizationFailure,
   authorizationSessionId,
 }: {
   runtime: BrowserRuntime;
   repairId: string;
   onClose: () => void;
+  onCommitted: () => Promise<void>;
   onAuthorizationFailure: AuthorizationFailureHandler;
   authorizationSessionId: string | null;
 }) {
@@ -2521,9 +2524,10 @@ function LiveRepairDetailSurface({
 
   useLiveDialog(true, dialogRef, titleRef);
 
+  const loaded = data !== null && job !== null;
   useEffect(() => {
-    if (data !== null && job !== null) titleRef.current?.focus();
-  }, [data, job]);
+    if (loaded) titleRef.current?.focus();
+  }, [loaded]);
 
   useEffect(() => {
     let active = true;
@@ -2589,7 +2593,7 @@ function LiveRepairDetailSurface({
           <Icon icon={altArrowLeftLinear} width={20} aria-hidden="true" />
           <span>Back</span>
         </button>
-        <span className="liveReadState">Read only · 1G</span>
+        <span className="liveReadState">Live · Repair</span>
       </div>
       {error !== null ? (
         <section className="systemState">
@@ -2622,6 +2626,20 @@ function LiveRepairDetailSurface({
               </p>
             )}
           </section>
+          <RepairWorkflow
+            repair={data.repair}
+            runtime={runtime}
+            authorizationSessionId={authorizationSessionId}
+            onAuthorizationFailure={onAuthorizationFailure}
+            onUpdated={(repair) => setData({ ...data, repair })}
+            onRefresh={async () => {
+              const refreshed = await runtime.api.repair(repairId);
+              setData(refreshed);
+              const refreshedJob = await runtime.api.job(refreshed.repair.jobId);
+              setJob(refreshedJob);
+              await onCommitted();
+            }}
+          />
           <section className="detailSection" aria-labelledby="live-repair-state">
             <div className="detailSection__heading">
               <h2 id="live-repair-state">Current state</h2>
@@ -2637,6 +2655,28 @@ function LiveRepairDetailSurface({
               <div><dt>Follow-up</dt><dd>{formatTimestamp(data.repair.followUpAt)}</dd></div>
               <div><dt>Revision</dt><dd className="detailValue--mono">{data.repair.revision}</dd></div>
             </dl>
+          </section>
+          <section className="detailSection detailTimeline" aria-labelledby="live-repair-timeline">
+            <div className="detailSection__heading">
+              <h2 id="live-repair-timeline">Repair timeline</h2>
+            </div>
+            <ol>
+              {job.events
+                .filter((event) => event.entityId === data.repair.id)
+                .slice()
+                .reverse()
+                .map((event) => (
+                  <li key={event.id}>
+                    <span className="detailTimeline__time">
+                      {formatTimestamp(event.occurredAt)}
+                    </span>
+                    <div>
+                      <strong>{titleCase(event.eventType)}</strong>
+                      <p>{event.detail ?? event.entityType}</p>
+                    </div>
+                  </li>
+                ))}
+            </ol>
           </section>
         </>
       )}
@@ -3601,19 +3641,27 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
     setDetail(null);
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (preserveSurface = false) => {
     const sequence = ++loadSequence.current;
-    setPhase('authorizing');
+    if (!preserveSurface) setPhase('authorizing');
     setLoadError(null);
 
     const attempt = async (allowRefresh: boolean): Promise<void> => {
       try {
         const verifiedIdentity = await runtime.api.whoAmI();
         if (sequence !== loadSequence.current) return;
+        if (
+          preserveSurface &&
+          (verifiedIdentity.userId !== authorizedUserIdRef.current ||
+            verifiedIdentity.sessionId !== authorizedSessionIdRef.current)
+        ) {
+          clearOperationalState();
+          preserveSurface = false;
+        }
         authorizedUserIdRef.current = verifiedIdentity.userId;
         authorizedSessionIdRef.current = verifiedIdentity.sessionId;
         setIdentity(verifiedIdentity);
-        setPhase('loading');
+        if (!preserveSurface) setPhase('loading');
 
         const asOf = new Date().toISOString();
         const dashboard = await runtime.api.dashboard(asOf);
@@ -3641,6 +3689,14 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
           }
         }
 
+        if (
+          preserveSurface &&
+          !(caught instanceof OperationsApiError &&
+            (caught.status === 401 || caught.status === 403))
+        ) {
+          // A recoverable refresh failure must not unmount an open Repair draft.
+          throw caught;
+        }
         clearOperationalState();
 
         if (caught instanceof OperationsApiError && caught.status === 403) {
@@ -3962,6 +4018,7 @@ function LiveApp({ runtime }: { runtime: BrowserRuntime }) {
         <LiveRepairDetailSurface
           runtime={runtime}
           repairId={detail.id}
+          onCommitted={() => load(true)}
           onClose={() => setDetail(null)}
           onAuthorizationFailure={handleAuthorizationFailure}
           authorizationSessionId={identity?.sessionId ?? null}

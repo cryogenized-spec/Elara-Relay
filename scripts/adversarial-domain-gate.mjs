@@ -127,7 +127,7 @@ mutate(
 );
 
 mutate(
-  'src/domain/kernel.ts',
+  'src/domain/repair-policy.ts',
   'COLLECTED: [],',
   "COLLECTED: ['REPAIRING'],",
   () => runVitest('src/domain/repair-kernel.test.ts'),

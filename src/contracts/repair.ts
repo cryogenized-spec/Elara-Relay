@@ -25,6 +25,12 @@ export const repairSerialStateSchema = z.enum([
 
 export const repairTestResultSchema = z.enum(['PASS', 'FAIL']);
 
+export function isWaitingRepairStage(
+  stage: z.infer<typeof repairStageSchema>,
+): boolean {
+  return stage === 'AWAITING_PARTS' || stage === 'AWAITING_CUSTOMER';
+}
+
 const nullableText = (max: number) =>
   z.string().trim().min(1).max(max).nullable();
 
@@ -67,9 +73,7 @@ export const repairSchema = repairObjectSchema.superRefine((repair, context) => 
       });
     }
 
-    const waiting =
-      repair.stage === 'AWAITING_PARTS' ||
-      repair.stage === 'AWAITING_CUSTOMER';
+    const waiting = isWaitingRepairStage(repair.stage);
     if (
       (waiting &&
         (repair.waitingOn === null || repair.followUpAt === null)) ||
@@ -186,9 +190,7 @@ export const moveRepairStageInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
-    const waiting =
-      input.stage === 'AWAITING_PARTS' ||
-      input.stage === 'AWAITING_CUSTOMER';
+    const waiting = isWaitingRepairStage(input.stage);
 
     if (waiting) {
       if (input.waitingOn === undefined || input.waitingOn === null) {

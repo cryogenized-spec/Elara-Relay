@@ -242,10 +242,13 @@ Current application state:
 - Task edit / waiting / complete / cancel mutations are live
 - browser writes use replay-safe mutation IDs and strict response validation
 - stale Task conflicts refresh before an edit is discarded
+- Repair detail supports stage progression, waiting metadata, diagnosis/findings,
+  final-test recording, Ready/Collected and cancellation through existing intents
+- Repair conflicts refresh without discarding drafts; unchanged network retries
+  reuse mutation IDs, and successful writes refresh detail, history and lists
 
 Remaining Phase 1 product work:
 
-- Repair progression and final-test UI
 - production API deployment
 - production web/PWA deployment
 - secret/runtime configuration
