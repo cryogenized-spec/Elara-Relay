@@ -54,6 +54,7 @@ export function createNodePostgresResources(
     max: config.poolMax,
     idleTimeoutMillis: config.idleTimeoutMs,
     connectionTimeoutMillis: config.connectionTimeoutMs,
+    statement_timeout: config.statementTimeoutMs,
     application_name: 'elara-relay',
   });
 

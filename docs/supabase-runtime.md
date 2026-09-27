@@ -20,6 +20,7 @@ PostgreSQL service, or another compatible PostgreSQL host.
 - `ELARA_DB_POOL_MAX`: maximum pool size, default 5, maximum 20.
 - `ELARA_DB_IDLE_TIMEOUT_MS`: idle connection timeout, default 30000.
 - `ELARA_DB_CONNECTION_TIMEOUT_MS`: connect timeout, default 10000.
+- `ELARA_DB_STATEMENT_TIMEOUT_MS`: per-statement timeout, default 10000, maximum 60000.
 
 The checked-in `.env.example` contains local placeholders only. Never commit
 a production database password or Supabase service-role credential.

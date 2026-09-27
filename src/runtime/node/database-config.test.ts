@@ -43,4 +43,37 @@ describe('database runtime config', () => {
       }),
     ).toThrow('may not exceed 20');
   });
+
+  it('bounds every statement so a wedged query cannot pin the pool', () => {
+    const defaults = readDatabaseRuntimeConfig({
+      DATABASE_URL:
+        'postgresql://postgres:postgres@localhost:5432/elara',
+    });
+    expect(defaults.statementTimeoutMs).toBe(10_000);
+
+    const custom = readDatabaseRuntimeConfig({
+      DATABASE_URL:
+        'postgresql://postgres:postgres@localhost:5432/elara',
+      ELARA_DB_STATEMENT_TIMEOUT_MS: '5000',
+    });
+    expect(custom.statementTimeoutMs).toBe(5000);
+
+    for (const raw of ['0', '-1', '1.5', 'unbounded']) {
+      expect(() =>
+        readDatabaseRuntimeConfig({
+          DATABASE_URL:
+            'postgresql://postgres:postgres@localhost:5432/elara',
+          ELARA_DB_STATEMENT_TIMEOUT_MS: raw,
+        }),
+      ).toThrow('must be a positive integer');
+    }
+
+    expect(() =>
+      readDatabaseRuntimeConfig({
+        DATABASE_URL:
+          'postgresql://postgres:postgres@localhost:5432/elara',
+        ELARA_DB_STATEMENT_TIMEOUT_MS: '60001',
+      }),
+    ).toThrow('may not exceed 60000');
+  });
 });
