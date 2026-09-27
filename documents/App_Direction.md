@@ -242,18 +242,18 @@ Current application state:
 - Task edit / waiting / complete / cancel mutations are live
 - browser writes use replay-safe mutation IDs and strict response validation
 - stale Task conflicts refresh before an edit is discarded
+- public liveness/readiness reports safe component and build metadata
+- provider-neutral structured logs correlate failures without recording secrets
+- optional-provider degradation does not block manual API readiness
 
 Remaining Phase 1 product work:
 
 - Repair progression and final-test UI
-- production API hosting: the Node API plane is deployment-ready and
-  certified in-repository, and a host has deliberately not been chosen as an
-  architectural dependency
+- production API deployment
 - production web/PWA deployment
-- provisioning production secrets in the chosen platform's secret store
-- richer observability beyond the health/readiness boundary
-- backup/export
-- restore proof
+- secret/runtime configuration
+- backup/export deployment operation (workflow implemented; operational rollout pending)
+- restore proof on production-equivalent infrastructure (disposable CI proof implemented)
 - final Phase 1 adversarial / recovery kill-test
 
 ## 8. UI direction
@@ -304,10 +304,22 @@ Pass 1I has started the AI Chat and memory boundaries:
 - owner-scoped PostgreSQL Chat Threads and Messages in migration `0006`
 - assistant generation state and provider/model provenance constraints
 - RLS and browser-role table privileges revoked for Chat records
+- PostgreSQL Chat repository with owner-scoped reads, one-turn identity, and
+  append-only completed Messages
+- durable turn lifecycle: one accepted turn advances one Thread revision
+- authenticated Chat API with Thread list/read, durable turn creation, and
+  server-sent event streaming, cancellation, and durable finalization
+- server-side turn orchestration with optional memory recall as labelled
+  context and secret-safe provider failure codes
+- server-side concrete adapters for the `openai` and `muse` provider
+  boundaries, with server-only configuration, cancellation, bounded timeouts,
+  bounded SSE framing, explicit provider termination handling, and sanitized
+  provider faults
 
-The authenticated Chat API, PostgreSQL Chat repository, concrete provider
-adapters, and Chat UI are the next implementation work. Operational features
-continue to work without any provider configured.
+The Chat UI is the next implementation work. Provider adapters are optional and
+enabled only by server-side configuration; with no provider configured, catalog
+models report unavailable and Chat fails closed while operational features
+continue to work normally.
 
 ## 10. Provider model
 
@@ -334,33 +346,15 @@ No provider should own Elara's durable business model.
 
 ## 11. Deployment direction
 
-Elara deploys as two separate planes.
+The server API should run on a proper Node 24 runtime compatible with the
+existing Hono/PostgreSQL architecture.
 
-The privileged Operations API is a single Node 24 ESM artifact built from
-`src/runtime/node/main.ts` (`npm run build:server` →
-`dist-server/server.mjs`, run with `npm start`). It binds an HTTP socket,
-reads PostgreSQL through `pg`, and verifies Supabase Auth tokens over HTTPS.
-
-No proprietary hosting provider is an architectural dependency. Any Node 24
-runtime that can inject environment variables, route TCP to a port, and send
-`SIGTERM` can host the API.
-
-The web/PWA is deployed separately as static assets and receives only public
-build-time values.
-
-Startup fails closed: the whole configuration contract is validated before a
-socket or a pool is opened, an unreachable database is a startup failure, and
-a rejected startup names variables without echoing their values. Readiness
-(`GET /ready`) is the traffic gate and flips to unavailable before connections
-drain on termination. Startup never migrates schema.
+The web/PWA may be deployed separately as static assets.
 
 Production secrets live only in the deployment platform's secret store.
 
 Supabase remains infrastructure for PostgreSQL/Auth rather than the browser's
 direct operational data layer.
-
-The runtime configuration contract is documented in
-[`docs/production-deployment.md`](../docs/production-deployment.md).
 
 ## 12. Reliability direction
 
@@ -377,6 +371,17 @@ Before Phase 1 is frozen:
 - scheduler duplicate delivery protections must survive adversarial testing
 - expired/malformed authentication must fail
 - browser bundles must contain no server secrets
+
+### Portable recovery decision
+
+Elara's PostgreSQL backup is a versioned plain-SQL application-data export
+with reviewed migrations, snapshot-bound manifest, and disposable-database
+restore proof. Supabase Auth/deployment secrets are outside that export.
+Restoration preserves Events and scheduler ledgers verbatim; delivery workers
+remain off until claims and overdue occurrences are reconciled. See
+`docs/postgres-backup-restore.md`. This closes the implementation gap for
+backup/export and restore proof, not the remaining deployment or kill-test
+work.
 
 ## 13. Product constraint
 

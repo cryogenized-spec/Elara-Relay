@@ -54,9 +54,20 @@ async function jsonRequest(
 
 beforeAll(async () => {
   resources = createNodePostgresResourcesFromEnv(process.env);
-  await resources.rawPool.query(
-    'create role anon nologin; create role authenticated nologin;',
-  );
+  // Roles are cluster-wide, so another integration suite may already have
+  // created them.
+  await resources.rawPool.query(`
+    do $$
+    begin
+      if not exists (select 1 from pg_roles where rolname = 'anon') then
+        create role anon nologin;
+      end if;
+      if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+        create role authenticated nologin;
+      end if;
+    end
+    $$;
+  `);
 
   const migrationFiles = [
     'src/db/migrations/0001_domain_kernel.sql',

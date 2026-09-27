@@ -4,11 +4,13 @@ import type {
   SqlPool,
   SqlQueryResult,
 } from '../../db/postgres/postgres-store';
+import type { StructuredLogger } from '../../observability/logger';
+import { logSafely } from '../../observability/logger';
+import { stderrStructuredLogger } from './structured-logger';
 import {
   readDatabaseRuntimeConfig,
   type DatabaseRuntimeConfig,
 } from './database-config';
-import { describeFailure } from './diagnostics';
 
 class NodePgClientAdapter implements SqlClient {
   public constructor(private readonly client: PoolClient) {}
@@ -49,6 +51,7 @@ export interface NodePostgresResources {
 
 export function createNodePostgresResources(
   config: DatabaseRuntimeConfig,
+  logger: StructuredLogger = stderrStructuredLogger,
 ): NodePostgresResources {
   const rawPool = new Pool({
     connectionString: config.databaseUrl,
@@ -61,12 +64,13 @@ export function createNodePostgresResources(
 
   // Without an error listener, one failed idle client (server restart,
   // network blip) raises an unhandled 'error' event and crashes the whole
-  // process. The pool already discards the broken client; the listener only
-  // keeps observability without taking the server down with it.
-  rawPool.on('error', (error: Error) => {
-    process.stderr.write(
-      `elara-relay: idle postgres client failed: ${describeFailure(error)}\n`,
-    );
+  // process. The pool discards the broken client; avoid logging raw pg errors,
+  // which may contain host or URL details.
+  rawPool.on('error', () => {
+    logSafely(logger, {
+      event: 'postgres.pool_error',
+      category: 'idle_client_error',
+    });
   });
 
   return {
@@ -80,6 +84,10 @@ export function createNodePostgresResources(
 
 export function createNodePostgresResourcesFromEnv(
   env: NodeJS.ProcessEnv,
+  logger: StructuredLogger = stderrStructuredLogger,
 ): NodePostgresResources {
-  return createNodePostgresResources(readDatabaseRuntimeConfig(env));
+  return createNodePostgresResources(
+    readDatabaseRuntimeConfig(env),
+    logger,
+  );
 }

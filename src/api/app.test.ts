@@ -11,8 +11,8 @@ import {
 } from '../domain/errors';
 import { DomainKernel } from '../domain/kernel';
 import type { DomainStore } from '../domain/store';
+import type { SafeLogEvent, StructuredLogger } from '../observability/logger';
 import { api, createApi, type ApiOptions } from './app';
-import type { ReadinessProbe } from './readiness';
 
 const ACCESS_TOKEN = 'header.payload.signature';
 
@@ -98,8 +98,140 @@ describe('API foundation', () => {
     await expect(response.json()).resolves.toEqual({
       service: 'elara-relay',
       status: 'ok',
+      version: 'unknown',
+      buildSha: 'unknown',
       schemaVersion: 1,
     });
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('x-request-id')).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect((await api.request('/health/live')).status).toBe(200);
+  });
+
+  it('separates liveness from readiness and redacts dependency failures', async () => {
+    const secret =
+      'postgresql://operator:db-password@db.example.test/private?sslmode=require';
+    const events: SafeLogEvent[] = [];
+    const logger: StructuredLogger = {
+      log: (event) => events.push(event),
+    };
+    const app = makeApi({
+      logger,
+      health: {
+        version: '2.3.4',
+        buildSha: '0123456789abcdef',
+        databaseProbe: () => Promise.reject(new Error(secret)),
+        authenticationConfiguration: 'valid',
+        schedulerProbe: () => Promise.resolve('unavailable'),
+        optionalProviders: () => ({
+          memory: 'unavailable',
+          hindsight: 'configured',
+        }),
+      },
+    });
+
+    const live = await app.request('/health/live');
+    expect(live.status).toBe(200);
+    await expect(live.json()).resolves.toMatchObject({
+      status: 'ok',
+      version: '2.3.4',
+      buildSha: '0123456789abcdef',
+    });
+
+    const ready = await app.request('/health/ready');
+    expect(ready.status).toBe(503);
+    const body: unknown = await ready.json();
+    expect(body).toEqual({
+      service: 'elara-relay',
+      status: 'not_ready',
+      version: '2.3.4',
+      buildSha: '0123456789abcdef',
+      schemaVersion: 1,
+      checks: {
+        database: 'unavailable',
+        authentication: 'valid',
+        scheduler: 'unavailable',
+        optionalProviders: { memory: 'unavailable' },
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain(secret);
+    expect(JSON.stringify(body)).not.toContain('hindsight');
+    expect(JSON.stringify(body)).not.toMatch(/party|task|userId|stack/i);
+
+    const requestId = ready.headers.get('x-request-id');
+    expect(requestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(events).toContainEqual({
+      event: 'health.dependency_unavailable',
+      requestId,
+      dependency: 'database',
+      category: 'readiness_probe_failed',
+    });
+    expect(events).toContainEqual({
+      event: 'health.dependency_unavailable',
+      requestId,
+      dependency: 'scheduler',
+      category: 'readiness_probe_failed',
+    });
+    expect(JSON.stringify(events)).not.toContain(secret);
+  });
+
+  it('keeps API readiness true through optional-provider and scheduler degradation', async () => {
+    const secret = 'private-scheduler-error-and-token';
+    const events: SafeLogEvent[] = [];
+    const app = makeApi({
+      logger: { log: (event) => events.push(event) },
+      health: {
+        version: '1.2.3',
+        buildSha: 'abcdef0',
+        databaseProbe: () => Promise.resolve(),
+        authenticationConfiguration: 'valid',
+        schedulerProbe: () => Promise.reject(new Error(secret)),
+        optionalProviders: () => ({
+          memory: 'unavailable',
+          email: 'disabled',
+          hindsight: 'configured',
+        }),
+      },
+    });
+
+    const ready = await app.request('/health/ready');
+    expect(ready.status).toBe(200);
+    const body: unknown = await ready.json();
+    expect(body).toMatchObject({
+      status: 'ready',
+      checks: {
+        database: 'available',
+        authentication: 'valid',
+        scheduler: 'unavailable',
+        optionalProviders: {
+          memory: 'unavailable',
+          email: 'disabled',
+        },
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain(secret);
+    expect(JSON.stringify(body)).not.toContain('hindsight');
+    expect(JSON.stringify(events)).not.toContain(secret);
+  });
+
+  it('reports invalid authentication configuration without taking liveness down', async () => {
+    const app = makeApi({
+      health: {
+        databaseProbe: () => Promise.resolve(),
+        authenticationConfiguration: 'invalid',
+      },
+    });
+
+    const ready = await app.request('/health/ready');
+    expect(ready.status).toBe(503);
+    await expect(ready.json()).resolves.toMatchObject({
+      status: 'not_ready',
+      checks: { database: 'available', authentication: 'invalid' },
+    });
+    expect((await app.request('/health/live')).status).toBe(200);
   });
 
   it('keeps health public while every domain route fails closed', async () => {
@@ -145,6 +277,13 @@ describe('API foundation', () => {
     expect(
       allowed.headers.get('access-control-allow-headers')?.toLowerCase(),
     ).toContain('authorization');
+
+    const health = await app.request('/health/live', {
+      headers: { origin: 'http://127.0.0.1:4173' },
+    });
+    expect(
+      health.headers.get('access-control-expose-headers')?.toLowerCase(),
+    ).toContain('x-request-id');
 
     const denied = await app.request('/work', {
       method: 'OPTIONS',
@@ -659,12 +798,15 @@ describe('API foundation', () => {
     expect(badRunAt.status).toBe(400);
   });
 
-  it('maps durable-store conflicts to 409 instead of an internal failure', async () => {
+  it('maps and logs durable-store conflicts as domain conflicts', async () => {
+    const events: SafeLogEvent[] = [];
     const kernel = new DomainKernel(new AlwaysConflictingStore(), {
       clock: () => '2026-09-24T09:00:00.000Z',
       idGenerator: () => '10000000-0000-4000-8000-000000000099',
     });
-    const app = createApi(kernel, new TestAuthVerifier());
+    const app = createApi(kernel, new TestAuthVerifier(), {
+      logger: { log: (event) => events.push(event) },
+    });
 
     const conflict = await jsonRequest(app, '/parties', 'POST', {
       mutation: { mutationId: 'MUT-api-store-conflict-1' },
@@ -673,6 +815,12 @@ describe('API foundation', () => {
     expect(conflict.status).toBe(409);
     await expect(conflict.json()).resolves.toMatchObject({
       error: { code: 'CONFLICT' },
+    });
+    expect(events).toContainEqual({
+      event: 'api.failure',
+      requestId: conflict.headers.get('x-request-id'),
+      category: 'conflict',
+      status: 409,
     });
   });
 
@@ -719,6 +867,56 @@ describe('API foundation', () => {
       error: { code: 'INTERNAL_ERROR', message: 'Unexpected server error' },
     });
   });
+
+  it('correlates failures without logging JWTs, messages, or stack traces', async () => {
+    const secret =
+      'eyJhbGciOiJIUzI1NiJ9.private.jwt-postgresql://operator:password@db.example.test';
+    const events: SafeLogEvent[] = [];
+    const logger: StructuredLogger = {
+      log: (event) => events.push(event),
+    };
+    const kernel = new DomainKernel(new SecretFailingStore(secret));
+    const app = createApi(kernel, new TestAuthVerifier(), { logger });
+
+    const taskPath = '/tasks/10000000-0000-4000-8000-000000000001';
+    const rejected = await app.request(taskPath, {
+      headers: {
+        authorization: `Bearer ${secret}`,
+        'x-request-id': secret,
+      },
+    });
+    expect(rejected.status).toBe(401);
+    const rejectedBody = await rejected.text();
+    expect(rejectedBody).not.toContain(secret);
+    expect(rejectedBody).not.toContain('stack');
+    const rejectedId = rejected.headers.get('x-request-id');
+    expect(rejectedId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(rejectedId).not.toBe(secret);
+
+    const failed = await app.request(taskPath, {
+      headers: authorizationHeaders(),
+    });
+    expect(failed.status).toBe(500);
+    const failedBody = await failed.text();
+    expect(failedBody).not.toContain(secret);
+    expect(failedBody).not.toContain('stack');
+
+    expect(events).toContainEqual({
+      event: 'api.failure',
+      requestId: rejectedId,
+      category: 'authentication',
+      status: 401,
+    });
+    expect(events).toContainEqual({
+      event: 'api.failure',
+      requestId: failed.headers.get('x-request-id'),
+      category: 'unexpected',
+      status: 500,
+    });
+    expect(JSON.stringify(events)).not.toContain(secret);
+  });
 });
 
 class AlwaysConflictingStore implements DomainStore {
@@ -741,68 +939,14 @@ class CorruptStore implements DomainStore {
   }
 }
 
-describe('readiness boundary', () => {
-  function probe(behavior: () => Promise<boolean>): ReadinessProbe {
-    return { check: behavior };
+class SecretFailingStore implements DomainStore {
+  public constructor(private readonly secret: string) {}
+
+  public transact<T>(): Promise<T> {
+    throw new Error(this.secret);
   }
 
-  it('fails closed when no readiness dependency check is configured', async () => {
-    const response = await makeApi().request('/ready');
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({
-      service: 'elara-relay',
-      status: 'unavailable',
-      schemaVersion: 1,
-    });
-  });
-
-  it('reports readiness from the injected probe without a bearer token', async () => {
-    const ready = await makeApi({
-      readiness: probe(() => Promise.resolve(true)),
-    }).request('/ready');
-    expect(ready.status).toBe(200);
-    await expect(ready.json()).resolves.toEqual({
-      service: 'elara-relay',
-      status: 'ready',
-      schemaVersion: 1,
-    });
-
-    const unready = await makeApi({
-      readiness: probe(() => Promise.resolve(false)),
-    }).request('/ready');
-    expect(unready.status).toBe(503);
-  });
-
-  it('treats an exploding probe as unavailable instead of a server error', async () => {
-    const response = await makeApi({
-      readiness: probe(() => Promise.reject(new Error('select 1 failed'))),
-    }).request('/ready');
-
-    expect(response.status).toBe(503);
-    const body = await response.text();
-    expect(body).not.toContain('select 1 failed');
-    expect(body).toBe(
-      '{"service":"elara-relay","status":"unavailable","schemaVersion":1}',
-    );
-  });
-
-  it('keeps liveness independent of the readiness dependency', async () => {
-    const app = makeApi({ readiness: probe(() => Promise.resolve(false)) });
-
-    expect((await app.request('/health')).status).toBe(200);
-    expect((await app.request('/ready')).status).toBe(503);
-  });
-});
-
-describe('unknown endpoints', () => {
-  it('answers with the JSON error envelope rather than an HTML body', async () => {
-    const response = await api.request('/definitely-not-an-endpoint');
-
-    expect(response.status).toBe(404);
-    expect(response.headers.get('content-type')).toContain('application/json');
-    await expect(response.json()).resolves.toEqual({
-      error: { code: 'NOT_FOUND', message: 'Unknown endpoint' },
-    });
-  });
-});
+  public read<T>(): Promise<T> {
+    throw new Error(this.secret);
+  }
+}

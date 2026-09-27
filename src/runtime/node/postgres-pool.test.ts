@@ -37,13 +37,13 @@ describe('node postgres pool', () => {
       return true;
     };
     try {
+      const secret =
+        'postgresql://operator:private-password@db.example.test/private';
       expect(() =>
-        resources.rawPool.emit(
-          'error',
-          new Error('Connection terminated unexpectedly'),
-        ),
+        resources.rawPool.emit('error', new Error(secret)),
       ).not.toThrow();
-      expect(writes.join('')).toContain('idle postgres client failed');
+      expect(writes.join('')).toContain('"event":"postgres.pool_error"');
+      expect(writes.join('')).not.toContain(secret);
     } finally {
       process.stderr.write = originalWrite;
       await resources.close();

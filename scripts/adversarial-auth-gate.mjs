@@ -264,6 +264,74 @@ mutate(
   'Search duplicate Event mutation-id validation bypass',
 );
 
+mutate(
+  'src/db/postgres/chat-store.ts',
+  '`${CHAT_THREAD_SELECT} where id = $1 and owner_id = $2`',
+  '`${CHAT_THREAD_SELECT} where id = $1`',
+  () => runVitest('src/db/postgres/chat-store.test.ts'),
+  'Chat Thread owner-scope removal',
+);
+
+mutate(
+  'src/db/postgres/chat-store.ts',
+  `         and status = 'PENDING'\`,
+      [
+        message.id,
+        message.ownerId,
+        message.content,`,
+  `         and status = 'ANY'\`,
+      [
+        message.id,
+        message.ownerId,
+        message.content,`,
+  () => runVitest('src/db/postgres/chat-store.test.ts'),
+  'Chat pending-only terminal transition removal',
+);
+
+mutate(
+  'src/domain/chat-kernel.ts',
+  'if (thread.revision !== input.expectedRevision) {',
+  'if (false) {',
+  () => runVitest('src/domain/chat-kernel.test.ts'),
+  'Chat Thread revision guard bypass',
+);
+
+mutate(
+  'src/domain/chat-kernel.ts',
+  `if (replayed.assistantMessage.status === 'PENDING') {
+      throw new ChatTurnConflictError('TURN_IN_PROGRESS');
+    }`,
+  '',
+  () => runVitest('src/domain/chat-kernel.test.ts'),
+  'Chat concurrent in-flight turn retry bypass',
+);
+
+mutate(
+  'src/api/chat-api.ts',
+  "const token = extractBearerToken(context.req.header('authorization'));",
+  "const token = 'header.payload.signature';",
+  () => runVitest('src/api/chat-api.test.ts'),
+  'Chat bearer token substitution',
+);
+
+mutate(
+  'src/ai/chat-turn.ts',
+  'if (failure === null && !sawCompletion) {',
+  'if (false) {',
+  () => runVitest('src/ai/chat-turn.test.ts'),
+  'incomplete generation completion bypass',
+);
+
+mutate(
+  'src/ai/chat-turn.ts',
+  `if (failure !== null) {
+      yield await this.fail(turn, failure, threadRevision);`,
+  `if (false) {
+      yield await this.fail(turn, failure ?? 'PROVIDER_FAILED', threadRevision);`,
+  () => runVitest('src/ai/chat-turn.test.ts'),
+  'provider failure finalization bypass',
+);
+
 process.stdout.write(
-  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, stale-session denial isolation, Search truthfulness, strict read-model validation, authorization body-read failures, duplicate durable identifiers, Repair one-to-one ownership, Event revision truth, Search durable-identity uniqueness, task-only scheduler relationships, and modern publishable-key controls resisted hostile mutations.\n',
+  'Adversarial auth gate passed: server and browser fail-closed routing, actor provenance, owner allowlist, anonymous-session rejection, bearer integrity, stale-session denial isolation, Search truthfulness, strict read-model validation, authorization body-read failures, duplicate durable identifiers, Repair one-to-one ownership, Event revision truth, Search durable-identity uniqueness, task-only scheduler relationships, Chat owner scoping, Chat revision and in-flight turn guards, Chat bearer handling, generation completion integrity, and modern publishable-key controls resisted hostile mutations.\n',
 );
