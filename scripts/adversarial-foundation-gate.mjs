@@ -63,7 +63,13 @@ hostileMutation(
   const path = 'package.json';
   const absolute = join(root, path);
   const original = readFileSync(absolute, 'utf8');
-  const hostile = original.replace('"hono": "4.13.8"', '"hono": "^4.13.8"');
+  const manifest = JSON.parse(original);
+  const honoVersion = manifest.dependencies?.hono;
+  if (typeof honoVersion !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(honoVersion)) {
+    throw new Error('Mutation target disappeared: exact direct dependency pin');
+  }
+  const exactPin = `"hono": "${honoVersion}"`;
+  const hostile = original.replace(exactPin, `"hono": "^${honoVersion}"`);
   if (hostile === original) {
     throw new Error('Mutation target disappeared: exact direct dependency pin');
   }
