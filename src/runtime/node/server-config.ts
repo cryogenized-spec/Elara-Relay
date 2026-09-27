@@ -1,7 +1,7 @@
 const DEFAULT_PORT = 8787;
 
 export function readServerPort(env: NodeJS.ProcessEnv): number {
-  const raw = env.PORT?.trim();
+  const raw = env['PORT']?.trim();
 
   if (raw === undefined || raw === '') {
     return DEFAULT_PORT;
