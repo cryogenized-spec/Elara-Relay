@@ -397,8 +397,17 @@ export class ChatTurnOrchestrator {
         yield step.value;
       }
     } finally {
-      const closing = iterator.return?.(undefined);
-      if (closing !== undefined) await closing.catch(() => undefined);
+      // Provider cleanup is best-effort. An adapter may ignore AbortSignal
+      // while an iterator.next() is still pending; AsyncGenerator.return()
+      // then queues behind that call. Durable turn finalization must not wait
+      // indefinitely for a non-cooperative provider to release itself.
+      try {
+        const closing = iterator.return?.(undefined);
+        if (closing !== undefined) void closing.catch(() => undefined);
+      } catch {
+        // A synchronous cleanup failure cannot override Elara's normalized
+        // timeout/cancellation result or prevent the durable FAILED transition.
+      }
     }
   }
 

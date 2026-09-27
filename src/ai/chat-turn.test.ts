@@ -352,6 +352,40 @@ describe('chat turn orchestration', () => {
     await expect(harness.orchestrator.abandon(turn)).resolves.toBeUndefined();
   });
 
+  it('finalizes a timeout even when the provider ignores abort and iterator shutdown hangs', async () => {
+    const uncooperative: ChatProvider = {
+      providerId: 'openai',
+      async *stream(): AsyncIterable<ChatStreamEvent> {
+        yield { type: 'text-delta', text: 'thinking' };
+        // Deliberately ignore the AbortSignal forever. AsyncGenerator.return()
+        // queues behind this pending continuation, so orchestration cleanup
+        // must not await provider cooperation before finalizing durable state.
+        await new Promise<void>(() => undefined);
+      },
+    };
+    const harness = makeHarness(
+      [uncooperative],
+      undefined,
+      { turnTimeoutMs: 10 },
+    );
+
+    const turn = await startTurn(harness);
+    const events = await collect(
+      harness.orchestrator.generate(turn, new AbortController().signal),
+    );
+
+    expect(events.at(-1)).toMatchObject({
+      type: 'message.failed',
+      code: 'PROVIDER_TIMEOUT',
+    });
+    const stored = await harness.kernel.listMessages(OWNER, THREAD);
+    expect(stored[1]).toMatchObject({
+      status: 'FAILED',
+      content: '',
+      failureCode: 'PROVIDER_TIMEOUT',
+    });
+  });
+
   it('records a server-side turn deadline as a provider timeout', async () => {
     const hanging: ChatProvider = {
       providerId: 'openai',
