@@ -105,6 +105,22 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/elara?sslmode=disable
         run: npm run test:postgres
 
+      - name: Install PostgreSQL 17 client tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL --retry 5 -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Recovery kill-test gate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/elara?sslmode=disable
+          ELARA_RECOVERY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/elara_recovery?sslmode=disable
+          ELARA_RECOVERY_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+          ELARA_RECOVERY_PG_RESTORE: /usr/lib/postgresql/17/bin/pg_restore
+        run: npm run recovery:check
+
       - name: Production build
         run: npm run build
 

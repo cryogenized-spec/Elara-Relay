@@ -77,7 +77,7 @@ for (const marker of [
   // authenticated boundary.
   'readiness,',
   'recoveryStatus,',
-  'probeDatabaseReadiness(resources.sqlPool.connect)',
+  'probeDatabaseReadiness(() => sqlPool.connect())',
 ]) {
   if (!persistent.includes(marker)) {
     findings.push(`Persistent runtime lost auth wiring: ${marker}`);

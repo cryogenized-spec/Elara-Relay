@@ -38,6 +38,7 @@ const expectedScripts = {
   'docs:check': 'node scripts/documentation-contract-gate.mjs',
   'adversarial:auth': 'node scripts/adversarial-auth-gate.mjs',
   'test:postgres': 'vitest run --config vitest.postgres.config.mjs',
+  'recovery:check': 'node scripts/recovery-gate.mjs',
 };
 
 for (const [name, expected] of Object.entries(expectedScripts)) {
@@ -185,6 +186,7 @@ for (const required of [
   'npm run schema:check',
   'image: postgres:17.6-alpine',
   'npm run test:postgres',
+  'npm run recovery:check',
   'npm run build',
   'npm run e2e -- --project=chromium --project=mobile-9x16 --project=android-portrait',
 ]) {

@@ -149,6 +149,25 @@ hostileMutation(
   }
 }
 
+// Recovery certification must fail loudly when restore verification loses a
+// check. Removing the anti-drift tripwire (unknown public tables) or the
+// content-digest comparison must break the recovery unit suite.
+hostileMutation(
+  'src/runtime/node/recovery/verify.mjs',
+  "'no unaccounted public tables',",
+  "'no unaccounted public tables (check disabled)',",
+  ['src/runtime/node/recovery/recovery.test.ts'],
+  'recovery unknown-table drift check removed',
+);
+
+hostileMutation(
+  'src/runtime/node/recovery/verify.mjs',
+  '`content checksum preserved: ${expected.name}`,',
+  '`content checksum (check disabled): ${expected.name}`,',
+  ['src/runtime/node/recovery/recovery.test.ts'],
+  'recovery content-digest verification removed',
+);
+
 process.stdout.write(
-  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, and client-injection mutations were rejected.\n',
+  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, client-injection, and recovery-verification mutations were rejected.\n',
 );
