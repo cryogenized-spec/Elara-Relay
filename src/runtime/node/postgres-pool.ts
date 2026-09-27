@@ -58,6 +58,18 @@ export function createNodePostgresResources(
     application_name: 'elara-relay',
   });
 
+  // Without an error listener, one failed idle client (server restart,
+  // network blip) raises an unhandled 'error' event and crashes the whole
+  // process. The pool already discards the broken client; the listener only
+  // keeps observability without taking the server down with it.
+  rawPool.on('error', (error: Error) => {
+    const detail =
+      error instanceof Error ? error.message.slice(0, 500) : 'unknown error';
+    process.stderr.write(
+      `elara-relay: idle postgres client failed: ${detail}\n`,
+    );
+  });
+
   return {
     sqlPool: new NodePgPoolAdapter(rawPool),
     rawPool,

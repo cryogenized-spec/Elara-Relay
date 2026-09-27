@@ -20,4 +20,33 @@ describe('node postgres pool', () => {
       await resources.close();
     }
   });
+
+  it('survives idle client failures instead of crashing the process', async () => {
+    const resources = createNodePostgresResources({
+      databaseUrl:
+        'postgresql://postgres:postgres@127.0.0.1:5432/elara?sslmode=disable',
+      poolMax: 5,
+      idleTimeoutMs: 30_000,
+      connectionTimeoutMs: 10_000,
+      statementTimeoutMs: 10_000,
+    });
+    const writes: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = function (chunk: unknown): boolean {
+      writes.push(typeof chunk === 'string' ? chunk : '[binary]');
+      return true;
+    };
+    try {
+      expect(() =>
+        resources.rawPool.emit(
+          'error',
+          new Error('Connection terminated unexpectedly'),
+        ),
+      ).not.toThrow();
+      expect(writes.join('')).toContain('idle postgres client failed');
+    } finally {
+      process.stderr.write = originalWrite;
+      await resources.close();
+    }
+  });
 });
