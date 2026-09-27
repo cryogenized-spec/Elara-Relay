@@ -15,7 +15,7 @@ no memory provider configured.
 |----------|----------|---------|-------------|
 | `ELARA_MEMORY_PROVIDER` | No | `none` | Provider selection: `none` or `hindsight` |
 | `ELARA_HINDSIGHT_URL` | When provider is `hindsight` | — | Hindsight HTTPS origin (HTTP permitted only on loopback) |
-| `ELARA_HINDSIGHT_API_KEY` | When provider is `hindsight` | — | Hindsight API bearer token |
+| `ELARA_HINDSIGHT_API_KEY` | For non-loopback Hindsight | — | Hindsight API bearer token; may be omitted only for an unauthenticated loopback instance |
 | `ELARA_MEMORY_REQUEST_TIMEOUT_MS` | No | `5000` | Per-request timeout (max 30000) |
 
 All variables are server-side only. No memory credentials appear in browser
@@ -30,8 +30,10 @@ ELARA_MEMORY_PROVIDER absent    → NullMemoryProvider
 ```
 
 When Hindsight is explicitly selected but the configuration is invalid
-(missing URL/API key, malformed URL), the application **fails closed** at
-startup rather than silently falling back to the null provider.
+(missing URL, missing API key for a non-loopback endpoint, malformed URL), the
+application **fails closed** at startup rather than silently falling back to
+the null provider. An unauthenticated Hindsight instance is permitted only on
+loopback.
 
 ## Architecture
 
@@ -64,11 +66,12 @@ SHA-256. Callers cannot choose or inject arbitrary bank IDs.
 
 ### Secret screening
 
-Every piece of content passes through a provider-independent credential
-screening layer before retention. High-confidence secrets (AI API keys,
-GitHub tokens, cloud credentials, private keys, JWTs, database URLs with
-passwords) are blocked. Detected secrets never appear in logs, error messages,
-thrown exceptions, or memory provider requests.
+Every outbound string passes through a provider-independent credential
+screening layer before it crosses the memory-provider boundary. This includes
+retained content/context/provenance as well as recall queries and tag filters.
+High-confidence secrets (AI API keys, GitHub tokens, cloud credentials, private
+keys, JWTs, database URLs with passwords) are blocked. Detected secrets never
+appear in logs, error messages, thrown exceptions, or memory provider requests.
 
 ### Provenance
 
@@ -92,7 +95,7 @@ creating uncontrolled duplicates.
   optional provider reports only safe failure codes, then returns normally on
   retain failure and an empty result on recall failure. Memory projection must
   remain after the domain commit when introduced in a later pass.
-- Secret matches block retention before HTTP and are reported only by category.
+- Secret matches block retention or recall before HTTP and are reported only by category.
 - Requests and response streams are aborted after `ELARA_MEMORY_REQUEST_TIMEOUT_MS`;
   response bodies are also bounded to 2 MB.
 - Provider HTTP errors do not echo the response body, which could contain
