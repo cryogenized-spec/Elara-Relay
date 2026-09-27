@@ -181,19 +181,20 @@ describe('production server startup', () => {
 
       const health = await fetch(`${baseUrl(server)}/health`);
       expect(health.status).toBe(200);
-      await expect(health.json()).resolves.toEqual({
+      await expect(health.json()).resolves.toMatchObject({
         service: 'elara-relay',
         status: 'ok',
         schemaVersion: 1,
       });
 
-      const ready = await fetch(`${baseUrl(server)}/ready`);
+      const ready = await fetch(`${baseUrl(server)}/health/ready`);
       expect(ready.status).toBe(200);
-      // Readiness is coarse: a fixed status word, never a host, driver
-      // message, query, or version detail.
-      expect(await ready.text()).toBe(
-        '{"service":"elara-relay","status":"ready","schemaVersion":1}',
-      );
+      await expect(ready.json()).resolves.toMatchObject({
+        service: 'elara-relay',
+        status: 'ready',
+        schemaVersion: 1,
+        checks: { database: 'available', authentication: 'valid' },
+      });
     } finally {
       await server.shutdown('test-teardown');
     }
@@ -353,15 +354,16 @@ describe('production server shutdown', () => {
     const { server, host } = await start(serverEnv(), fake);
     const url = baseUrl(server);
 
-    expect((await fetch(`${url}/ready`)).status).toBe(200);
+    expect((await fetch(`${url}/health/ready`)).status).toBe(200);
 
     server.readiness.drain();
-    const draining = await fetch(`${url}/ready`);
+    const draining = await fetch(`${url}/health/ready`);
     expect(draining.status).toBe(503);
-    await expect(draining.json()).resolves.toEqual({
+    await expect(draining.json()).resolves.toMatchObject({
       service: 'elara-relay',
-      status: 'unavailable',
+      status: 'not_ready',
       schemaVersion: 1,
+      checks: { database: 'unavailable', authentication: 'valid' },
     });
     // Liveness stays honest while the instance drains.
     expect((await fetch(`${url}/health`)).status).toBe(200);
@@ -399,7 +401,7 @@ describe('production server shutdown', () => {
     // Wedge the dependency so one request stays in flight past the deadline,
     // and wait until that request has actually reached the probe.
     fake.wedge();
-    const inFlight = fetch(`${url}/ready`).then(
+    const inFlight = fetch(`${url}/health/ready`).then(
       (response) => response.status,
       () => 'reset',
     );

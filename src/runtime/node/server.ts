@@ -8,6 +8,7 @@ import {
 import { createNodeHttpServer } from './http-adapter';
 import {
   createPersistentApiFromResources,
+  resolveChatProviders,
   resolveMemoryProvider,
   type PersistentApiRuntime,
 } from './persistent-api';
@@ -16,6 +17,7 @@ import {
   type NodePostgresResources,
 } from './postgres-pool';
 import type { DatabaseRuntimeConfig } from './database-config';
+import { readRuntimeBuildInfo } from './build-info';
 import {
   createPostgresReadinessProbe,
   createReadinessGate,
@@ -215,7 +217,11 @@ export async function startProductionServer(
       authVerifier,
       config.allowedOrigins,
       resolveMemoryProvider(config.memory),
-      readiness.probe,
+      resolveChatProviders(config.chat),
+      {
+        databaseProbe: readiness.databaseProbe,
+        buildInfo: readRuntimeBuildInfo(host.env),
+      },
     );
   } catch (error) {
     await closeQuietly(resources);
@@ -229,7 +235,9 @@ export async function startProductionServer(
   // A wrong DATABASE_URL must fail here rather than produce an instance that
   // boots and then reports unavailable forever. The check is `select 1`:
   // startup proves reachability, it never inspects or mutates schema.
-  if (!(await readiness.probe.check())) {
+  try {
+    await readiness.databaseProbe();
+  } catch {
     await closeQuietly(resources);
     log.fail(
       'database readiness check failed at startup; refusing to serve traffic',

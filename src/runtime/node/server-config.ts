@@ -13,6 +13,10 @@ import {
   readMemoryRuntimeConfig,
   type MemoryRuntimeConfig,
 } from './memory-config';
+import {
+  readChatRuntimeConfig,
+  type ChatRuntimeConfig,
+} from './chat-config';
 
 /**
  * Production server configuration authority.
@@ -64,6 +68,12 @@ export const KNOWN_ELARA_VARIABLES: readonly string[] = [
   'ELARA_HINDSIGHT_URL',
   'ELARA_HINDSIGHT_API_KEY',
   'ELARA_MEMORY_REQUEST_TIMEOUT_MS',
+  'ELARA_OPENAI_API_KEY',
+  'ELARA_OPENAI_BASE_URL',
+  'ELARA_MUSE_API_KEY',
+  'ELARA_MUSE_BASE_URL',
+  'ELARA_CHAT_REQUEST_TIMEOUT_MS',
+  'ELARA_BUILD_SHA',
   // production server transport and lifecycle authority (this module)
   'ELARA_HOST',
   'ELARA_SHUTDOWN_TIMEOUT_MS',
@@ -147,6 +157,7 @@ export interface ProductionRuntimeConfig {
   readonly auth: SupabaseAuthVerifierConfig;
   readonly allowedOrigins: readonly string[];
   readonly memory: MemoryRuntimeConfig;
+  readonly chat: ChatRuntimeConfig;
 }
 
 export interface ConfigurationProblem {
@@ -469,6 +480,9 @@ export function readProductionRuntimeConfig(
   const memory = readSection('ELARA_MEMORY_PROVIDER', problems, () =>
     readMemoryRuntimeConfig(env),
   );
+  const chat = readSection('ELARA_CHAT_REQUEST_TIMEOUT_MS', problems, () =>
+    readChatRuntimeConfig(env),
+  );
 
   // Each section is only undefined when a problem was recorded above, so the
   // combined guard is what lets the returned contract stay fully typed
@@ -478,7 +492,8 @@ export function readProductionRuntimeConfig(
     database === undefined ||
     auth === undefined ||
     origins === undefined ||
-    memory === undefined
+    memory === undefined ||
+    chat === undefined
   ) {
     throw new ConfigurationError(profile, problems);
   }
@@ -490,5 +505,6 @@ export function readProductionRuntimeConfig(
     auth,
     allowedOrigins: origins,
     memory,
+    chat,
   };
 }

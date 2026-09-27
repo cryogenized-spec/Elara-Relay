@@ -5,9 +5,7 @@ import {
   type ReadinessSqlPool,
 } from './readiness';
 
-interface FakePool extends ReadinessSqlPool {
-  calls: number;
-}
+interface FakePool extends ReadinessSqlPool { calls: number; }
 
 function pool(options: {
   query?: () => Promise<unknown>;
@@ -27,80 +25,58 @@ function pool(options: {
 }
 
 describe('postgres readiness probe', () => {
-  it('reports ready only when the bounded dependency check succeeds', async () => {
+  it('resolves only when the bounded dependency check succeeds', async () => {
     const reachable = pool({ query: () => Promise.resolve({ rowCount: 1 }) });
-    await expect(
-      createPostgresReadinessProbe(reachable, 1_000).check(),
-    ).resolves.toBe(true);
+    await expect(createPostgresReadinessProbe(reachable, 1_000)()).resolves.toBeUndefined();
     expect(reachable.calls).toBe(1);
   });
 
-  it('reports unavailable when the dependency rejects', async () => {
-    const broken = pool({
-      query: () => Promise.reject(new Error('password authentication failed')),
-    });
-    await expect(
-      createPostgresReadinessProbe(broken, 1_000).check(),
-    ).resolves.toBe(false);
-  });
+  it('rejects safely when the dependency rejects or times out', async () => {
+    const broken = pool({ query: () => Promise.reject(new Error('driver detail')) });
+    await expect(createPostgresReadinessProbe(broken, 1_000)()).rejects.toThrow(
+      'database unavailable',
+    );
 
-  it('reports unavailable instead of stalling when the check times out', async () => {
     const wedged = pool({ query: () => new Promise(() => undefined) });
     const started = Date.now();
-    await expect(
-      createPostgresReadinessProbe(wedged, 25).check(),
-    ).resolves.toBe(false);
+    await expect(createPostgresReadinessProbe(wedged, 25)()).rejects.toThrow(
+      'database unavailable',
+    );
     expect(Date.now() - started).toBeLessThan(2_000);
   });
 
-  it('reports unavailable for a closing pool without querying it', async () => {
-    for (const closing of [
-      pool({ ending: true }),
-      pool({ ended: true }),
-    ]) {
-      await expect(
-        createPostgresReadinessProbe(closing, 1_000).check(),
-      ).resolves.toBe(false);
+  it('rejects a closing pool without querying it', async () => {
+    for (const closing of [pool({ ending: true }), pool({ ended: true })]) {
+      await expect(createPostgresReadinessProbe(closing, 1_000)()).rejects.toThrow(
+        'database unavailable',
+      );
       expect(closing.calls).toBe(0);
     }
   });
 
   it('rejects a non-positive timeout at construction', () => {
     for (const timeout of [0, -1, 1.5]) {
-      expect(() =>
-        createPostgresReadinessProbe(pool({}), timeout),
-      ).toThrow('readiness timeoutMs must be a positive integer');
+      expect(() => createPostgresReadinessProbe(pool({}), timeout)).toThrow(
+        'readiness timeoutMs must be a positive integer',
+      );
     }
   });
 });
 
 describe('readiness gate', () => {
-  it('reports the dependency state until the instance starts draining', async () => {
+  it('passes dependency readiness until draining and then fails closed', async () => {
     let healthy = true;
-    const dependency = {
-      check: () => Promise.resolve(healthy),
-    };
-    const gate = createReadinessGate(dependency);
+    const gate = createReadinessGate(async () => {
+      if (!healthy) throw new Error('unavailable');
+    });
 
-    await expect(gate.probe.check()).resolves.toBe(true);
-    expect(gate.isDraining()).toBe(false);
-
+    await expect(gate.databaseProbe()).resolves.toBeUndefined();
     healthy = false;
-    await expect(gate.probe.check()).resolves.toBe(false);
+    await expect(gate.databaseProbe()).rejects.toThrow('unavailable');
 
     healthy = true;
     gate.drain();
     expect(gate.isDraining()).toBe(true);
-    // A draining instance must never accept traffic again, even if the
-    // dependency recovers mid-shutdown.
-    await expect(gate.probe.check()).resolves.toBe(false);
-    expect(gate.drain()).toBeUndefined();
-  });
-
-  it('reports unavailable when the dependency probe throws', async () => {
-    const gate = createReadinessGate({
-      check: () => Promise.reject(new Error('probe exploded')),
-    });
-    await expect(gate.probe.check()).resolves.toBe(false);
+    await expect(gate.databaseProbe()).rejects.toThrow('instance draining');
   });
 });

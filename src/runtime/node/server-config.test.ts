@@ -58,6 +58,7 @@ describe('production runtime configuration', () => {
     expect([...config.auth.allowedUserIds]).toEqual([OWNER_ID]);
     expect(config.allowedOrigins).toEqual(['https://relay.example.com']);
     expect(config.memory).toEqual({ provider: 'none' });
+    expect(config.chat).toEqual({ providers: [] });
   });
 
   it('accepts explicit lifecycle and transport bounds', () => {
@@ -272,6 +273,9 @@ describe('production runtime configuration', () => {
   it('publishes the recognized variable registry used by the drift gate', () => {
     expect(KNOWN_ELARA_VARIABLES).toContain('ELARA_HOST');
     expect(KNOWN_ELARA_VARIABLES).toContain('ELARA_ALLOWED_ORIGINS');
+    expect(KNOWN_ELARA_VARIABLES).toContain('ELARA_BUILD_SHA');
+    expect(KNOWN_ELARA_VARIABLES).toContain('ELARA_OPENAI_API_KEY');
+    expect(KNOWN_ELARA_VARIABLES).toContain('ELARA_MUSE_API_KEY');
     expect(new Set(KNOWN_ELARA_VARIABLES).size).toBe(
       KNOWN_ELARA_VARIABLES.length,
     );
