@@ -54,7 +54,23 @@ export const repairCaseResultSchema = z
     job: jobSchema,
     repair: repairSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    if (result.job.partyId !== result.party.id) {
+      context.addIssue({
+        code: 'custom',
+        path: ['job', 'partyId'],
+        message: 'Repair-case Job must reference the returned Party',
+      });
+    }
+    if (result.repair.jobId !== result.job.id) {
+      context.addIssue({
+        code: 'custom',
+        path: ['repair', 'jobId'],
+        message: 'Repair-case Repair must reference the returned Job',
+      });
+    }
+  });
 
 export type CreateRepairCaseInput = z.infer<
   typeof createRepairCaseInputSchema
