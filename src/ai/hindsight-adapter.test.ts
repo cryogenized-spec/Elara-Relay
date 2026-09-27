@@ -85,6 +85,36 @@ describe('Hindsight HTTP adapter', () => {
     }
     expect(calls).toHaveLength(0);
   });
+  it('rejects credentials in recall queries and tags before HTTP', async () => {
+    const credential = 'gho_' + 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef1234';
+    for (const attempt of [
+      { ...recall, query: credential },
+      { ...recall, scope: { ownerId, tags: [credential] } },
+    ]) {
+      const error = await provider().recall(attempt).then(
+        () => '',
+        (caught: unknown) => caught instanceof Error ? caught.message : 'unknown',
+      );
+      expect(error).not.toContain(credential);
+      expect(error).toContain('detected credentials');
+    }
+    expect(calls).toHaveLength(0);
+  });
+  it('omits authorization for an explicitly unauthenticated provider', async () => {
+    await retainOk();
+    const unauthenticated = new HindsightMemoryProvider({
+      url: 'http://localhost:8888',
+      apiKey: '',
+      requestTimeoutMs: 200,
+      fetchFn: fakeFetch,
+    });
+    await unauthenticated.retain(write);
+    expect(calls[0]?.init.headers).toMatchObject({
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    });
+    expect(calls[0]?.init.headers).not.toHaveProperty('Authorization');
+  });
   it('recalls ordered results, strict tags, budget, time and observation evidence', async () => {
     response = { results: [
       { id: 'b', text: 'Second fact', type: 'world', tags: ['job:1'],
