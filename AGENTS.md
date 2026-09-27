@@ -254,7 +254,11 @@ Before beginning substantial work:
 3. Search for existing authorities before creating new ones.
 4. Keep scope tightly aligned with the requested change.
 
-Do not merge pull requests.
+Agents may merge a pull request only after explicit human approval for that
+exact PR and merge operation.
+
+Approval to create, edit, review, or remediate a pull request does not imply
+approval to merge it.
 
 Do not push, create, edit, delete, move, or otherwise mutate remote repository
 state without explicit human approval for the exact operation.
@@ -275,7 +279,10 @@ instructions.
 
 It is a read-only certification/gatekeeping protocol.
 
-Do not reinterpret that skill as permission to modify, merge, or remediate a PR.
+Do not reinterpret that skill as permission to modify or remediate a PR.
+
+The review skill itself does not authorize a merge. Merge authority comes only
+from explicit human approval for the exact PR and merge operation.
 
 Review and remediation are separate workflows.
 
