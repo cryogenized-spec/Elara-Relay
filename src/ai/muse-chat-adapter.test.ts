@@ -76,6 +76,7 @@ function sseResponse(frames: readonly unknown[]): Response {
 function chunk(
   content: string | null,
   finishReason: string | null = null,
+  refusal: string | null = null,
 ): Record<string, unknown> {
   return {
     id: 'chatcmpl_muse_1',
@@ -86,11 +87,20 @@ function chunk(
         index: 0,
         delta: {
           ...(content === null ? {} : { content }),
+          ...(refusal === null ? {} : { refusal }),
           reasoning_content: 'private reasoning',
         },
         finish_reason: finishReason,
       },
     ],
+  };
+}
+
+function usageChunk(): Record<string, unknown> {
+  return {
+    id: 'chatcmpl_muse_1',
+    choices: [],
+    usage: { prompt_tokens: 21, completion_tokens: 5, total_tokens: 26 },
   };
 }
 
@@ -227,6 +237,68 @@ describe('Muse chat adapter', () => {
     expect(Object.hasOwn(body, 'max_completion_tokens')).toBe(false);
     expect(Object.hasOwn(body, 'temperature')).toBe(false);
     expect(body['stream_options']).toEqual({ include_usage: true });
+  });
+
+  it('fails closed when the output limit ends the generation', async () => {
+    const { fetchFn } = capture(() =>
+      sseResponse([chunk('cut off mid-sentence', 'length'), usageChunk()]),
+    );
+
+    // A token-ceiling termination must never become a completed answer.
+    expect((await faultFrom(provider(fetchFn))).code).toBe('INCOMPLETE');
+  });
+
+  it('fails closed on tool-call termination in this text-only slice', async () => {
+    const toolCalls = capture(() =>
+      sseResponse([chunk(null, 'tool_calls')]),
+    );
+    const legacyFunctionCall = capture(() =>
+      sseResponse([chunk(null, 'function_call')]),
+    );
+
+    expect((await faultFrom(provider(toolCalls.fetchFn))).code).toBe(
+      'UNSUPPORTED_TOOL_CALL',
+    );
+    expect((await faultFrom(provider(legacyFunctionCall.fetchFn))).code).toBe(
+      'UNSUPPORTED_TOOL_CALL',
+    );
+  });
+
+  it('fails closed on provider content filtering', async () => {
+    const { fetchFn } = capture(() =>
+      sseResponse([chunk('partial', 'content_filter')]),
+    );
+
+    expect((await faultFrom(provider(fetchFn))).code).toBe('CONTENT_FILTERED');
+  });
+
+  it('fails closed on an unrecognized termination reason', async () => {
+    const { fetchFn } = capture(() => sseResponse([chunk('partial', 'end_turn')]));
+
+    expect((await faultFrom(provider(fetchFn))).code).toBe('INVALID_RESPONSE');
+  });
+
+  it('does not treat a usage chunk alone as successful termination', async () => {
+    const { fetchFn } = capture(() => sseResponse([chunk('partial'), usageChunk()]));
+
+    expect((await faultFrom(provider(fetchFn))).code).toBe('INVALID_RESPONSE');
+  });
+
+  it('surfaces provider refusal text as visible assistant text', async () => {
+    const { fetchFn } = capture(() =>
+      // chunk() reports a token-delta chunk; here the refusal is the delta.
+      sseResponse([
+        chunk(null, null, "I can't help "),
+        chunk(null, null, 'with that.'),
+        chunk(null, 'stop'),
+      ]),
+    );
+
+    expect(await collect(provider(fetchFn))).toEqual([
+      { type: 'text-delta', text: "I can't help " },
+      { type: 'text-delta', text: 'with that.' },
+      { type: 'completed' },
+    ]);
   });
 
   it('completes without usage when the provider omits the usage chunk', async () => {

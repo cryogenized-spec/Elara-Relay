@@ -55,7 +55,10 @@ const chunkSchema = z
         z
           .object({
             delta: z
-              .object({ content: z.string().nullable().optional() })
+              .object({
+                content: z.string().nullable().optional(),
+                refusal: z.string().nullable().optional(),
+              })
               .passthrough()
               .nullable()
               .optional(),
@@ -78,6 +81,35 @@ const chunkSchema = z
 
 /** Sentinel Meta and OpenAI-compatible providers use to end a stream. */
 const DONE_SENTINEL = '[DONE]';
+
+/**
+ * Interpret a provider termination reason.
+ *
+ * Only `stop` is an ordinary completed answer. Every other documented reason
+ * is a deliberate failure outcome, because partial, filtered or tool-pending
+ * output must never be committed as a completed assistant answer:
+ *
+ * - `length`         — the output limit ended the generation (incomplete)
+ * - `content_filter` — provider content policy stopped the generation
+ * - `tool_calls` / `function_call` — the model requested tool execution, which
+ *   this text-only slice does not perform
+ * - anything else    — unrecognized termination; fail closed
+ */
+function assertSuccessfulTermination(finishReason: string): void {
+  switch (finishReason) {
+    case 'stop':
+      return;
+    case 'length':
+      throw new ChatProviderFault('INCOMPLETE');
+    case 'content_filter':
+      throw new ChatProviderFault('CONTENT_FILTERED');
+    case 'tool_calls':
+    case 'function_call':
+      throw new ChatProviderFault('UNSUPPORTED_TOOL_CALL');
+    default:
+      throw new ChatProviderFault('INVALID_RESPONSE');
+  }
+}
 
 export interface MuseChatAdapterOptions {
   /** Server-only credential. Never logged, never returned to a caller. */
@@ -172,7 +204,15 @@ export class MuseChatProvider implements ChatProvider {
         if (typeof content === 'string' && content !== '') {
           yield { type: 'text-delta', text: content };
         }
-        if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
+        // Provider-side refusals are model output, not silence: surface them
+        // as visible assistant text instead of dropping them.
+        const refusal = choice.delta?.refusal;
+        if (typeof refusal === 'string' && refusal !== '') {
+          yield { type: 'text-delta', text: refusal };
+        }
+        const finishReason = choice.finish_reason;
+        if (typeof finishReason === 'string') {
+          assertSuccessfulTermination(finishReason);
           terminal = true;
         }
       }
@@ -186,13 +226,12 @@ export class MuseChatProvider implements ChatProvider {
             ...(inputTokens !== undefined && { inputTokens }),
             ...(outputTokens !== undefined && { outputTokens }),
           };
-          terminal = true;
         }
       }
     }
 
-    // A stream that never reported a finish reason must not be committed as a
-    // completed assistant answer, because partial text is not a generation.
+    // Only an explicit successful termination (`stop`) may complete. Usage
+    // alone, a truncated stream, or a missing finish reason all fail closed.
     if (!terminal) throw new ChatProviderFault('INVALID_RESPONSE');
     yield { type: 'completed', ...(usage !== undefined && { usage }) };
   }

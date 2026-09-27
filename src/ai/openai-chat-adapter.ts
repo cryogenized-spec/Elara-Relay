@@ -7,7 +7,10 @@
  *
  * Protocol: OpenAI Responses API streaming (`POST /responses`, `stream: true`),
  * which OpenAI recommends for streaming because it emits typed semantic
- * events. `docs/ai-chat-runtime.md` documents the reviewed provider contract.
+ * events. Assistant text, including provider refusal text, is normalized into
+ * `text-delta` events; only `response.completed` with at least one text delta
+ * completes a generation. `docs/ai-chat-runtime.md` documents the reviewed
+ * provider contract.
  */
 import { z } from 'zod';
 import {
@@ -52,8 +55,16 @@ const streamEventSchema = z
   .object({
     type: z.string().min(1),
     delta: z.string().nullable().optional(),
+    refusal: z.string().nullable().optional(),
     response: z
-      .object({ usage: usageSchema.nullable().optional() })
+      .object({
+        usage: usageSchema.nullable().optional(),
+        incomplete_details: z
+          .object({ reason: z.string().nullable().optional() })
+          .passthrough()
+          .nullable()
+          .optional(),
+      })
       .passthrough()
       .nullable()
       .optional(),
@@ -116,6 +127,9 @@ export class OpenAiChatProvider implements ChatProvider {
     // `temperature` is deliberately not forwarded: current OpenAI reasoning
     // models, including gpt-6-luna, reject the parameter.
 
+    let emittedAssistantText = false;
+    let refusalStreamed = false;
+
     for await (const event of streamProviderEvents(
       {
         url: `${this.options.baseUrl}/responses`,
@@ -142,19 +156,58 @@ export class OpenAiChatProvider implements ChatProvider {
           if (typeof delta !== 'string') {
             throw new ChatProviderFault('INVALID_RESPONSE');
           }
-          if (delta !== '') yield { type: 'text-delta', text: delta };
+          if (delta !== '') {
+            emittedAssistantText = true;
+            yield { type: 'text-delta', text: delta };
+          }
+          break;
+        }
+        case 'response.refusal.delta': {
+          // A provider refusal is model output, not silence: normalize it into
+          // visible assistant text instead of dropping it and later reporting
+          // an empty completed answer.
+          const delta = parsed.data.delta;
+          if (typeof delta !== 'string') {
+            throw new ChatProviderFault('INVALID_RESPONSE');
+          }
+          if (delta !== '') {
+            refusalStreamed = true;
+            emittedAssistantText = true;
+            yield { type: 'text-delta', text: delta };
+          }
+          break;
+        }
+        case 'response.refusal.done': {
+          const refusal = parsed.data.refusal;
+          // Deltas already carried the refusal text; do not duplicate it.
+          if (refusalStreamed) break;
+          if (typeof refusal !== 'string') {
+            throw new ChatProviderFault('INVALID_RESPONSE');
+          }
+          if (refusal !== '') {
+            emittedAssistantText = true;
+            yield { type: 'text-delta', text: refusal };
+          }
           break;
         }
         case 'response.completed': {
+          // An empty generation is not a usable assistant answer and cannot be
+          // persisted as completed content. Fail closed instead.
+          if (!emittedAssistantText) {
+            throw new ChatProviderFault('INVALID_RESPONSE');
+          }
           const usage = toUsage(parsed.data.response?.usage);
           yield { type: 'completed', ...(usage !== undefined && { usage }) };
           return;
         }
-        case 'response.incomplete':
+        case 'response.incomplete': {
+          const reason = parsed.data.response?.incomplete_details?.reason;
+          throw new ChatProviderFault(
+            reason === 'content_filter' ? 'CONTENT_FILTERED' : 'INCOMPLETE',
+          );
+        }
         case 'response.failed':
         case 'error':
-          // A terminal provider failure or an incomplete generation must never
-          // be committed as a completed assistant answer.
           throw new ChatProviderFault('PROVIDER_FAILURE');
         default:
           // Unrecognized events are ignored so forward-compatible provider

@@ -199,7 +199,10 @@ describe('OpenAI chat adapter', () => {
 
   it('omits optional parameters the caller did not supply', async () => {
     const { fetchFn, calls } = capture(() =>
-      sseResponse([{ type: 'response.completed', response: { usage: null } }]),
+      sseResponse([
+        { type: 'response.output_text.delta', delta: 'Hi' },
+        { type: 'response.completed', response: { usage: null } },
+      ]),
     );
 
     const minimal: ChatGenerationRequest = {
@@ -208,7 +211,10 @@ describe('OpenAI chat adapter', () => {
     };
     const events = await collect(provider(fetchFn), minimal);
 
-    expect(events).toEqual([{ type: 'completed' }]);
+    expect(events).toEqual([
+      { type: 'text-delta', text: 'Hi' },
+      { type: 'completed' },
+    ]);
     const body = requestBodyOf(calls[0]);
     expect(Object.hasOwn(body, 'max_output_tokens')).toBe(false);
     expect(Object.hasOwn(body, 'temperature')).toBe(false);
@@ -286,7 +292,75 @@ describe('OpenAI chat adapter', () => {
       ]),
     );
 
-    expect((await faultFrom(provider(fetchFn))).code).toBe('PROVIDER_FAILURE');
+    // Output-limit termination is incomplete, never a completed answer.
+    expect((await faultFrom(provider(fetchFn))).code).toBe('INCOMPLETE');
+  });
+
+  it('maps content-policy termination to a deliberate content-filter fault', async () => {
+    const { fetchFn } = capture(() =>
+      sseResponse([
+        { type: 'response.output_text.delta', delta: 'partial' },
+        {
+          type: 'response.incomplete',
+          response: { incomplete_details: { reason: 'content_filter' } },
+        },
+      ]),
+    );
+
+    expect((await faultFrom(provider(fetchFn))).code).toBe('CONTENT_FILTERED');
+  });
+
+  it('surfaces provider refusal text instead of discarding it', async () => {
+    const { fetchFn } = capture(() =>
+      sseResponse([
+        { type: 'response.created', response: { id: 'resp_2' } },
+        { type: 'response.refusal.delta', delta: "I can't help " },
+        { type: 'response.refusal.delta', delta: 'with that.' },
+        {
+          type: 'response.refusal.done',
+          refusal: "I can't help with that.",
+        },
+        { type: 'response.completed', response: { usage: { input_tokens: 8 } } },
+      ]),
+    );
+
+    const events = await collect(provider(fetchFn));
+
+    expect(events).toEqual([
+      { type: 'text-delta', text: "I can't help " },
+      { type: 'text-delta', text: 'with that.' },
+      { type: 'completed', usage: { inputTokens: 8 } },
+    ]);
+    // No duplicate text and no provider event shape leaking through.
+    expect(Object.keys(events[2] ?? {}).sort()).toEqual(['type', 'usage']);
+  });
+
+  it('surfaces a refusal that only arrives as a completed refusal event', async () => {
+    const { fetchFn } = capture(() =>
+      sseResponse([
+        {
+          type: 'response.refusal.done',
+          refusal: 'I cannot assist with that request.',
+        },
+        { type: 'response.completed', response: { usage: null } },
+      ]),
+    );
+
+    expect(await collect(provider(fetchFn))).toEqual([
+      { type: 'text-delta', text: 'I cannot assist with that request.' },
+      { type: 'completed' },
+    ]);
+  });
+
+  it('fails closed when a completed generation carried no assistant text', async () => {
+    const { fetchFn } = capture(() =>
+      sseResponse([
+        { type: 'response.created', response: { id: 'resp_3' } },
+        { type: 'response.completed', response: { usage: { input_tokens: 4 } } },
+      ]),
+    );
+
+    expect((await faultFrom(provider(fetchFn))).code).toBe('INVALID_RESPONSE');
   });
 
   it('fails closed when a stream ends without completion', async () => {

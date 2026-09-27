@@ -148,6 +148,38 @@ hostileMutation(
 );
 
 hostileMutation(
+  'src/ai/muse-chat-adapter.ts',
+  "case 'length':\n      throw new ChatProviderFault('INCOMPLETE');",
+  "case 'length':\n      return;",
+  ['src/ai/muse-chat-adapter.test.ts'],
+  'output-limit termination accepted as a completed answer',
+);
+
+hostileMutation(
+  'src/ai/muse-chat-adapter.ts',
+  "if (!terminal) throw new ChatProviderFault('INVALID_RESPONSE');",
+  "if (false) throw new ChatProviderFault('INVALID_RESPONSE');",
+  ['src/ai/muse-chat-adapter.test.ts'],
+  'unterminated provider stream accepted as a completed answer',
+);
+
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  "case 'response.refusal.delta': {",
+  "case 'response.refusal.delta.disabled': {",
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'provider refusal text silently discarded',
+);
+
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  'if (!emittedAssistantText) {',
+  'if (!emittedAssistantText && false) {',
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'empty completed generation accepted as an answer',
+);
+
+hostileMutation(
   'src/ai/chat-http.ts',
   "if (callerSignal.aborted) return new ChatProviderFault('CANCELLED');",
   "if (callerSignal.aborted && false) return new ChatProviderFault('CANCELLED');",
@@ -188,5 +220,5 @@ hostileMutation(
 }
 
 process.stdout.write(
-  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, client-injection, provider-retention, provider-model, cancellation and error-bound mutations were rejected.\n',
+  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, client-injection, provider-retention, provider-model, provider-termination, refusal-text, cancellation and error-bound mutations were rejected.\n',
 );
