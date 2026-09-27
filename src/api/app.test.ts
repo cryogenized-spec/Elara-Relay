@@ -5,7 +5,10 @@ import type {
 } from '../auth/auth-verifier';
 import { AuthenticationError } from '../auth/errors';
 import { MemoryDomainStore } from '../db/memory/memory-store';
-import { DuplicateEntityError } from '../domain/errors';
+import {
+  DuplicateEntityError,
+  StoredRecordError,
+} from '../domain/errors';
 import { DomainKernel } from '../domain/kernel';
 import type { DomainStore } from '../domain/store';
 import { api, createApi } from './app';
@@ -575,6 +578,23 @@ describe('API foundation', () => {
       error: { code: 'CONFLICT' },
     });
   });
+
+  it('maps corrupt stored records to a generic 500 instead of echoing values', async () => {
+    const kernel = new DomainKernel(new CorruptStore(), {
+      clock: () => '2026-09-24T09:00:00.000Z',
+      idGenerator: () => '10000000-0000-4000-8000-000000000099',
+    });
+    const app = createApi(kernel, new TestAuthVerifier());
+
+    const response = await app.request(
+      '/tasks/10000000-0000-4000-8000-000000000001',
+      { headers: authorizationHeaders() },
+    );
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'INTERNAL_ERROR', message: 'Unexpected server error' },
+    });
+  });
 });
 
 class AlwaysConflictingStore implements DomainStore {
@@ -584,5 +604,15 @@ class AlwaysConflictingStore implements DomainStore {
 
   public read<T>(): Promise<T> {
     throw new Error('unreachable in this test');
+  }
+}
+
+class CorruptStore implements DomainStore {
+  public transact<T>(): Promise<T> {
+    throw new Error('unreachable in this test');
+  }
+
+  public read<T>(): Promise<T> {
+    throw new StoredRecordError('Task');
   }
 }

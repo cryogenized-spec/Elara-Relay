@@ -1,3 +1,4 @@
+import type { ZodType } from 'zod';
 import { eventSchema, type DomainEvent } from '../../contracts/event';
 import { jobSchema, type Job } from '../../contracts/job';
 import {
@@ -16,6 +17,7 @@ import { taskSchema, type Task } from '../../contracts/task';
 import {
   DomainNotFoundError,
   DuplicateEntityError,
+  StoredRecordError,
 } from '../../domain/errors';
 import type {
   DomainRead,
@@ -72,21 +74,36 @@ function jsonValue(value: unknown): unknown {
   return JSON.parse(value) as unknown;
 }
 
+// Stored rows are server-side data, so a validation failure must never echo
+// row values back to the caller the way a raw ZodError would (it would also
+// misreport server corruption as a 400). The entity label is safe to keep.
+function parseStoredRow<Output>(
+  schema: ZodType<Output>,
+  value: unknown,
+  entity: string,
+): Output {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    throw new StoredRecordError(entity);
+  }
+  return result.data;
+}
+
 function mapParty(row: unknown): Party {
   const value = rowRecord(row);
-  return partySchema.parse({
+  return parseStoredRow(partySchema, {
     id: value['id'],
     name: value['name'],
     kind: value['kind'],
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
-  });
+  }, 'Party');
 }
 
 function mapJob(row: unknown): Job {
   const value = rowRecord(row);
-  return jobSchema.parse({
+  return parseStoredRow(jobSchema, {
     id: value['id'],
     key: value['key'],
     title: value['title'],
@@ -95,12 +112,12 @@ function mapJob(row: unknown): Job {
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
-  });
+  }, 'Job');
 }
 
 function mapTask(row: unknown): Task {
   const value = rowRecord(row);
-  return taskSchema.parse({
+  return parseStoredRow(taskSchema, {
     id: value['id'],
     jobId: value['jobId'] ?? null,
     title: value['title'],
@@ -114,12 +131,12 @@ function mapTask(row: unknown): Task {
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
-  });
+  }, 'Task');
 }
 
 function mapRepair(row: unknown): Repair {
   const value = rowRecord(row);
-  return repairSchema.parse({
+  return parseStoredRow(repairSchema, {
     id: value['id'],
     jobId: value['jobId'],
     stage: value['stage'],
@@ -146,12 +163,12 @@ function mapRepair(row: unknown): Repair {
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
-  });
+  }, 'Repair');
 }
 
 function mapScheduledAction(row: unknown): ScheduledAction {
   const value = rowRecord(row);
-  return scheduledActionSchema.parse({
+  return parseStoredRow(scheduledActionSchema, {
     id: value['id'],
     jobId: value['jobId'] ?? null,
     taskId: value['taskId'] ?? null,
@@ -170,12 +187,12 @@ function mapScheduledAction(row: unknown): ScheduledAction {
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
-  });
+  }, 'ScheduledAction');
 }
 
 function mapScheduledActionRun(row: unknown): ScheduledActionRun {
   const value = rowRecord(row);
-  return scheduledActionRunSchema.parse({
+  return parseStoredRow(scheduledActionRunSchema, {
     id: value['id'],
     scheduledActionId: value['scheduledActionId'],
     occurrenceKey: value['occurrenceKey'],
@@ -192,12 +209,12 @@ function mapScheduledActionRun(row: unknown): ScheduledActionRun {
     claimedAt: timestamp(value['claimedAt']),
     completedAt:
       value['completedAt'] === null ? null : timestamp(value['completedAt']),
-  });
+  }, 'ScheduledActionRun');
 }
 
 function mapEvent(row: unknown): DomainEvent {
   const value = rowRecord(row);
-  return eventSchema.parse({
+  return parseStoredRow(eventSchema, {
     id: value['id'],
     mutationId: value['mutationId'],
     entityType: value['entityType'],
@@ -208,18 +225,18 @@ function mapEvent(row: unknown): DomainEvent {
     detail: value['detail'] ?? null,
     changes: jsonValue(value['changes']),
     revisionAfter: integer(value['revisionAfter']),
-  });
+  }, 'Event');
 }
 
 function mapReceipt(row: unknown): MutationReceipt {
   const value = rowRecord(row);
-  return mutationReceiptSchema.parse({
+  return parseStoredRow(mutationReceiptSchema, {
     mutationId: value['mutationId'],
     command: value['command'],
     fingerprint: value['fingerprint'],
     result: jsonValue(value['result']),
     committedAt: timestamp(value['committedAt']),
-  });
+  }, 'MutationReceipt');
 }
 
 const PARTY_SELECT = `

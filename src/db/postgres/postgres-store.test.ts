@@ -12,6 +12,7 @@ import type { Task } from '../../contracts/task';
 import {
   DomainNotFoundError,
   DuplicateEntityError,
+  StoredRecordError,
 } from '../../domain/errors';
 import {
   PostgresDomainStore,
@@ -672,6 +673,33 @@ describe('PostgresDomainStore', () => {
         throw original;
       }),
     ).rejects.toBe(original);
+  });
+
+  it('reports corrupt stored rows without echoing row values', async () => {
+    const client = new FakeClient((sql) => {
+      const normalized = sql.replaceAll(/\s+/g, ' ').trim().toLowerCase();
+      if (normalized.includes(' from tasks')) {
+        return {
+          rows: [
+            { ...taskRow(), status: 'BOGUS', title: 'CANARY-ROW-VALUE' },
+          ],
+          rowCount: 1,
+        };
+      }
+      return defaultResponder(sql);
+    });
+    const store = new PostgresDomainStore(new FakePool(client));
+
+    const failure = await store
+      .read(async (read) => read.getTask(task.id))
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(StoredRecordError);
+    expect((failure as StoredRecordError).entity).toBe('Task');
+    expect((failure as StoredRecordError).message).not.toContain('CANARY');
+    expect((failure as StoredRecordError).message).not.toContain('BOGUS');
   });
 
   it('reports rollback failure without hiding the original failure', async () => {
