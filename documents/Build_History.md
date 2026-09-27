@@ -520,6 +520,8 @@ Completed:
 - live Today / Work / Repairs / Schedule / Search
 - durable Task Capture
 - durable Reminder Capture
+- durable Repair/Job Capture
+- Task edit, waiting, complete, and cancel mutations
 
 Still required before Phase 1 freeze:
 
