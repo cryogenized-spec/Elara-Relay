@@ -62,6 +62,7 @@ import { canonicalJson } from './canonical-json';
 import {
   DomainNotFoundError,
   DomainValidationError,
+  DuplicateEntityError,
   MutationReplayMismatchError,
 } from './errors';
 import { nextRevision } from './revision';
@@ -315,6 +316,29 @@ export class DomainKernel {
     const context = mutationContextSchema.parse(rawContext);
     const input = createJobInputSchema.parse(rawInput);
 
+    // Job keys carry 32 bits of randomness, so a collision is a retryable
+    // accident rather than a client conflict. Only random-space Job/JobKey
+    // collisions retry, each in a fresh transaction; genuine conflicts
+    // propagate immediately.
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.createJobAttempt(context, input);
+      } catch (error) {
+        if (
+          attempt >= 5 ||
+          !(error instanceof DuplicateEntityError) ||
+          (error.entity !== 'Job' && error.entity !== 'JobKey')
+        ) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  private async createJobAttempt(
+    context: MutationContext,
+    input: CreateJobInput,
+  ): Promise<Job> {
     return this.executeOnce(context, 'createJob', input, async (transaction) => {
       if (input.partyId !== null && (await transaction.getParty(input.partyId)) === undefined) {
         throw new DomainNotFoundError('Party', input.partyId);

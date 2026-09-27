@@ -5,7 +5,9 @@ import type {
 } from '../auth/auth-verifier';
 import { AuthenticationError } from '../auth/errors';
 import { MemoryDomainStore } from '../db/memory/memory-store';
+import { DuplicateEntityError } from '../domain/errors';
 import { DomainKernel } from '../domain/kernel';
+import type { DomainStore } from '../domain/store';
 import { api, createApi } from './app';
 
 const ACCESS_TOKEN = 'header.payload.signature';
@@ -556,4 +558,31 @@ describe('API foundation', () => {
     });
     expect(badRunAt.status).toBe(400);
   });
+
+  it('maps durable-store conflicts to 409 instead of an internal failure', async () => {
+    const kernel = new DomainKernel(new AlwaysConflictingStore(), {
+      clock: () => '2026-09-24T09:00:00.000Z',
+      idGenerator: () => '10000000-0000-4000-8000-000000000099',
+    });
+    const app = createApi(kernel, new TestAuthVerifier());
+
+    const conflict = await jsonRequest(app, '/parties', 'POST', {
+      mutation: { mutationId: 'MUT-api-store-conflict-1' },
+      input: { name: 'Racing write', kind: 'OTHER' },
+    });
+    expect(conflict.status).toBe(409);
+    await expect(conflict.json()).resolves.toMatchObject({
+      error: { code: 'CONFLICT' },
+    });
+  });
 });
+
+class AlwaysConflictingStore implements DomainStore {
+  public transact<T>(): Promise<T> {
+    throw new DuplicateEntityError('Party', 'duplicate');
+  }
+
+  public read<T>(): Promise<T> {
+    throw new Error('unreachable in this test');
+  }
+}

@@ -13,7 +13,10 @@ import {
   type ScheduledActionRun,
 } from '../../contracts/scheduler';
 import { taskSchema, type Task } from '../../contracts/task';
-import { DomainNotFoundError } from '../../domain/errors';
+import {
+  DomainNotFoundError,
+  DuplicateEntityError,
+} from '../../domain/errors';
 import type {
   DomainRead,
   DomainStore,
@@ -880,6 +883,62 @@ class PostgresTransaction
   }
 }
 
+function postgresDiagnostic(
+  error: unknown,
+  key: 'code' | 'constraint' | 'table',
+): string | null {
+  if (typeof error !== 'object' || error === null) return null;
+  const value: unknown = (error as Record<string, unknown>)[key];
+  return typeof value === 'string' ? value : null;
+}
+
+// Mirrors the in-memory store's DuplicateEntityError labels so conflicts read
+// identically (HTTP 409) regardless of which durable adapter serves them.
+const UNIQUE_CONFLICT_LABELS: Readonly<Record<string, string>> = {
+  jobs_job_key_key: 'JobKey',
+  repairs_job_id_key: 'RepairJob',
+  events_mutation_id_key: 'EventMutation',
+  mutation_receipts_pkey: 'MutationReceipt',
+  scheduled_action_runs_occurrence_key_key: 'ScheduledActionOccurrence',
+  scheduled_action_runs_lease_token_key: 'ScheduledActionRunLease',
+};
+
+const UNIQUE_TABLE_LABELS: Readonly<Record<string, string>> = {
+  parties: 'Party',
+  jobs: 'Job',
+  tasks: 'Task',
+  repairs: 'Repair',
+  events: 'Event',
+  mutation_receipts: 'MutationReceipt',
+  scheduled_actions: 'ScheduledAction',
+  scheduled_action_runs: 'ScheduledActionRun',
+};
+
+function duplicateEntityForUniqueViolation(
+  error: unknown,
+): DuplicateEntityError {
+  const constraint = postgresDiagnostic(error, 'constraint');
+  const table = postgresDiagnostic(error, 'table');
+  const byConstraint =
+    constraint === null ? undefined : UNIQUE_CONFLICT_LABELS[constraint];
+  const byTable =
+    table === null ? undefined : UNIQUE_TABLE_LABELS[table];
+  return new DuplicateEntityError(
+    byConstraint ?? byTable ?? 'Record',
+    'duplicate',
+  );
+}
+
+function mapPostgresError(error: unknown): unknown {
+  // Unique violations are client-meaningful conflicts (concurrent duplicate
+  // writes, random key collisions), not server failures. Everything else
+  // passes through untouched so genuine faults still surface as 500s.
+  if (postgresDiagnostic(error, 'code') === '23505') {
+    return duplicateEntityForUniqueViolation(error);
+  }
+  return error;
+}
+
 async function rollback(
   client: SqlClient,
   originalError: unknown,
@@ -910,7 +969,7 @@ export class PostgresDomainStore implements DomainStore {
         await client.query('commit');
         return result;
       } catch (error) {
-        return await rollback(client, error);
+        return await rollback(client, mapPostgresError(error));
       }
     } finally {
       client.release();

@@ -9,7 +9,10 @@ import type {
   ScheduledActionRun,
 } from '../../contracts/scheduler';
 import type { Task } from '../../contracts/task';
-import { DomainNotFoundError } from '../../domain/errors';
+import {
+  DomainNotFoundError,
+  DuplicateEntityError,
+} from '../../domain/errors';
 import {
   PostgresDomainStore,
   type SqlClient,
@@ -310,6 +313,25 @@ class FakePool implements SqlPool {
   }
 }
 
+interface FakePostgresErrorExtensions {
+  code?: string;
+  constraint?: string;
+  table?: string;
+}
+
+function uniqueViolationError(
+  constraint: string | null,
+  table: string | null,
+): Error {
+  const error = new Error(
+    'duplicate key value violates unique constraint',
+  ) as Error & FakePostgresErrorExtensions;
+  error.code = '23505';
+  if (constraint !== null) error.constraint = constraint;
+  if (table !== null) error.table = table;
+  return error;
+}
+
 function defaultResponder(sql: string): SqlQueryResult {
   const normalized = sql.replaceAll(/\\s+/g, ' ').trim().toLowerCase();
 
@@ -566,6 +588,88 @@ describe('PostgresDomainStore', () => {
       client.queries.some((query) => query.sql.toLowerCase().trim() === 'rollback'),
     ).toBe(true);
     expect(client.released).toBe(true);
+  });
+
+  it('maps unique violations to conflicts with memory-store labels', async () => {
+    const cases = [
+      {
+        constraint: 'jobs_job_key_key',
+        table: 'jobs',
+        entity: 'JobKey',
+      },
+      {
+        constraint: 'repairs_job_id_key',
+        table: 'repairs',
+        entity: 'RepairJob',
+      },
+      {
+        constraint: 'events_mutation_id_key',
+        table: 'events',
+        entity: 'EventMutation',
+      },
+      {
+        constraint: 'scheduled_action_runs_occurrence_key_key',
+        table: 'scheduled_action_runs',
+        entity: 'ScheduledActionOccurrence',
+      },
+      // Unknown constraint falls back to the table label.
+      { constraint: 'tasks_title_key', table: 'tasks', entity: 'Task' },
+      // Unknown constraint and table still conflict instead of crashing.
+      { constraint: null, table: null, entity: 'Record' },
+    ] as const;
+
+    for (const { constraint, table, entity } of cases) {
+      const client = new FakeClient((sql) => {
+        if (sql.toLowerCase().includes('insert into')) {
+          throw uniqueViolationError(constraint, table);
+        }
+        return defaultResponder(sql);
+      });
+      const store = new PostgresDomainStore(new FakePool(client));
+
+      const failure = await store
+        .transact(async (transaction) => {
+          await transaction.insertJob(job);
+        })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      expect(failure).toBeInstanceOf(DuplicateEntityError);
+      expect((failure as DuplicateEntityError).entity).toBe(entity);
+      expect(
+        client.queries.some(
+          (query) => query.sql.toLowerCase().trim() === 'rollback',
+        ),
+      ).toBe(true);
+      expect(client.released).toBe(true);
+    }
+  });
+
+  it('maps commit-time unique violations and leaves other faults untouched', async () => {
+    const commitClient = new FakeClient((sql) => {
+      if (sql.toLowerCase().trim() === 'commit') {
+        throw uniqueViolationError('events_mutation_id_key', 'events');
+      }
+      return defaultResponder(sql);
+    });
+    const commitStore = new PostgresDomainStore(new FakePool(commitClient));
+    await expect(
+      commitStore.transact(async (transaction) => {
+        await transaction.appendEvent(event);
+      }),
+    ).rejects.toBeInstanceOf(DuplicateEntityError);
+
+    const original = new Error('connection reset');
+    const passthroughClient = new FakeClient(() => defaultResponder(''));
+    const passthroughStore = new PostgresDomainStore(
+      new FakePool(passthroughClient),
+    );
+    await expect(
+      passthroughStore.transact(() => {
+        throw original;
+      }),
+    ).rejects.toBe(original);
   });
 
   it('reports rollback failure without hiding the original failure', async () => {

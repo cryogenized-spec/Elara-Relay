@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryDomainStore } from '../db/memory/memory-store';
-import { MutationReplayMismatchError } from './errors';
+import {
+  DomainNotFoundError,
+  MutationReplayMismatchError,
+} from './errors';
 import { DomainKernel } from './kernel';
 import { RevisionConflictError } from './revision';
 
@@ -320,5 +323,94 @@ describe('domain kernel', () => {
     expect((await kernel.search('naiker')).parties).toHaveLength(1);
     expect((await kernel.search('avenge')).jobs).toHaveLength(1);
     expect((await kernel.search('holding pressure')).events).toHaveLength(1);
+  });
+
+  it('retries job creation on random key collisions instead of conflicting', async () => {
+    const store = new MemoryDomainStore();
+    const ids = [
+      'aaaaaaaa-0000-4000-8000-000000000001',
+      'aaaaaaaa-0000-4000-8000-000000000002',
+      // Distinct job id, same leading hex, so the same derived job key.
+      'aaaaaaaa-0000-4000-8000-ffffffffffff',
+      'bbbbbbbb-0000-4000-8000-000000000001',
+      'bbbbbbbb-0000-4000-8000-000000000002',
+    ];
+    let idIndex = 0;
+    const kernel = new DomainKernel(store, {
+      clock: () => '2026-09-24T09:00:00.000Z',
+      idGenerator: () => {
+        const id = ids[idIndex];
+        if (id === undefined) throw new Error('Test id pool exhausted');
+        idIndex += 1;
+        return id;
+      },
+    });
+
+    const first = await kernel.createJob(
+      { mutationId: 'MUT-job-collision-first', actor: 'operator-ui' },
+      { title: 'First', category: 'INBOX', partyId: null },
+    );
+    const second = await kernel.createJob(
+      { mutationId: 'MUT-job-collision-retry', actor: 'operator-ui' },
+      { title: 'Second', category: 'INBOX', partyId: null },
+    );
+
+    expect(first.key).toBe('JOB-AAAAAAAA');
+    expect(second.key).toBe('JOB-BBBBBBBB');
+    expect(second.id).not.toBe(first.id);
+    await expect(
+      store.read(async (read) => read.listJobs()),
+    ).resolves.toHaveLength(2);
+  });
+
+  it('stops retrying job creation after repeated collisions', async () => {
+    const store = new MemoryDomainStore();
+    const ids = [
+      'aaaaaaaa-0000-4000-8000-000000000001',
+      'aaaaaaaa-0000-4000-8000-000000000002',
+      'aaaaaaaa-0000-4000-8000-000000000003',
+      'aaaaaaaa-0000-4000-8000-000000000004',
+      'aaaaaaaa-0000-4000-8000-000000000005',
+      'aaaaaaaa-0000-4000-8000-000000000006',
+      'aaaaaaaa-0000-4000-8000-000000000007',
+    ];
+    let idIndex = 0;
+    const kernel = new DomainKernel(store, {
+      clock: () => '2026-09-24T09:00:00.000Z',
+      idGenerator: () => {
+        const id = ids[idIndex];
+        if (id === undefined) throw new Error('Test id pool exhausted');
+        idIndex += 1;
+        return id;
+      },
+    });
+    await kernel.createJob(
+      { mutationId: 'MUT-job-collision-seed', actor: 'operator-ui' },
+      { title: 'Seed', category: 'INBOX', partyId: null },
+    );
+
+    await expect(
+      kernel.createJob(
+        { mutationId: 'MUT-job-collision-storm', actor: 'operator-ui' },
+        { title: 'Storm', category: 'INBOX', partyId: null },
+      ),
+    ).rejects.toThrow('JobKey already exists');
+    // Seed consumed two ids; five failed attempts consumed one each.
+    expect(idIndex).toBe(7);
+  });
+
+  it('never retries genuine job creation failures', async () => {
+    const { kernel } = makeKernel();
+
+    await expect(
+      kernel.createJob(
+        { mutationId: 'MUT-job-partyless', actor: 'operator-ui' },
+        {
+          title: 'Orphaned',
+          category: 'INBOX',
+          partyId: '00000000-0000-4000-8000-ffffffffffff',
+        },
+      ),
+    ).rejects.toBeInstanceOf(DomainNotFoundError);
   });
 });
