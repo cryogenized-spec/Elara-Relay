@@ -162,6 +162,35 @@ never written to PostgreSQL, sent to the browser, included in prompts, or
 stored in logs. Missing configuration disables that adapter without breaking
 manual Elara operations or other configured providers.
 
+### Concrete adapters
+
+Two concrete adapters implement this boundary:
+
+| Adapter | Provider boundary | Protocol |
+| --- | --- | --- |
+| `src/ai/openai-chat-adapter.ts` | `openai` | OpenAI Responses API streaming |
+| `src/ai/muse-chat-adapter.ts` | `muse` (Meta Model API) | OpenAI-compatible Chat Completions streaming |
+
+Each adapter:
+
+- declares its own provider SDK model identifier table, so provider
+  identifiers never appear in Elara model identities, the browser contract, or
+  persisted provenance
+- yields only normalized `text-delta` events plus one terminal `completed`
+  event with usage when the provider reports it
+- combines the caller's `AbortSignal` with a bounded overall request timeout
+  and passes both to `fetch`
+- drains error bodies only up to a fixed byte bound and raises sanitized typed
+  faults that carry a code and, at most, an HTTP status
+- caps a single provider event size and cancels the upstream body whenever the
+  consumer stops reading
+- fails closed on an unknown model/provider combination or a stream that ends
+  without a terminal completion
+
+Providers are enabled by server-side API key presence, so a missing key
+disables exactly one provider. `docs/ai-chat-runtime.md` documents the
+variables, protocols, failure codes and testing strategy.
+
 ## 8. Memory and operational context
 
 Memory is optional context. The chat orchestrator may call
@@ -191,10 +220,11 @@ Pass 1I does not add:
 - hidden provider-specific reasoning or memory APIs
 
 The repository currently contains the provider-neutral streaming contract
-and model catalog, plus migration `0006_ai_chat.sql` with the owner-scoped
-Thread/Message schema and lifecycle constraints. A PostgreSQL Chat repository,
-authenticated endpoints, concrete provider adapters, and the Chat UI remain
-implementation slices to build against this contract.
+and model catalog, migration `0006_ai_chat.sql` with the owner-scoped
+Thread/Message schema and lifecycle constraints, and the server-side concrete
+provider adapters for `openai` and `muse` with their runtime configuration and
+certification tests. A PostgreSQL Chat repository, authenticated endpoints,
+and the Chat UI remain implementation slices to build against this contract.
 
 ## 10. Delivery sequence
 
@@ -202,7 +232,7 @@ implementation slices to build against this contract.
 2. PostgreSQL Thread/Message schema and owner isolation — complete
 3. PostgreSQL Chat repository and transactional turn lifecycle
 4. Authenticated thread and turn API with cancellation and durable finalization
-5. Server-side OpenAI and Muse adapters with secret-safe error mapping
+5. Server-side OpenAI and Muse adapters with secret-safe error mapping — complete
 6. Mobile-first Chat UI with model selection and reconnect/history behavior
 7. Memory recall integration with evidence provenance
 8. Adversarial review: cross-owner reads, concurrent turns, duplicate client

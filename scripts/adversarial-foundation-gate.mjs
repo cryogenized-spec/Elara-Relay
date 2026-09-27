@@ -131,6 +131,38 @@ hostileMutation(
   }
 }
 
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  'store: false,',
+  'store: true,',
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'provider conversation retention re-enabled',
+);
+
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  'if (modelId === undefined) throw new ChatModelUnavailableError();',
+  'if (modelId === undefined && false) throw new ChatModelUnavailableError();',
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'unknown model no longer fails closed before a provider request',
+);
+
+hostileMutation(
+  'src/ai/chat-http.ts',
+  "if (callerSignal.aborted) return new ChatProviderFault('CANCELLED');",
+  "if (callerSignal.aborted && false) return new ChatProviderFault('CANCELLED');",
+  ['src/ai/chat-http.test.ts'],
+  'caller cancellation misclassified as a provider outage',
+);
+
+hostileMutation(
+  'src/ai/chat-http.ts',
+  'while (read < maxBytes) {',
+  'while (true) {',
+  ['src/ai/chat-http.test.ts'],
+  'provider error body read bound removed',
+);
+
 {
   const path = 'src/app/App.tsx';
   const absolute = join(root, path);
@@ -156,5 +188,5 @@ hostileMutation(
 }
 
 process.stdout.write(
-  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, and client-injection mutations were rejected.\n',
+  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, client-injection, provider-retention, provider-model, cancellation and error-bound mutations were rejected.\n',
 );
