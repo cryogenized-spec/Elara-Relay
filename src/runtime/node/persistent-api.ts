@@ -1,10 +1,15 @@
 import type { AuthVerifier } from '../../auth/auth-verifier';
 import { SupabaseAuthVerifier } from '../../auth/supabase-auth-verifier';
+import type { ChatProvider } from '../../ai/chat-provider';
 import type { MemoryProvider } from '../../ai/memory-provider';
 import { NullMemoryProvider } from '../../ai/memory-provider';
 import { HindsightMemoryProvider } from '../../ai/hindsight-adapter';
 import { OptionalMemoryProvider } from '../../ai/optional-memory';
+import { ChatTurnOrchestrator } from '../../ai/chat-turn';
+import { createChatApi } from '../../api/chat-api';
 import { createApi } from '../../api/app';
+import { ChatKernel } from '../../domain/chat-kernel';
+import { PostgresChatStore } from '../../db/postgres/chat-store';
 import { PostgresDomainStore } from '../../db/postgres/postgres-store';
 import { DomainKernel } from '../../domain/kernel';
 import {
@@ -77,7 +82,9 @@ export function resolveMemoryProvider(
   );
 }
 
-async function checkPostgres(sqlPool: NodePostgresResources['sqlPool']): Promise<void> {
+async function checkPostgres(
+  sqlPool: NodePostgresResources['sqlPool'],
+): Promise<void> {
   const client = await sqlPool.connect();
   try {
     // A constant-only query proves connectivity without reading application data.
@@ -100,13 +107,30 @@ export function createPersistentApiFromResources(
   authVerifier: AuthVerifier,
   allowedOrigins: readonly string[] = [],
   memoryProvider: MemoryProvider = new NullMemoryProvider(),
-  runtimeOptions: PersistentApiRuntimeOptions = {},
+  chatProvidersOrOptions:
+    | readonly ChatProvider[]
+    | PersistentApiRuntimeOptions = [],
+  options: PersistentApiRuntimeOptions = {},
 ): PersistentApiRuntime {
+  const hasChatProviders = Array.isArray(chatProvidersOrOptions);
+  const chatProviders: readonly ChatProvider[] = hasChatProviders
+    ? (chatProvidersOrOptions as readonly ChatProvider[])
+    : [];
+  const runtimeOptions: PersistentApiRuntimeOptions = hasChatProviders
+    ? options
+    : (chatProvidersOrOptions as PersistentApiRuntimeOptions);
+
   const logger = runtimeOptions.logger ?? stderrStructuredLogger;
   const buildInfo =
     runtimeOptions.buildInfo ?? readRuntimeBuildInfo(process.env);
   const store = new PostgresDomainStore(resources.sqlPool);
   const kernel = new DomainKernel(store);
+  const chatStore = new PostgresChatStore(resources.sqlPool);
+  const chatKernel = new ChatKernel(chatStore);
+  const chatOrchestrator = new ChatTurnOrchestrator(chatKernel, {
+    providers: chatProviders,
+    memoryProvider,
+  });
   const health: ApiHealthOptions = {
     version: buildInfo.version,
     buildSha: buildInfo.buildSha,
@@ -120,7 +144,7 @@ export function createPersistentApiFromResources(
       : { schedulerProbe: runtimeOptions.schedulerProbe }),
   };
 
-  return {
+  const runtime: PersistentApiRuntime = {
     app: createApi(kernel, authVerifier, {
       allowedOrigins,
       health,
@@ -131,6 +155,17 @@ export function createPersistentApiFromResources(
       await resources.close();
     },
   };
+
+  // Chat is mounted on the same server instance and behind the same verified
+  // identity middleware as the operational API. There is one authenticated
+  // surface, not a second one. The shared structured logger preserves the
+  // request-correlated observability boundary for streaming failures.
+  runtime.app.route(
+    '/',
+    createChatApi(chatKernel, chatOrchestrator, authVerifier, logger),
+  );
+
+  return runtime;
 }
 
 export function createPersistentApiFromEnv(
@@ -145,11 +180,15 @@ export function createPersistentApiFromEnv(
   const authVerifier = new SupabaseAuthVerifier(authConfig);
   const resources = createNodePostgresResourcesFromEnv(env, logger);
 
+  // No provider adapter is configured until the concrete adapter slice lands.
+  // With an empty list every catalog model reports unavailable, Chat turns fail
+  // closed, and every manual Elara workflow continues to work.
   return createPersistentApiFromResources(
     resources,
     authVerifier,
     origins,
     memoryProvider,
+    [],
     {
       ...runtimeOptions,
       logger,
