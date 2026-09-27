@@ -543,6 +543,142 @@ test('Task detail can edit, wait, and complete through versioned writes', async 
 });
 
 
+test('Task conflict keeps the edit recoverable when refresh fails', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  let taskReads = 0;
+
+  await page.route('**/api-test/tasks/10000000-0000-4000-8000-000000000006', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: { code: 'CONFLICT', message: 'Revision conflict' },
+        }),
+      });
+      return;
+    }
+
+    if (route.request().method() === 'GET') {
+      taskReads += 1;
+      if (taskReads > 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: {
+              code: 'TRANSIENT_TEST_FAILURE',
+              message: 'Task refresh unavailable',
+            },
+          }),
+        });
+        return;
+      }
+    }
+
+    await route.fallback();
+  });
+
+  await page.goto('/');
+  await signInOwner(page);
+  await page.getByRole('button', { name: 'Work' }).click();
+  await page
+    .getByRole('button', { name: /Open Pressure-test regulator block/ })
+    .click();
+
+  const taskDetail = page.locator('dialog.detailSurface');
+  await taskDetail.getByRole('button', { name: 'Edit Task' }).click();
+  const edit = taskDetail.getByRole('form', { name: 'Edit Task' });
+  await edit
+    .getByLabel('Title')
+    .fill('Pressure-test regulator block with unsaved recovery');
+  await edit.getByRole('button', { name: 'Save changes' }).click();
+
+  await expect(edit).toBeVisible();
+  await expect(edit.getByLabel('Title')).toHaveValue(
+    'Pressure-test regulator block with unsaved recovery',
+  );
+  await expect(taskDetail.getByRole('alert')).toContainText(
+    'current state could not be refreshed',
+  );
+});
+
+
+test('Repair harness preserves replay semantics across mutation ids', async ({
+  page,
+}) => {
+  await installLiveHarness(page);
+  await page.goto('/');
+  await signInOwner(page);
+
+  const result = await page.evaluate(async () => {
+    const endpoint = '/api-test/repair-cases';
+    const input = {
+      party: {
+        mode: 'NEW_CUSTOMER',
+        name: 'Harness replay customer',
+      },
+      jobTitle: 'Harness repair one',
+      reportedFault: 'Replay fixture test',
+      serialState: 'UNKNOWN',
+      serialValue: null,
+      storageLocation: null,
+    };
+
+    const send = async (mutationId: string, bodyInput: typeof input) => {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mutation: { mutationId },
+          input: bodyInput,
+        }),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as {
+          job?: { id: string };
+          repair?: { id: string };
+          error?: { code: string };
+        },
+      };
+    };
+
+    const mutationId = 'MUT-playwright-repair-case-replay-01';
+    const first = await send(mutationId, input);
+    const replay = await send(mutationId, input);
+    const mismatch = await send(mutationId, {
+      ...input,
+      jobTitle: 'Changed replay intent',
+    });
+    const distinct = await send(
+      'MUT-playwright-repair-case-replay-02',
+      {
+        ...input,
+        jobTitle: 'Harness repair two',
+      },
+    );
+
+    return { first, replay, mismatch, distinct };
+  });
+
+  expect(result.first.status).toBe(201);
+  expect(result.replay.status).toBe(201);
+  expect(result.replay.body).toEqual(result.first.body);
+  expect(result.mismatch.status).toBe(409);
+  expect(result.mismatch.body.error?.code).toBe(
+    'MUTATION_REPLAY_MISMATCH',
+  );
+  expect(result.distinct.status).toBe(201);
+  expect(result.distinct.body.job?.id).not.toBe(result.first.body.job?.id);
+  expect(result.distinct.body.repair?.id).not.toBe(
+    result.first.body.repair?.id,
+  );
+});
+
+
 test('Reminder Capture persists recurrence and Job context', async ({ page }) => {
   await installLiveHarness(page);
   await page.goto('/');
