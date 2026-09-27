@@ -68,15 +68,20 @@ export function readMemoryRuntimeConfig(
 
   if (raw === 'hindsight') {
     const urlRaw = env['ELARA_HINDSIGHT_URL'] ?? '';
-    const apiKeyRaw = env['ELARA_HINDSIGHT_API_KEY']?.trim() ?? '';
+    const apiKeyValue = env['ELARA_HINDSIGHT_API_KEY'] ?? '';
+    if (/[\r\n]/.test(apiKeyValue)) {
+      throw new Error('ELARA_HINDSIGHT_API_KEY must not contain newlines');
+    }
+    const apiKeyRaw = apiKeyValue.trim();
+    const url = normalizeUrl(urlRaw, 'ELARA_HINDSIGHT_URL');
+    const hostname = new URL(url).hostname;
+    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
 
-    if (apiKeyRaw === '' || /[\r\n]/.test(apiKeyRaw)) {
+    if (apiKeyRaw === '' && !loopback) {
       throw new Error(
-        'ELARA_HINDSIGHT_API_KEY is required when ELARA_MEMORY_PROVIDER is "hindsight"',
+        'ELARA_HINDSIGHT_API_KEY is required for non-loopback Hindsight',
       );
     }
-
-    const url = normalizeUrl(urlRaw, 'ELARA_HINDSIGHT_URL');
 
     const requestTimeoutMs = parsePositiveInteger(
       env['ELARA_MEMORY_REQUEST_TIMEOUT_MS'],
