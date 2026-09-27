@@ -3,7 +3,6 @@ import { createApi } from '../src/api/app';
 import { MemoryDomainStore } from '../src/db/memory/memory-store';
 import { DomainKernel } from '../src/domain/kernel';
 import { installLiveHarness, signInOwner } from './live-harness';
-import { reportVisualDifference } from './visual-diagnostics';
 
 const now = '2026-09-27T10:00:00.000Z';
 
@@ -330,10 +329,8 @@ test('Repair workflow is usable and visually stable at required viewports', asyn
 }, info) => {
   const { dialog } = await setup(page);
   const screenshot = async (name: string) => {
-    const errorsBefore = info.errors.length;
     // Soft assertions still fail CI, but collect every visual state in one run.
     await expect.soft(page).toHaveScreenshot(name);
-    if (info.errors.length > errorsBefore) await reportVisualDifference(page, info, name);
   };
   await dialog.evaluate((element) => { element.scrollTop = 0; });
   await screenshot('repair-workflow.png');
