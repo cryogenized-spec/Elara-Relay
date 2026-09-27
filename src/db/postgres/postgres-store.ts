@@ -166,6 +166,7 @@ function mapScheduledAction(row: unknown): ScheduledAction {
       value['nextRunAt'] === null ? null : timestamp(value['nextRunAt']),
     lastRunAt:
       value['lastRunAt'] === null ? null : timestamp(value['lastRunAt']),
+    consecutiveFailures: integer(value['consecutiveFailures']),
     createdAt: timestamp(value['createdAt']),
     updatedAt: timestamp(value['updatedAt']),
     revision: integer(value['revision']),
@@ -302,6 +303,7 @@ const SCHEDULED_ACTION_SELECT = `
     run_at as "runAt",
     next_run_at as "nextRunAt",
     last_run_at as "lastRunAt",
+    consecutive_failures::text as "consecutiveFailures",
     created_at as "createdAt",
     updated_at as "updatedAt",
     revision::text as "revision"
@@ -721,10 +723,10 @@ class PostgresTransaction
       `insert into scheduled_actions
         (id, job_id, task_id, title, action_type, payload, timezone,
          recurrence_rule, status, run_at, next_run_at, last_run_at,
-         created_at, updated_at, revision)
+         consecutive_failures, created_at, updated_at, revision)
        values (
          $1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11,
-         $12, $13, $14, $15
+         $12, $13, $14, $15, $16
        )`,
       [
         action.id,
@@ -739,6 +741,7 @@ class PostgresTransaction
         action.runAt,
         action.nextRunAt,
         action.lastRunAt,
+        action.consecutiveFailures,
         action.createdAt,
         action.updatedAt,
         action.revision,
@@ -754,7 +757,8 @@ class PostgresTransaction
        set job_id = $2, task_id = $3, title = $4, action_type = $5,
            payload = $6::jsonb, timezone = $7, recurrence_rule = $8,
            status = $9, run_at = $10, next_run_at = $11,
-           last_run_at = $12, updated_at = $13, revision = $14
+           last_run_at = $12, consecutive_failures = $13,
+           updated_at = $14, revision = $15
        where id = $1`,
       [
         action.id,
@@ -769,6 +773,7 @@ class PostgresTransaction
         action.runAt,
         action.nextRunAt,
         action.lastRunAt,
+        action.consecutiveFailures,
         action.updatedAt,
         action.revision,
       ],

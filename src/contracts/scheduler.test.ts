@@ -112,11 +112,46 @@ describe('Scheduler contracts', () => {
         runAt: '2026-09-25T07:00:00.000Z',
         nextRunAt: '2026-09-25T07:00:00.000Z',
         lastRunAt: '2026-09-25T07:00:00.000Z',
+        consecutiveFailures: 0,
         createdAt: '2026-09-24T07:00:00.000Z',
         updatedAt: '2026-09-25T07:00:00.000Z',
         revision: 2,
       }),
     ).toThrow('must clear nextRunAt');
+  });
+
+  it('keeps the consecutive failure count a non-negative safe integer', () => {
+    const baseAction = {
+      id: ACTION_ID,
+      jobId: null,
+      taskId: null,
+      title: 'Backoff counter',
+      actionType: 'REMINDER',
+      payload: {
+        kind: 'REMINDER',
+        message: 'Count me',
+      },
+      timezone: 'Africa/Johannesburg',
+      recurrenceRule: null,
+      status: 'ACTIVE',
+      runAt: '2026-09-25T07:00:00.000Z',
+      nextRunAt: '2026-09-25T07:00:00.000Z',
+      lastRunAt: null,
+      createdAt: '2026-09-24T07:00:00.000Z',
+      updatedAt: '2026-09-24T07:00:00.000Z',
+      revision: 1,
+    };
+
+    expect(
+      scheduledActionSchema.parse({ ...baseAction, consecutiveFailures: 3 })
+        .consecutiveFailures,
+    ).toBe(3);
+    for (const consecutiveFailures of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() =>
+        scheduledActionSchema.parse({ ...baseAction, consecutiveFailures }),
+      ).toThrow();
+    }
+    expect(() => scheduledActionSchema.parse(baseAction)).toThrow();
   });
 
   it('rejects completion timestamps outside the lease window', () => {

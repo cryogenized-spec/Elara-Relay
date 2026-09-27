@@ -17,6 +17,10 @@ const schedulerSql = readFileSync(
   'src/db/migrations/0004_scheduler.sql',
   'utf8',
 );
+const backoffSql = readFileSync(
+  'src/db/migrations/0005_scheduler_backoff.sql',
+  'utf8',
+);
 const findings = [];
 
 for (const marker of [
@@ -262,6 +266,24 @@ if (
   );
 }
 
+if (
+  !/alter table scheduled_actions[\s\S]*add column consecutive_failures bigint not null default 0/i.test(
+    backoffSql,
+  )
+) {
+  findings.push(
+    'scheduler backoff migration must add consecutive_failures with a zero default',
+  );
+}
+
+if (
+  !/consecutive_failures between 0 and 9007199254740991/i.test(backoffSql)
+) {
+  findings.push(
+    'consecutive_failures must retain a JavaScript-safe non-negative constraint',
+  );
+}
+
 if (findings.length > 0) {
   process.stderr.write(
     `Migration contract gate failed (${findings.length}):\n${findings
@@ -272,5 +294,5 @@ if (findings.length > 0) {
 }
 
 process.stdout.write(
-  'Migration contract gate passed: kernel tables, Repairs, Scheduler ledger, revisions, append-only events, RLS, browser-role revocations, owner-only email payloads, and fixed trigger search_path are intact.\n',
+  'Migration contract gate passed: kernel tables, Repairs, Scheduler ledger, revisions, append-only events, RLS, browser-role revocations, owner-only email payloads, fixed trigger search_path, and scheduler backoff are intact.\n',
 );

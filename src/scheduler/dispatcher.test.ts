@@ -17,6 +17,7 @@ function makeFixture(provider: DeliveryProvider) {
   );
   let idIndex = 0;
   let mutationIndex = 0;
+  let completedAt = '2026-09-24T07:00:30.000Z';
   const kernel = new DomainKernel(new MemoryDomainStore(), {
     clock: () => '2026-09-24T07:00:00.000Z',
     idGenerator: () => {
@@ -31,14 +32,20 @@ function makeFixture(provider: DeliveryProvider) {
       mutationIndex += 1;
       return `MUT-DISPATCH-0000-${String(mutationIndex).padStart(4, '0')}`;
     },
-    completedAt: () => '2026-09-24T07:03:00.000Z',
+    completedAt: () => completedAt,
     leaseSeconds: 300,
   });
-  return { kernel, dispatcher };
+  return {
+    kernel,
+    dispatcher,
+    setCompletedAt: (value: string) => {
+      completedAt = value;
+    },
+  };
 }
 
 describe('SchedulerDispatcher', () => {
-  it('uses the occurrence key as the provider idempotency key across retry', async () => {
+  it('backs a failed delivery off before retrying as a new occurrence', async () => {
     const requests: DeliveryRequest[] = [];
     let attempt = 0;
     const provider: DeliveryProvider = {
@@ -53,7 +60,7 @@ describe('SchedulerDispatcher', () => {
         });
       },
     };
-    const { kernel, dispatcher } = makeFixture(provider);
+    const { kernel, dispatcher, setCompletedAt } = makeFixture(provider);
 
     const action = await kernel.createScheduledAction(
       {
@@ -84,26 +91,92 @@ describe('SchedulerDispatcher', () => {
     expect(first[0]?.outcome).toBe('FAILED');
     expect(typeof first[0]?.runId).toBe('string');
 
+    // The failed action backs off for five minutes and is not due before.
+    await expect(
+      dispatcher.dispatchDue('2026-09-24T07:05:00.000Z', 'worker-b'),
+    ).resolves.toEqual([]);
+
+    setCompletedAt('2026-09-24T07:06:10.000Z');
     const second = await dispatcher.dispatchDue(
-      '2026-09-24T07:02:00.000Z',
+      '2026-09-24T07:06:00.000Z',
+      'worker-b',
+    );
+    expect(second).toHaveLength(1);
+    expect(second[0]?.actionId).toBe(action.id);
+    expect(second[0]?.outcome).toBe('SUCCEEDED');
+    expect(typeof second[0]?.runId).toBe('string');
+    expect(second[0]?.runId).not.toBe(first[0]?.runId);
+
+    // A failure retry is a new occurrence with its own idempotency key but an
+    // identical delivery snapshot.
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.idempotencyKey).not.toBe(
+      requests[1]?.idempotencyKey,
+    );
+    expect(requests[0]?.run.occurrenceKey).not.toBe(
+      requests[1]?.run.occurrenceKey,
+    );
+    expect(requests[0]?.delivery).toEqual(requests[1]?.delivery);
+  });
+
+  it('reuses the occurrence key as the provider idempotency key when a lease expires', async () => {
+    const requests: DeliveryRequest[] = [];
+    const provider: DeliveryProvider = {
+      deliver: (request) => {
+        requests.push(structuredClone(request));
+        return Promise.resolve({ providerMessageId: 'provider-message-1' });
+      },
+    };
+    const { kernel, dispatcher, setCompletedAt } = makeFixture(provider);
+
+    const action = await kernel.createScheduledAction(
+      {
+        mutationId: 'MUT-dispatch-create-03',
+        actor: 'operator-ui',
+      },
+      {
+        jobId: null,
+        taskId: null,
+        title: 'Reclaimed reminder',
+        actionType: 'REMINDER',
+        payload: {
+          kind: 'REMINDER',
+          message: 'Worker died after claiming',
+        },
+        timezone: 'Africa/Johannesburg',
+        recurrenceRule: null,
+        runAt: '2026-09-24T07:00:00.000Z',
+      },
+    );
+
+    // A worker claims the occurrence and dies before completing it.
+    const claimed = await kernel.claimScheduledAction(
+      {
+        mutationId: 'MUT-dispatch-preclaim2',
+        actor: 'system',
+      },
+      action.id,
+      {
+        asOf: '2026-09-24T07:00:00.000Z',
+        workerId: 'dead-worker',
+        leaseSeconds: 300,
+      },
+    );
+
+    setCompletedAt('2026-09-24T07:06:10.000Z');
+    const second = await dispatcher.dispatchDue(
+      '2026-09-24T07:06:00.000Z',
       'worker-b',
     );
     expect(second).toEqual([
       {
         actionId: action.id,
         outcome: 'SUCCEEDED',
-        runId: first[0]?.runId,
+        runId: claimed.id,
       },
     ]);
-
-    expect(requests).toHaveLength(2);
-    expect(requests[0]?.idempotencyKey).toBe(
-      requests[1]?.idempotencyKey,
-    );
-    expect(requests[0]?.run.occurrenceKey).toBe(
-      requests[1]?.run.occurrenceKey,
-    );
-    expect(requests[0]?.delivery).toEqual(requests[1]?.delivery);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.idempotencyKey).toBe(claimed.occurrenceKey);
   });
 
   it('does not call delivery providers for leased occurrences', async () => {

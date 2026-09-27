@@ -69,6 +69,7 @@ import { nextRevision } from './revision';
 import {
   leaseExpiry,
   nextOccurrenceAfter,
+  nextRetryAt,
   occurrenceKeyFor,
 } from './scheduler-recurrence';
 import type { DomainStore, DomainTransaction, MaybePromise } from './store';
@@ -1006,6 +1007,7 @@ export class DomainKernel {
           runAt: input.runAt,
           nextRunAt: input.runAt,
           lastRunAt: null,
+          consecutiveFailures: 0,
           createdAt: now,
           updatedAt: now,
           revision: 1,
@@ -1384,6 +1386,7 @@ export class DomainKernel {
                 : current.status,
             nextRunAt,
             lastRunAt: run.scheduledFor,
+            consecutiveFailures: 0,
             updatedAt: input.completedAt,
             revision: nextRevision(
               current.revision,
@@ -1410,6 +1413,13 @@ export class DomainKernel {
               nextRunAt: {
                 before: current.nextRunAt,
                 after: next.nextRunAt,
+              },
+              consecutiveFailures: {
+                before: current.consecutiveFailures,
+                after:
+                  current.status === 'CANCELLED'
+                    ? current.consecutiveFailures
+                    : next.consecutiveFailures,
               },
               status: {
                 before: current.status,
@@ -1468,14 +1478,55 @@ export class DomainKernel {
         });
         await transaction.updateScheduledActionRun(failed);
 
+        // Terminal actions are frozen: their nextRunAt must stay null, so a
+        // late failure on a stale claim records the run but reschedules
+        // nothing. Every other failure backs the action off exponentially so
+        // a broken provider is not retried on every scheduler pass, while an
+        // operator-chosen future run time is kept when already later.
+        const scheduleFrozen =
+          action.status === 'CANCELLED' || action.status === 'COMPLETED';
+        let next = action;
+        if (!scheduleFrozen) {
+          const consecutiveFailures = Math.min(
+            action.consecutiveFailures + 1,
+            Number.MAX_SAFE_INTEGER,
+          );
+          const backoffAt = nextRetryAt(
+            input.completedAt,
+            consecutiveFailures,
+          );
+          next = scheduledActionSchema.parse({
+            ...action,
+            consecutiveFailures,
+            nextRunAt:
+              action.nextRunAt !== null && action.nextRunAt > backoffAt
+                ? action.nextRunAt
+                : backoffAt,
+            updatedAt: input.completedAt,
+            revision: nextRevision(action.revision, action.revision),
+          });
+          await transaction.updateScheduledAction(next);
+        }
+
         await transaction.appendEvent(
           this.makeEvent(context, {
             entityType: 'SCHEDULED_ACTION',
             entityId: action.id,
             eventType: 'SCHEDULED_ACTION_RUN_FAILED',
             detail: input.errorCode,
-            changes: {},
-            revisionAfter: action.revision,
+            changes: scheduleFrozen
+              ? {}
+              : {
+                  consecutiveFailures: {
+                    before: action.consecutiveFailures,
+                    after: next.consecutiveFailures,
+                  },
+                  nextRunAt: {
+                    before: action.nextRunAt,
+                    after: next.nextRunAt,
+                  },
+                },
+            revisionAfter: next.revision,
           }),
         );
         return failed;

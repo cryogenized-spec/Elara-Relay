@@ -91,6 +91,7 @@ function action(overrides: Record<string, unknown> = {}) {
     runAt: '2026-09-25T08:00:00.000Z',
     nextRunAt: '2026-09-25T08:00:00.000Z',
     lastRunAt: null,
+    consecutiveFailures: 0,
     createdAt: '2026-09-24T08:00:00.000Z',
     updatedAt: '2026-09-24T08:00:00.000Z',
     revision: 1,
