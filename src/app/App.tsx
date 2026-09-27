@@ -18,7 +18,10 @@ import type {
 } from '../contracts/read-model';
 import type { UpdateTaskPatch } from '../contracts/task';
 import type { BrowserRuntime } from './browser-runtime';
-import { classifyAuthorizationFailure } from './authorization-policy';
+import {
+  classifyAuthorizationFailure,
+  runWithBearerRotationRetry,
+} from './authorization-policy';
 import {
   johannesburgIsoToLocalDateTimeInput,
   johannesburgLocalDateTimeToIso,
@@ -3049,54 +3052,27 @@ function LiveRepairCaptureForm({
     setState('saving');
     onBusyChange(true);
 
-    let requestAccessToken = runtime.auth.getAccessToken();
-    try {
-      await runtime.api.createRepairCase(command);
-    } catch (caught: unknown) {
-      const classification = classifyAuthorizationFailure(
-        caught,
-        requestAccessToken,
-        runtime.auth.getAccessToken(),
-        authorizationSessionId,
-        runtime.auth.getSessionId(),
-      );
-
-      if (classification === 'RETRY_CURRENT_SESSION') {
-        requestAccessToken = runtime.auth.getAccessToken();
-        try {
-          await runtime.api.createRepairCase(command);
-        } catch (retryCaught: unknown) {
-          onBusyChange(false);
-          if (
-            onAuthorizationFailure(
-              retryCaught,
-              requestAccessToken,
-              authorizationSessionId,
-            )
-          ) {
-            setState('idle');
-            return;
-          }
-          setError(readableError(retryCaught));
-          setState('error');
-          return;
-        }
-      } else {
-        onBusyChange(false);
-        if (
-          onAuthorizationFailure(
-            caught,
-            requestAccessToken,
-            authorizationSessionId,
-          )
-        ) {
-          setState('idle');
-          return;
-        }
-        setError(readableError(caught));
-        setState('error');
+    const result = await runWithBearerRotationRetry(
+      () => runtime.api.createRepairCase(command),
+      () => runtime.auth.getAccessToken(),
+      () => runtime.auth.getSessionId(),
+      authorizationSessionId,
+    );
+    if (!result.ok) {
+      onBusyChange(false);
+      if (
+        onAuthorizationFailure(
+          result.error,
+          result.requestAccessToken,
+          authorizationSessionId,
+        )
+      ) {
+        setState('idle');
         return;
       }
+      setError(readableError(result.error));
+      setState('error');
+      return;
     }
 
     pendingAttempt.current = null;
