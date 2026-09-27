@@ -1,0 +1,55 @@
+version: 2
+
+updates:
+  # ─────────────────────────────────────────────
+  # Node / npm dependencies
+  # package.json + package-lock.json at repo root
+  # ─────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/"
+
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Africa/Johannesburg"
+
+    open-pull-requests-limit: 5
+
+    # Keep routine updates from flooding the repo.
+    # Major versions stay as separate PRs.
+    groups:
+      npm-minor-and-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    commit-message:
+      prefix: "deps"
+
+  # ─────────────────────────────────────────────
+  # GitHub Actions
+  # .github/workflows/*
+  # ─────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:30"
+      timezone: "Africa/Johannesburg"
+
+    open-pull-requests-limit: 3
+
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+    commit-message:
+      prefix: "ci"
