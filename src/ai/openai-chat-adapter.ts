@@ -118,7 +118,9 @@ export class OpenAiChatProvider implements ChatProvider {
       model: modelId,
       input: request.messages.map(toInputItem),
       stream: true,
-      // Elara owns the conversation record. OpenAI must not retain it.
+      // Disable provider-managed Response application state so Elara
+      // PostgreSQL stays the only conversation record. This is not a statement
+      // about the account's own retention or abuse-monitoring policy.
       store: false,
     };
     if (request.maxOutputTokens !== undefined) {
