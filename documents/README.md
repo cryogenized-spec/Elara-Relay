@@ -1,7 +1,7 @@
 # Elara Relay — Product Documents
 
 **Status:** Canonical product documentation  
-**Last reviewed:** 2026-09-24
+**Last reviewed:** 2026-09-27
 
 This directory contains the durable product-level documentation for Elara Relay.
 
@@ -38,6 +38,13 @@ It records major merged passes, production/database milestones, timestamps,
 commit identifiers, and the state of the product after each milestone.
 
 New major milestones should be appended here when they become durable.
+
+### Architecture decisions
+
+- [AI Memory Architecture](architecture/AI_Memory_Architecture.md) defines
+  provider-neutral historical context and its authority boundary.
+- [AI Chat Architecture](architecture/AI_Chat_Architecture.md) defines the
+  provider-neutral streaming boundary and the durable conversation foundation.
 
 ## Documentation boundaries
 
