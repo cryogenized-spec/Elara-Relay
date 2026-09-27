@@ -65,28 +65,24 @@ executable and its launch arguments. Video was disabled in that supplemental
 run because the standard browser/FFmpeg downloads were unavailable. No fallback
 config, binary or test-tool dependency was added to the repository.
 
-Visual baselines were generated with that alternate build. Review any differences
-on the official pinned CI browser; do not automatically accept replacement
-baselines. The existing production bundle size warning also remains.
+The first sandbox baselines used that alternate build. They were replaced after
+reviewing official pinned-browser captures; do not regenerate them from a
+substitute Chromium. The existing production bundle size warning also remains.
 
 ## GitHub certification follow-up
 
-[Certification run 36319117484](https://github.com/cryogenized-spec/Elara-Relay/actions/runs/36319117484)
-for implementation head `26b51cfef4ee452de4bcd15ba47ff35f91092bd0`
-passed all steps through PostgreSQL, production build and pinned Chromium
-installation, then **failed the Playwright step**. This is an unresolved
-certification failure, not a successful pinned-browser run.
+Pinned Playwright failed only the four Repair screenshot comparisons on every
+viewport. All other Playwright cases, PostgreSQL, TypeScript, adversarial and
+build gates passed. The mismatches were 119–320 pixels (about 1% of each
+image): the same layout, copy and hierarchy, with different text rasterization
+between the sandbox Chromium 153.0.8010.0 used to generate the first baselines
+and official Chrome for Testing 153.0.8010.12.
 
-Both `gh run view --log-failed` and `gh run download --name playwright-report`
-were attempted. The sandbox received EOF from GitHub's results-receiver and
-Azure artifact-storage endpoints. The public job page exposes only exit code 1,
-not the failed assertions. The exact cause is therefore unconfirmed; do not
-assume it is merely the alternate-browser baseline.
-
-[PR #35](https://github.com/cryogenized-spec/Elara-Relay/pull/35) remains draft.
-Next step: obtain that run's `playwright-report` artifact/logs, diagnose the
-failed assertions, review any visual differences, then rerun the unchanged
-pinned-browser certification. No snapshot threshold or gate was relaxed.
+The twelve Repair snapshots were replaced with lossless rasters reconstructed
+from that official CI browser. Screenshot assertions, retries, viewports and
+maxDiffPixels remain unchanged. The visual test now also asserts browser
+version `153.0.8010.12` so a substitute Chromium cannot silently recertify
+these images.
 
 ## Visual evidence
 
@@ -114,5 +110,5 @@ bottom navigation. No Lucide, gradients, hero region or card grid was introduced
   the existing domain; no UI-only workaround or new lifecycle was introduced.
 - No serial/storage editing expansion, production deployment, PWA work,
   backup/restore, AI work or outbound actions.
-- Pinned-browser CI certification and explicit human merge approval are still
-  required. This change does not authorize a merge.
+- Explicit human merge approval is still required. This change does not
+  authorize a merge.

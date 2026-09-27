@@ -581,3 +581,11 @@ Verification and the sandbox's pinned-browser download limitation are recorded
 in `docs/repair-workflow-ui.md`. No production migration, deployment, external
 provider activation or PR merge is included. Production runtime/deployment,
 backup/restore and final Phase 1 recovery certification remain separate work.
+
+### 2026-09-27 13:35 UTC / 15:35 SAST — Official pinned Chromium Repair baselines
+
+Replaced the twelve Repair Playwright snapshots with lossless captures from
+GitHub Certification's Chrome for Testing 153.0.8010.12 after the only CI
+failures were 1% text-rasterization diffs against the sandbox Chromium
+153.0.8010.0 images. No domain, gate, retry or screenshot-threshold change.
+Not merged.
