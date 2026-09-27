@@ -493,7 +493,7 @@ describe('live PostgreSQL runtime', () => {
       parties: '1',
       repairs: '1',
       scheduled_actions: '1',
-      scheduled_action_runs: '1',
+      scheduled_action_runs: '2',
       receipts: '15',
       events: '15',
     });
