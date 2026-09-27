@@ -66,9 +66,9 @@ describe('postgres readiness probe', () => {
 describe('readiness gate', () => {
   it('passes dependency readiness until draining and then fails closed', async () => {
     let healthy = true;
-    const gate = createReadinessGate(async () => {
-      if (!healthy) throw new Error('unavailable');
-    });
+    const gate = createReadinessGate(() =>
+      healthy ? Promise.resolve() : Promise.reject(new Error('unavailable')),
+    );
 
     await expect(gate.databaseProbe()).resolves.toBeUndefined();
     healthy = false;
