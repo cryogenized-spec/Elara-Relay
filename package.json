@@ -11,6 +11,8 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run typecheck:ts6 && vite build",
+    "build:server": "vite build --outDir dist-server --ssr src/runtime/node/server.ts",
+    "start:server": "node dist-server/server.js",
     "lint": "eslint . --max-warnings 0",
     "typecheck:ts6": "tsc6 -p tsconfig.json --noEmit && tsc6 -p tsconfig.e2e.json --noEmit && tsc6 -p tsconfig.integration.json --noEmit",
     "typecheck:ts7": "node node_modules/@typescript/native/bin/tsc -p tsconfig.json --noEmit && node node_modules/@typescript/native/bin/tsc -p tsconfig.e2e.json --noEmit && node node_modules/@typescript/native/bin/tsc -p tsconfig.integration.json --noEmit",
@@ -32,6 +34,7 @@
     "docs:check": "node scripts/documentation-contract-gate.mjs"
   },
   "dependencies": {
+    "@hono/node-server": "2.1.1",
     "@iconify-icons/solar": "2.0.3",
     "@iconify/react": "6.0.2",
     "@supabase/supabase-js": "2.117.1",
