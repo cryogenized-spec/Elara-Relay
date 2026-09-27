@@ -4,6 +4,7 @@ import {
   type ChatTurnEvent,
 } from '../contracts/chat';
 import { MemoryChatStore } from '../db/memory/chat-memory-store';
+import type { ChatStore } from '../domain/chat-store';
 import { ChatKernel } from '../domain/chat-kernel';
 import type {
   ChatGenerationRequest,
@@ -42,10 +43,10 @@ function script(
   };
 }
 
-function makeKernel(): ChatKernel {
+function makeKernel(store: ChatStore = new MemoryChatStore()): ChatKernel {
   let tick = 0;
   let index = 0;
-  return new ChatKernel(new MemoryChatStore(), {
+  return new ChatKernel(store, {
     clock: () => {
       tick += 1;
       return new Date(Date.UTC(2026, 8, 27, 10, 0, tick)).toISOString();
@@ -190,6 +191,94 @@ describe('chat turn orchestration', () => {
       ['USER', 'COMPLETED', null],
       ['ASSISTANT', 'FAILED', 'PROVIDER_UNAVAILABLE'],
     ]);
+  });
+
+  it('fails a claimed turn when prompt assembly cannot read conversation history', async () => {
+    const backing = new MemoryChatStore();
+    let failNextRead = true;
+    const store: ChatStore = {
+      transact: (work) => backing.transact(work),
+      read: (work) => {
+        if (failNextRead) {
+          failNextRead = false;
+          return Promise.reject(new Error('transient history read failure'));
+        }
+        return backing.read(work);
+      },
+    };
+    const kernel = makeKernel(store);
+    const orchestrator = new ChatTurnOrchestrator(kernel, {
+      providers: [script([{ type: 'completed' }])],
+    });
+
+    await startThread(kernel);
+    await expect(
+      orchestrator.begin({
+        ownerId: OWNER,
+        threadId: THREAD,
+        turnId: TURN,
+        modelId: LUNA,
+        message: 'Where is the regulator?',
+        expectedRevision: 1,
+      }),
+    ).rejects.toThrow('transient history read failure');
+
+    const stored = await kernel.listMessages(OWNER, THREAD);
+    expect(stored).toHaveLength(2);
+    expect(stored[1]).toMatchObject({
+      role: 'ASSISTANT',
+      status: 'FAILED',
+      content: '',
+      failureCode: 'PROVIDER_FAILED',
+    });
+
+    // The durable terminal state is replayable rather than stuck in progress.
+    const replay = await orchestrator.begin({
+      ownerId: OWNER,
+      threadId: THREAD,
+      turnId: TURN,
+      modelId: LUNA,
+      message: 'Where is the regulator?',
+      expectedRevision: 2,
+    });
+    expect(replay.kind).toBe('replay');
+    expect(replay.assistantMessage.failureCode).toBe('PROVIDER_FAILED');
+  });
+
+  it('honors an abort that arrives before provider abort-listener registration', async () => {
+    let providerSawAbort = false;
+    const provider: ChatProvider = {
+      providerId: 'openai',
+      async *stream(
+        _request: ChatGenerationRequest,
+        signal: AbortSignal,
+      ): AsyncIterable<ChatStreamEvent> {
+        providerSawAbort = signal.aborted;
+        await new Promise<void>(() => undefined);
+      },
+    };
+    const harness = makeHarness([provider], undefined, { turnTimeoutMs: 60_000 });
+    const turn = await startTurn(harness);
+    const controller = new AbortController();
+    const events = harness.orchestrator.generate(turn, controller.signal);
+
+    expect((await events.next()).value).toMatchObject({
+      type: 'message.started',
+    });
+    controller.abort();
+
+    const terminal = await events.next();
+    expect(terminal.value).toMatchObject({
+      type: 'message.failed',
+      code: 'GENERATION_CANCELLED',
+    });
+    expect(providerSawAbort).toBe(true);
+
+    const stored = await harness.kernel.listMessages(OWNER, THREAD);
+    expect(stored[1]).toMatchObject({
+      status: 'FAILED',
+      failureCode: 'GENERATION_CANCELLED',
+    });
   });
 
   it('records a provider failure without keeping partial answer text', async () => {
