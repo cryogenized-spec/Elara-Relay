@@ -524,6 +524,68 @@ describe('Scheduler domain', () => {
     expect(next.nextRunAt).toBe('2026-09-28T07:00:00.000Z');
   });
 
+  it('keeps recurring cadence anchored to runAt after a backoff retry', async () => {
+    const { kernel } = makeKernel();
+    const action = await kernel.createScheduledAction(
+      {
+        mutationId: 'MUT-schedule-recur-retry-create',
+        actor: 'operator-ui',
+      },
+      {
+        jobId: null,
+        taskId: null,
+        title: 'Daily digest with retry',
+        actionType: 'DIGEST',
+        payload: { kind: 'DIGEST', scope: 'TODAY' },
+        timezone: 'Africa/Johannesburg',
+        recurrenceRule: 'FREQ=DAILY;INTERVAL=1',
+        runAt: '2026-09-24T07:00:00.000Z',
+      },
+    );
+
+    const first = await kernel.claimScheduledAction(
+      { mutationId: 'MUT-schedule-recur-retry-claim1', actor: 'system' },
+      action.id,
+      {
+        asOf: '2026-09-24T07:00:00.000Z',
+        workerId: 'worker-a',
+        leaseSeconds: 300,
+      },
+    );
+    await kernel.recordScheduledActionFailure(
+      { mutationId: 'MUT-schedule-recur-retry-fail1', actor: 'system' },
+      {
+        runId: first.id,
+        leaseToken: first.leaseToken,
+        completedAt: '2026-09-24T07:01:00.000Z',
+        errorCode: 'TEMPORARY',
+        errorDetail: 'Provider unavailable',
+      },
+    );
+
+    const retry = await kernel.claimScheduledAction(
+      { mutationId: 'MUT-schedule-recur-retry-claim2', actor: 'system' },
+      action.id,
+      {
+        asOf: '2026-09-24T07:06:00.000Z',
+        workerId: 'worker-b',
+        leaseSeconds: 300,
+      },
+    );
+    await kernel.recordScheduledActionSuccess(
+      { mutationId: 'MUT-schedule-recur-retry-success', actor: 'system' },
+      {
+        runId: retry.id,
+        leaseToken: retry.leaseToken,
+        completedAt: '2026-09-24T07:07:00.000Z',
+        providerMessageId: null,
+      },
+    );
+
+    const completed = await kernel.getSchedule('2026-09-24T07:07:00.000Z');
+    expect(completed.upcoming[0]?.nextRunAt).toBe('2026-09-25T07:00:00.000Z');
+  });
+
   it('preserves an operator reschedule while an older occurrence is in flight', async () => {
     const { kernel } = makeKernel();
     const action = await createReminder(
