@@ -43,7 +43,13 @@ export interface SupabaseAuthVerifierConfig {
 export interface SupabaseAuthVerifierOptions {
   fetch?: typeof fetch;
   now?: () => number;
+  allowInsecureIssuer?: boolean;
 }
+
+// Tokens genuinely issued within the last minute are accepted even if their
+// embedded issued-at runs slightly ahead of this server's clock. Anything
+// further in the future is rejected rather than trusted.
+const MAX_CLOCK_SKEW_MS = 60_000;
 
 function normalizedOrigin(raw: string): string {
   return new URL(raw).origin;
@@ -67,6 +73,17 @@ export class SupabaseAuthVerifier implements AuthVerifier {
     options: SupabaseAuthVerifierOptions = {},
   ) {
     this.origin = normalizedOrigin(config.supabaseUrl);
+    // JWKS and user-info fetches authenticate the issuer, so a plaintext
+    // issuer would let a network attacker mint trusted tokens. Production
+    // wiring must stay HTTPS; only local tests may opt out explicitly.
+    if (
+      this.origin.startsWith('http://') &&
+      options.allowInsecureIssuer !== true
+    ) {
+      throw new Error(
+        'Supabase issuer must use HTTPS outside local tests',
+      );
+    }
     this.issuer = `${this.origin}/auth/v1`;
     this.fetchFn = options.fetch ?? fetch;
     this.now = options.now ?? (() => Date.now());
@@ -134,6 +151,7 @@ export class SupabaseAuthVerifier implements AuthVerifier {
       claims.iss !== this.issuer ||
       !audienceIncludesAuthenticated(claims.aud) ||
       claims.exp * 1000 <= this.now() ||
+      claims.iat * 1000 > this.now() + MAX_CLOCK_SKEW_MS ||
       claims.is_anonymous
     ) {
       throw new AuthenticationError();

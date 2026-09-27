@@ -29,7 +29,7 @@ function encodeJwtPart(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
 }
 
-function legacyTokenFor(userId: string): string {
+function legacyTokenFor(userId: string, issuedAt?: number): string {
   const now = Math.floor(Date.now() / 1000);
   return [
     encodeJwtPart({ alg: 'HS256', typ: 'JWT' }),
@@ -37,7 +37,7 @@ function legacyTokenFor(userId: string): string {
       iss: 'https://legacy.supabase.co/auth/v1',
       aud: 'authenticated',
       exp: now + 3600,
-      iat: now,
+      iat: issuedAt ?? now,
       sub: userId,
       role: 'authenticated',
       aal: 'aal1',
@@ -55,6 +55,7 @@ async function tokenFor(
     audience?: string;
     issuer?: string;
     expiresAt?: number;
+    issuedAt?: number;
     isAnonymous?: boolean;
   } = {},
 ): Promise<string> {
@@ -74,7 +75,7 @@ async function tokenFor(
     .setSubject(userId)
     .setIssuer(overrides.issuer ?? `${origin}/auth/v1`)
     .setAudience(overrides.audience ?? 'authenticated')
-    .setIssuedAt(now)
+    .setIssuedAt(overrides.issuedAt ?? now)
     .setExpirationTime(overrides.expiresAt ?? now + 3600)
     .sign(privateKey);
 }
@@ -134,11 +135,14 @@ afterAll(async () => {
 
 describe('SupabaseAuthVerifier', () => {
   it('verifies asymmetric Supabase-style JWTs through JWKS', async () => {
-    const verifier = new SupabaseAuthVerifier({
-      supabaseUrl: origin,
-      publishableKey: 'sb_publishable_test',
-      allowedUserIds: new Set([ALLOWED_USER]),
-    });
+    const verifier = new SupabaseAuthVerifier(
+      {
+        supabaseUrl: origin,
+        publishableKey: 'sb_publishable_test',
+        allowedUserIds: new Set([ALLOWED_USER]),
+      },
+      { allowInsecureIssuer: true },
+    );
 
     await expect(verifier.verify(await tokenFor(ALLOWED_USER))).resolves.toEqual({
       userId: ALLOWED_USER,
@@ -149,11 +153,14 @@ describe('SupabaseAuthVerifier', () => {
   });
 
   it('rejects valid tokens for users outside the application allowlist', async () => {
-    const verifier = new SupabaseAuthVerifier({
-      supabaseUrl: origin,
-      publishableKey: 'sb_publishable_test',
-      allowedUserIds: new Set([ALLOWED_USER]),
-    });
+    const verifier = new SupabaseAuthVerifier(
+      {
+        supabaseUrl: origin,
+        publishableKey: 'sb_publishable_test',
+        allowedUserIds: new Set([ALLOWED_USER]),
+      },
+      { allowInsecureIssuer: true },
+    );
 
     await expect(
       verifier.verify(await tokenFor(OTHER_USER)),
@@ -161,11 +168,14 @@ describe('SupabaseAuthVerifier', () => {
   });
 
   it('rejects expired, wrong-audience, wrong-issuer, and anonymous sessions', async () => {
-    const verifier = new SupabaseAuthVerifier({
-      supabaseUrl: origin,
-      publishableKey: 'sb_publishable_test',
-      allowedUserIds: new Set([ALLOWED_USER]),
-    });
+    const verifier = new SupabaseAuthVerifier(
+      {
+        supabaseUrl: origin,
+        publishableKey: 'sb_publishable_test',
+        allowedUserIds: new Set([ALLOWED_USER]),
+      },
+      { allowInsecureIssuer: true },
+    );
     const now = Math.floor(Date.now() / 1000);
 
     const invalidTokens = [
@@ -227,6 +237,72 @@ describe('SupabaseAuthVerifier', () => {
         apiKey: 'sb_publishable_legacy_test',
       },
     ]);
+  });
+
+  it('rejects tokens issued beyond the clock-skew window', async () => {
+    const verifier = new SupabaseAuthVerifier(
+      {
+        supabaseUrl: origin,
+        publishableKey: 'sb_publishable_test',
+        allowedUserIds: new Set([ALLOWED_USER]),
+      },
+      { allowInsecureIssuer: true },
+    );
+    const now = Math.floor(Date.now() / 1000);
+
+    await expect(
+      verifier.verify(
+        await tokenFor(ALLOWED_USER, { issuedAt: now + 3600 }),
+      ),
+    ).rejects.toBeInstanceOf(AuthenticationError);
+
+    await expect(
+      verifier.verify(await tokenFor(ALLOWED_USER, { issuedAt: now })),
+    ).resolves.toMatchObject({ userId: ALLOWED_USER });
+  });
+
+  it('rejects legacy tokens issued beyond the clock-skew window', async () => {
+    const token = legacyTokenFor(
+      ALLOWED_USER,
+      Math.floor(Date.now() / 1000) + 3600,
+    );
+
+    const verifier = new SupabaseAuthVerifier(
+      {
+        supabaseUrl: 'https://legacy.supabase.co',
+        publishableKey: 'sb_publishable_legacy_test',
+        allowedUserIds: new Set([ALLOWED_USER]),
+      },
+      {
+        fetch: () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ id: ALLOWED_USER }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+          ),
+      },
+    );
+
+    await expect(verifier.verify(token)).rejects.toBeInstanceOf(
+      AuthenticationError,
+    );
+  });
+
+  it('rejects a plaintext issuer without an explicit test opt-in', () => {
+    const config = {
+      supabaseUrl: 'http://127.0.0.1:54321',
+      publishableKey: 'sb_publishable_test',
+      allowedUserIds: new Set([ALLOWED_USER]),
+    };
+
+    expect(() => new SupabaseAuthVerifier(config)).toThrow(
+      'must use HTTPS',
+    );
+    expect(
+      () =>
+        new SupabaseAuthVerifier(config, { allowInsecureIssuer: true }),
+    ).not.toThrow();
   });
 
   it('rejects a legacy token when the Auth server does not validate it', async () => {
