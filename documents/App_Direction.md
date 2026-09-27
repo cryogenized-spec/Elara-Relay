@@ -255,8 +255,8 @@ Remaining Phase 1 product work:
 - production API deployment
 - production web/PWA deployment
 - secret/runtime configuration
-- backup/export
-- restore proof
+- backup/export deployment operation (workflow implemented; operational rollout pending)
+- restore proof on production-equivalent infrastructure (disposable CI proof implemented)
 - final Phase 1 adversarial / recovery kill-test
 
 ## 8. UI direction
@@ -307,10 +307,22 @@ Pass 1I has started the AI Chat and memory boundaries:
 - owner-scoped PostgreSQL Chat Threads and Messages in migration `0006`
 - assistant generation state and provider/model provenance constraints
 - RLS and browser-role table privileges revoked for Chat records
+- PostgreSQL Chat repository with owner-scoped reads, one-turn identity, and
+  append-only completed Messages
+- durable turn lifecycle: one accepted turn advances one Thread revision
+- authenticated Chat API with Thread list/read, durable turn creation, and
+  server-sent event streaming, cancellation, and durable finalization
+- server-side turn orchestration with optional memory recall as labelled
+  context and secret-safe provider failure codes
+- server-side concrete adapters for the `openai` and `muse` provider
+  boundaries, with server-only configuration, cancellation, bounded timeouts,
+  bounded SSE framing, explicit provider termination handling, and sanitized
+  provider faults
 
-The authenticated Chat API, PostgreSQL Chat repository, concrete provider
-adapters, and Chat UI are the next implementation work. Operational features
-continue to work without any provider configured.
+The Chat UI is the next implementation work. Provider adapters are optional and
+enabled only by server-side configuration; with no provider configured, catalog
+models report unavailable and Chat fails closed while operational features
+continue to work normally.
 
 ## 10. Provider model
 
@@ -362,6 +374,17 @@ Before Phase 1 is frozen:
 - scheduler duplicate delivery protections must survive adversarial testing
 - expired/malformed authentication must fail
 - browser bundles must contain no server secrets
+
+### Portable recovery decision
+
+Elara's PostgreSQL backup is a versioned plain-SQL application-data export
+with reviewed migrations, snapshot-bound manifest, and disposable-database
+restore proof. Supabase Auth/deployment secrets are outside that export.
+Restoration preserves Events and scheduler ledgers verbatim; delivery workers
+remain off until claims and overdue occurrences are reconciled. See
+`docs/postgres-backup-restore.md`. This closes the implementation gap for
+backup/export and restore proof, not the remaining deployment or kill-test
+work.
 
 ## 13. Product constraint
 

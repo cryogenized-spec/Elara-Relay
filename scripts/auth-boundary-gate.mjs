@@ -5,6 +5,8 @@ const read = (path) => readFileSync(path, 'utf8');
 const findings = [];
 
 const api = read('src/api/app.ts');
+const chatApi = read('src/api/chat-api.ts');
+const chatStore = read('src/db/postgres/chat-store.ts');
 const verifier = read('src/auth/supabase-auth-verifier.ts');
 const bearer = read('src/auth/bearer.ts');
 const authConfig = read('src/runtime/node/auth-config.ts');
@@ -29,6 +31,47 @@ for (const marker of [
 
 if (api.includes('actor: request.mutation.actor')) {
   findings.push('API must not trust caller-supplied mutation actor provenance');
+}
+
+for (const marker of [
+  'ChatModelUnavailableError',
+  "'MODEL_UNAVAILABLE'",
+  'ChatTurnConflictError',
+]) {
+  if (!api.includes(marker)) {
+    findings.push(`API error boundary lost required Chat control: ${marker}`);
+  }
+}
+
+for (const marker of [
+  'extractBearerToken',
+  'await verifier.verify(token)',
+  "context.get('authIdentity').userId",
+  'createChatThreadRequestSchema.parse',
+  'startChatTurnRequestSchema.parse',
+  'streamSSE(',
+  "context.get('requestId')",
+  "event: 'api.failure'",
+]) {
+  if (!chatApi.includes(marker)) {
+    findings.push(`Chat API lost required control: ${marker}`);
+  }
+}
+
+if (chatApi.includes('body.ownerId') || chatApi.includes('request.ownerId')) {
+  findings.push('Chat API must not read a caller-supplied owner identity');
+}
+
+for (const marker of [
+  '${CHAT_THREAD_SELECT} where id = $1 and owner_id = $2',
+  '${CHAT_MESSAGE_SELECT} where thread_id = $1 and owner_id = $2',
+  'and owner_id = $2 and turn_id = $3',
+  "role = 'ASSISTANT'",
+  "status = 'PENDING'",
+]) {
+  if (!chatStore.includes(marker)) {
+    findings.push(`Chat repository lost required owner/lifecycle control: ${marker}`);
+  }
 }
 
 for (const marker of [
@@ -72,6 +115,8 @@ for (const marker of [
   'readAuthRuntimeConfig(env)',
   'app: createApi(kernel, authVerifier, {\n      allowedOrigins,\n      health,\n      logger,\n    })',
   "authenticationConfiguration: 'valid'",
+  'new PostgresChatStore(resources.sqlPool)',
+  'createChatApi(chatKernel, chatOrchestrator, authVerifier, logger)',
 ]) {
   if (!persistent.includes(marker)) {
     findings.push(`Persistent runtime lost auth wiring: ${marker}`);
@@ -143,5 +188,5 @@ if (findings.length > 0) {
 }
 
 process.stdout.write(
-  'Auth boundary gate passed: protected domain routes, server-owned actor provenance, JWT verification paths, strict bearer parsing, owner allowlist, and persistent auth wiring are intact.\n',
+  'Auth boundary gate passed: protected domain routes, server-owned actor provenance, JWT verification paths, strict bearer parsing, owner allowlist, persistent auth wiring, and the owner-scoped authenticated Chat boundary are intact.\n',
 );
