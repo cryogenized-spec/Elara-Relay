@@ -1875,7 +1875,10 @@ function LiveTaskDetailSurface({
     if (editPriority !== data.task.priority) patch.priority = editPriority;
     if (dueAt !== data.task.dueAt) patch.dueAt = dueAt;
     if (followUpAt !== data.task.followUpAt) patch.followUpAt = followUpAt;
-    if (editStatus !== data.task.status) {
+    if (
+      editStatus !== data.task.status &&
+      editStatus !== 'WAITING'
+    ) {
       patch.status = editStatus;
     }
 
