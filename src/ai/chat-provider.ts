@@ -123,6 +123,15 @@ export function findChatModel(
   return CHAT_MODEL_CATALOG.find((model) => model.modelId === modelId);
 }
 
+export function findChatProvider(
+  model: ChatModelIdentity,
+  providers: readonly ChatProvider[],
+): ChatProvider | undefined {
+  return providers.find(
+    (candidate) => candidate.providerId === model.providerId,
+  );
+}
+
 export function resolveChatProvider(
   modelId: string,
   providers: readonly ChatProvider[],
@@ -130,9 +139,7 @@ export function resolveChatProvider(
   const model = findChatModel(modelId);
   if (model === undefined) throw new ChatModelUnavailableError();
 
-  const provider = providers.find(
-    (candidate) => candidate.providerId === model.providerId,
-  );
+  const provider = findChatProvider(model, providers);
   if (provider === undefined) throw new ChatModelUnavailableError();
 
   return provider;

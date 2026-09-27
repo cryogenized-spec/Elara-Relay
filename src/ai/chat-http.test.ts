@@ -93,12 +93,16 @@ describe('provider event stream parsing', () => {
     ]);
   });
 
-  it('dispatches a final event that lacks a trailing blank line', async () => {
-    const events = await collectEvents(streamOf(['data: {"type":"completed"}']));
+  it('discards a frame that reaches EOF without a blank-line delimiter', async () => {
+    const withoutLineEnding = await collectEvents(
+      streamOf(['data: {"type":"completed"}']),
+    );
+    const withoutBlankDelimiter = await collectEvents(
+      streamOf(['data: {"type":"completed"}\n']),
+    );
 
-    expect(events).toEqual([
-      { event: undefined, data: '{"type":"completed"}' },
-    ]);
+    expect(withoutLineEnding).toEqual([]);
+    expect(withoutBlankDelimiter).toEqual([]);
   });
 
   it('fails closed instead of buffering an unbounded event', async () => {
@@ -106,6 +110,16 @@ describe('provider event stream parsing', () => {
 
     await expect(
       collectEvents(streamOf([oversized, oversized]), 16),
+    ).rejects.toThrowError(
+      expect.objectContaining({ code: 'INVALID_RESPONSE' }),
+    );
+  });
+
+  it('counts separators between empty data lines toward the event bound', async () => {
+    const manyEmptyDataLines = 'data:\n'.repeat(18);
+
+    await expect(
+      collectEvents(streamOf([manyEmptyDataLines]), 16),
     ).rejects.toThrowError(
       expect.objectContaining({ code: 'INVALID_RESPONSE' }),
     );

@@ -118,7 +118,11 @@ function applyEventLine(
   if (field === 'event') {
     state.event = fieldValue;
   } else if (field === 'data') {
-    state.dataCharacters += fieldValue.length;
+    // The joined event inserts one newline between each data field. Count that
+    // separator as soon as another data line is accepted so empty data lines
+    // cannot bypass the per-event memory bound.
+    state.dataCharacters +=
+      fieldValue.length + (state.dataLines.length === 0 ? 0 : 1);
     if (state.dataCharacters > maxEventCharacters) {
       throw new ChatProviderFault('INVALID_RESPONSE');
     }
@@ -211,14 +215,9 @@ export async function* readProviderEvents(
       if (done) break;
     }
 
-    // Tolerate a trailing line whose newline never arrived.
-    const trailing = buffer.replace(/\r$/, '');
-    if (trailing !== '') {
-      const event = applyEventLine(trailing, state, maxEventCharacters);
-      if (event !== undefined) yield event;
-    }
-    const lastEvent = applyEventLine('', state, maxEventCharacters);
-    if (lastEvent !== undefined) yield lastEvent;
+    // EOF is not an SSE event delimiter. Any trailing line or accumulated
+    // frame that was not terminated by a blank line is incomplete and is
+    // deliberately discarded rather than synthesized into a valid event.
   } finally {
     await reader.cancel().catch(() => undefined);
   }
