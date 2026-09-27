@@ -1693,9 +1693,9 @@ function LiveTaskDetailSurface({
   const [mode, setMode] = useState<'view' | 'edit' | 'wait'>('view');
   const [busy, setBusy] = useState(false);
   const [editTitle, setEditTitle] = useState('');
-  const [editStatus, setEditStatus] = useState<'INBOX' | 'NEXT' | 'DOING'>(
-    'INBOX',
-  );
+  const [editStatus, setEditStatus] = useState<
+    'INBOX' | 'NEXT' | 'DOING' | 'WAITING'
+  >('INBOX');
   const [editPriority, setEditPriority] = useState<
     'URGENT' | 'HIGH' | 'NORMAL' | 'LOW'
   >('NORMAL');
@@ -1808,6 +1808,24 @@ function LiveTaskDetailSurface({
     setMutationError(readableError(caught));
   };
 
+  const runTaskMutation = async <T,>(
+    operation: () => Promise<T>,
+  ): Promise<T | null> => {
+    const result = await runWithBearerRotationRetry(
+      operation,
+      () => runtime.auth.getAccessToken(),
+      () => runtime.auth.getSessionId(),
+      authorizationSessionId,
+    );
+    if (result.ok) return result.value;
+
+    await handleMutationFailure(
+      result.error,
+      result.requestAccessToken,
+    );
+    return null;
+  };
+
   const beginEdit = () => {
     if (data === null) return;
     setMutationError(null);
@@ -1815,7 +1833,8 @@ function LiveTaskDetailSurface({
     setEditStatus(
       data.task.status === 'INBOX' ||
         data.task.status === 'NEXT' ||
-        data.task.status === 'DOING'
+        data.task.status === 'DOING' ||
+        data.task.status === 'WAITING'
         ? data.task.status
         : 'NEXT',
     );
@@ -1856,10 +1875,7 @@ function LiveTaskDetailSurface({
     if (editPriority !== data.task.priority) patch.priority = editPriority;
     if (dueAt !== data.task.dueAt) patch.dueAt = dueAt;
     if (followUpAt !== data.task.followUpAt) patch.followUpAt = followUpAt;
-    if (
-      data.task.status !== 'WAITING' &&
-      editStatus !== data.task.status
-    ) {
+    if (editStatus !== data.task.status) {
       patch.status = editStatus;
     }
 
@@ -1876,24 +1892,24 @@ function LiveTaskDetailSurface({
     };
     const attempt = resolveMutationAttempt(pendingAttempt.current, intent);
     pendingAttempt.current = attempt;
-    const requestAccessToken = runtime.auth.getAccessToken();
+    const command = {
+      mutationId: attempt.mutationId,
+      expectedRevision: data.task.revision,
+      patch,
+    };
 
     setBusy(true);
     setMutationError(null);
-    try {
-      const task = await runtime.api.updateTask(data.task.id, {
-        mutationId: attempt.mutationId,
-        expectedRevision: data.task.revision,
-        patch,
-      });
-      pendingAttempt.current = null;
-      setData({ ...data, task });
-      setBusy(false);
-      setMode('view');
-      await onCommitted();
-    } catch (caught: unknown) {
-      await handleMutationFailure(caught, requestAccessToken);
-    }
+    const task = await runTaskMutation(() =>
+      runtime.api.updateTask(data.task.id, command),
+    );
+    if (task === null) return;
+
+    pendingAttempt.current = null;
+    setData({ ...data, task });
+    setBusy(false);
+    setMode('view');
+    await onCommitted();
   };
 
   const submitWaiting = async () => {
@@ -1925,24 +1941,24 @@ function LiveTaskDetailSurface({
     };
     const attempt = resolveMutationAttempt(pendingAttempt.current, intent);
     pendingAttempt.current = attempt;
-    const requestAccessToken = runtime.auth.getAccessToken();
+    const command = {
+      mutationId: attempt.mutationId,
+      expectedRevision: data.task.revision,
+      input,
+    };
 
     setBusy(true);
     setMutationError(null);
-    try {
-      const task = await runtime.api.markTaskWaiting(data.task.id, {
-        mutationId: attempt.mutationId,
-        expectedRevision: data.task.revision,
-        input,
-      });
-      pendingAttempt.current = null;
-      setData({ ...data, task });
-      setBusy(false);
-      setMode('view');
-      await onCommitted();
-    } catch (caught: unknown) {
-      await handleMutationFailure(caught, requestAccessToken);
-    }
+    const task = await runTaskMutation(() =>
+      runtime.api.markTaskWaiting(data.task.id, command),
+    );
+    if (task === null) return;
+
+    pendingAttempt.current = null;
+    setData({ ...data, task });
+    setBusy(false);
+    setMode('view');
+    await onCommitted();
   };
 
   const submitTerminalAction = async (action: 'COMPLETE' | 'CANCEL') => {
@@ -1962,29 +1978,24 @@ function LiveTaskDetailSurface({
     };
     const attempt = resolveMutationAttempt(pendingAttempt.current, intent);
     pendingAttempt.current = attempt;
-    const requestAccessToken = runtime.auth.getAccessToken();
+    const command = {
+      mutationId: attempt.mutationId,
+      expectedRevision: data.task.revision,
+    };
 
     setBusy(true);
     setMutationError(null);
-    try {
-      if (action === 'COMPLETE') {
-        await runtime.api.completeTask(data.task.id, {
-          mutationId: attempt.mutationId,
-          expectedRevision: data.task.revision,
-        });
-      } else {
-        await runtime.api.cancelTask(data.task.id, {
-          mutationId: attempt.mutationId,
-          expectedRevision: data.task.revision,
-        });
-      }
-      pendingAttempt.current = null;
-      setBusy(false);
-      onClose();
-      await onCommitted();
-    } catch (caught: unknown) {
-      await handleMutationFailure(caught, requestAccessToken);
-    }
+    const task = await runTaskMutation(() =>
+      action === 'COMPLETE'
+        ? runtime.api.completeTask(data.task.id, command)
+        : runtime.api.cancelTask(data.task.id, command),
+    );
+    if (task === null) return;
+
+    pendingAttempt.current = null;
+    setBusy(false);
+    onClose();
+    await onCommitted();
   };
 
   const terminal =
@@ -2111,28 +2122,41 @@ function LiveTaskDetailSurface({
                   disabled={busy}
                 />
               </label>
-              {data.task.status === 'WAITING' ? (
-                <div className="taskMutationNotice">
-                  Waiting status is managed through the waiting action.
-                </div>
-              ) : (
-                <label className="formField">
-                  <span>Status</span>
-                  <select
-                    value={editStatus}
-                    onChange={(event) =>
-                      setEditStatus(
-                        event.target.value as 'INBOX' | 'NEXT' | 'DOING',
-                      )
-                    }
-                    disabled={busy}
-                  >
-                    <option value="INBOX">Inbox</option>
-                    <option value="NEXT">Next</option>
-                    <option value="DOING">Doing</option>
-                  </select>
-                </label>
-              )}
+              <label className="formField">
+                <span>Status</span>
+                <select
+                  value={editStatus}
+                  onChange={(event) =>
+                    setEditStatus(
+                      event.target.value as
+                        | 'INBOX'
+                        | 'NEXT'
+                        | 'DOING'
+                        | 'WAITING',
+                    )
+                  }
+                  disabled={busy}
+                >
+                  {data.task.status === 'WAITING' ? (
+                    <>
+                      <option value="WAITING">Waiting</option>
+                      <option value="NEXT">Next</option>
+                      <option value="DOING">Doing</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="INBOX">Inbox</option>
+                      <option value="NEXT">Next</option>
+                      <option value="DOING">Doing</option>
+                    </>
+                  )}
+                </select>
+                {data.task.status === 'WAITING' ? (
+                  <small>
+                    Choose Next or Doing to resume work and clear waiting metadata.
+                  </small>
+                ) : null}
+              </label>
               <label className="formField">
                 <span>Priority</span>
                 <select
