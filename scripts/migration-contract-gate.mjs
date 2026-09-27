@@ -334,7 +334,7 @@ for (const role of ['anon', 'authenticated']) {
 }
 
 if (
-  !/revision\\s+bigint\\s+not null default 1 check\\s*\\(\\s*revision between 1 and 9007199254740991\\s*\\)/i.test(
+  !/revision\s+bigint\s+not null default 1 check\s*\(\s*revision between 1 and 9007199254740991\s*\)/i.test(
     chatSql,
   )
 ) {
