@@ -108,7 +108,11 @@ describe('portable PostgreSQL restore proof', () => {
     const tables = ['parties', 'jobs', 'tasks', 'repairs', 'events', 'mutation_receipts', 'scheduled_actions', 'scheduled_action_runs', 'chat_threads', 'chat_messages'];
     for (const table of tables) {
       const { rows } = await target.query(`select count(*)::int as count from public.${table}`);
-      expect(rows[0].count, table).toBe(['scheduled_action_runs', 'chat_messages'].includes(table) ? 2 : 1);
+      expect(rows[0].count, table).toBe(
+        ['events', 'mutation_receipts', 'scheduled_action_runs', 'chat_messages'].includes(table)
+          ? 2
+          : 1,
+      );
     }
     const store = new PostgresDomainStore(new NodePgPoolAdapter(target));
     const read = await store.read(async (db) => ({
