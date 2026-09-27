@@ -1374,7 +1374,10 @@ export class DomainKernel {
           const nextRunAt = scheduleStillPointsToRun
             ? nextOccurrenceAfter(
                 current.recurrenceRule,
-                run.scheduledFor,
+                // Keep recurring schedules anchored to their configured cadence.
+                // A backoff retry has a later scheduledFor, which must not shift
+                // every future occurrence.
+                current.runAt,
                 input.completedAt,
               )
             : current.nextRunAt;
