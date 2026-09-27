@@ -37,6 +37,26 @@ Serial state is explicit:
 
 Unknown is therefore different from blank/forgotten data.
 
+## Atomic Repair-case capture
+
+Manual Repair Capture is a single durable case intent. The domain commits the
+customer Party (when a new customer is required), Job, and Repair inside one
+transaction so a later failure cannot leave a partial case behind.
+
+The browser supplies one root Repair-case mutation ID. The domain derives
+deterministic child mutation IDs for the Party, Job, and Repair writes that
+actually occur. This preserves the database rule that one Event mutation ID
+maps to at most one Event while still giving the whole case a replay-safe root
+receipt.
+
+An unchanged root mutation replay returns the committed case. Reusing the root
+mutation ID for different intent is rejected. When an existing Party is reused,
+no synthetic Party Event is created; the Job and Repair still receive their own
+child receipts and Events.
+
+The compound result is relationally validated: the returned Job must reference
+the returned Party, and the returned Repair must reference the returned Job.
+
 ## History and concurrency
 
 Repair mutations use the same mutation IDs, optimistic revisions,
