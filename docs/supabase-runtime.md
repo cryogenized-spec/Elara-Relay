@@ -50,9 +50,12 @@ role-level search path.
 
 ## Application authentication boundary
 
-Operational API routes require a Supabase Auth access token. The public
-`/health` endpoint remains unauthenticated; Parties, Jobs, Tasks, Today,
-Search, and identity inspection are protected.
+Operational API routes require a Supabase Auth access token. `/health`,
+`/health/live`, and `/health/ready` are unauthenticated and expose only safe
+service/build metadata and component states; liveness does not probe
+PostgreSQL, while readiness performs a constant-only `SELECT 1`. Parties, Jobs,
+Tasks, Today, Search, and identity inspection remain protected. The exact
+response and logging contract is documented in `observability-runtime.md`.
 
 The server verifies asymmetric Supabase session JWTs against the project's
 JWKS endpoint and validates issuer, audience, expiry, role, anonymous-session
@@ -93,15 +96,8 @@ therefore enables CORS only for exact origins listed in
 - A disallowed origin receives no CORS authorization; it does not expand the
   server-side identity allowlist.
 
-## Readiness and recovery
+## Portable data recovery
 
-- `GET /ready` reports database connectivity plus expected schema/migration
-  readiness against the recovery contract. It fails closed (503, enum-coded
-  facts only) when no probe is wired or the probe fails.
-- `GET /recovery/status` (bearer-protected) reports the last
-  restore-verification result from the server-side report file
-  (`ELARA_RECOVERY_REPORT_PATH`): `VERIFIED`, `FAILED`, or `UNVERIFIED`.
-- The recovery procedure — `pg_dump --format=custom` artifact plus strict
-  manifest, atomic `pg_restore --single-transaction` into a clean target,
-  and a full verification battery — is documented in `docs/recovery.md`.
-  The deterministic proof runs as `npm run recovery:check`.
+The provider-neutral plain-SQL export and restore-proof runbook is
+[`postgres-backup-restore.md`](postgres-backup-restore.md). It exports only
+Elara-owned application tables, not Supabase Auth or deployment secrets.

@@ -162,6 +162,60 @@ never written to PostgreSQL, sent to the browser, included in prompts, or
 stored in logs. Missing configuration disables that adapter without breaking
 manual Elara operations or other configured providers.
 
+### Concrete adapters
+
+Two concrete adapters implement this boundary:
+
+| Adapter | Provider boundary | Protocol |
+| --- | --- | --- |
+| `src/ai/openai-chat-adapter.ts` | `openai` | OpenAI Responses API streaming |
+| `src/ai/muse-chat-adapter.ts` | `muse` (Meta Model API) | OpenAI-compatible Chat Completions streaming |
+
+Each adapter:
+
+- declares its own provider SDK model identifier table, so provider
+  identifiers never appear in Elara model identities, the browser contract, or
+  persisted provenance
+- yields only normalized `text-delta` events plus one terminal `completed`
+  event with usage when the provider reports it, and normalizes provider refusal
+  text into that same visible stream instead of silently reporting an empty
+  completed answer
+- interprets provider termination reasons explicitly: a generation stopped by an
+  output limit (`INCOMPLETE`), blocked by provider content policy
+  (`CONTENT_FILTERED`), awaiting tool execution (`UNSUPPORTED_TOOL_CALL`), or
+  ended without a terminal completion never becomes a completed assistant answer
+- combines the caller's `AbortSignal` with a bounded overall request timeout
+  and passes both to `fetch`
+- drains error bodies only up to a fixed byte bound and raises sanitized typed
+  faults that carry a code and, at most, an HTTP status
+- caps a single provider event size and cancels the upstream body whenever the
+  consumer stops reading
+- fails closed on an unknown model/provider combination or a stream that ends
+  without a terminal completion
+
+Providers are enabled by server-side API key presence, so a missing key
+disables exactly one provider. `docs/ai-chat-runtime.md` documents the
+variables, protocols, failure codes and testing strategy.
+
+### Provider data handling
+
+Provider-side content handling is an account and model-tier property that an
+adapter cannot guarantee:
+
+- `store: false` on the OpenAI Responses API disables provider-managed Response
+  application state; it does not by itself determine the provider account's
+  retention or abuse-monitoring policy.
+- The configured Muse identity is the `-contributor` tier, whose lower price is
+  exchanged for permission for the provider to use prompts and completions to
+  train future models. The standard tier does not carry that permission, and
+  moving to it is a reviewed catalog change rather than a configuration toggle.
+
+Elara therefore treats a configured provider as an external data processor for
+whatever context the Chat orchestrator assembles, including recalled memory and
+operational context. Operators choose a provider only when its data terms match
+the sensitivity of that content. The chat path does not screen outbound prompts
+for secrets yet; that remains a follow-up slice.
+
 ## 8. Memory and operational context
 
 Memory is optional context. The chat orchestrator may call
@@ -178,7 +232,76 @@ A future tool-calling slice must use typed, authenticated Elara operations,
 existing domain validation, idempotency, revision checks, and explicit approval
 for external actions.
 
-## 9. Initial scope boundary
+## 9. Implemented turn contract
+
+The PostgreSQL Chat repository and the authenticated turn API implement the
+contract above with these concrete rules.
+
+### Authority split
+
+- `ChatKernel` owns owner scoping, the Thread revision, one-turn identity, and
+  the single pending-to-terminal assistant transition.
+- `ChatTurnOrchestrator` owns model resolution, optional memory recall, prompt
+  assembly, provider streaming, and the terminal outcome.
+- `PostgresChatStore` is the only writer. Every statement is filtered by the
+  verified owner id, and the row lock plus the revision guard are what make one
+  active generation per Thread revision true.
+- The API owns the verified-identity boundary and the error mapping. Chat
+  itself performs no authorization decision of its own.
+
+### Routes
+
+| Route | Purpose |
+| --- | --- |
+| `GET /chat/models` | Server-owned catalog with local adapter availability |
+| `POST /chat/threads` | Create a Thread from a stable client-supplied Thread id |
+| `GET /chat/threads` | Owner-scoped Thread list, most recently updated first |
+| `GET /chat/threads/:threadId` | Authoritative Thread and its full message history |
+| `POST /chat/threads/:threadId/turns` | One turn, streamed as server-sent events |
+
+Request bodies are strict: an unknown property, including any attempt to send
+an `ownerId`, is a validation failure rather than an ignored field.
+
+### Turn rules
+
+- The Thread is created with revision 1. One accepted turn advances the
+  revision exactly once, in the same transaction that writes the user Message
+  and the pending assistant Message.
+- A turn request whose `expectedRevision` does not match is a conflict. Two
+  concurrent turns at the same revision produce exactly one winner.
+- The client `turnId` is the retry identity. Replaying it with the same
+  question and model returns the stored Messages; replaying it with different
+  intent is a conflict. A turn that is still pending cannot be replayed.
+- Thread creation is idempotent on the client-supplied `threadId` for an
+  identical title, and conflicting for anything else.
+- A completed or failed assistant Message is never rewritten. A second
+  terminal transition for the same generation is a conflict, and the database
+  trigger independently rejects the update.
+
+### Failure semantics
+
+A generation ends in exactly one of these durable states, each stored as a
+safe code and returned to the browser as-is:
+
+| Code | Meaning |
+| --- | --- |
+| `PROVIDER_UNAVAILABLE` | The turn was accepted, but no adapter served the model |
+| `PROVIDER_FAILED` | The provider errored, or the stream ended without its terminal event |
+| `PROVIDER_TIMEOUT` | The server-side turn deadline elapsed |
+| `PROVIDER_OUTPUT_TOO_LARGE` | The generation exceeded the stored content bound |
+| `EMPTY_RESPONSE` | The provider completed without content |
+| `GENERATION_CANCELLED` | The client disconnected or cancelled |
+
+A failed attempt keeps its user Message and its own assistant row with empty
+content, so history is never rewritten and a retry is a new turn with new
+provenance. Provider error text, status codes, prompts and credentials are
+never stored or returned.
+
+If a turn stream ends without a terminal event — for example a database fault
+while finalizing — the client is expected to re-read the Thread, whose stored
+state remains authoritative.
+
+## 10. Initial scope boundary
 
 Pass 1I does not add:
 
@@ -191,22 +314,33 @@ Pass 1I does not add:
 - hidden provider-specific reasoning or memory APIs
 
 The repository currently contains the provider-neutral streaming contract
-and model catalog, plus migration `0006_ai_chat.sql` with the owner-scoped
-Thread/Message schema and lifecycle constraints. A PostgreSQL Chat repository,
-authenticated endpoints, concrete provider adapters, and the Chat UI remain
-implementation slices to build against this contract.
+and model catalog, migration `0006_ai_chat.sql` with the owner-scoped
+Thread/Message schema and lifecycle constraints, the PostgreSQL Chat
+repository, the durable turn lifecycle, the authenticated turn API with SSE
+streaming, the server-side orchestration that joins providers, optional memory
+and Chat records, and concrete server-side `openai` and `muse` adapters.
+The Chat browser client and Chat UI remain implementation slices to build
+against this contract.
 
-## 10. Delivery sequence
+Provider adapters remain disabled unless their server-side keys are configured.
+With no provider configured, catalog models report unavailable and Chat fails
+closed. Manual Elara workflows are unaffected.
+
+## 11. Delivery sequence
 
 1. Provider-neutral model and streaming contract — complete
 2. PostgreSQL Thread/Message schema and owner isolation — complete
-3. PostgreSQL Chat repository and transactional turn lifecycle
-4. Authenticated thread and turn API with cancellation and durable finalization
-5. Server-side OpenAI and Muse adapters with secret-safe error mapping
+3. PostgreSQL Chat repository and transactional turn lifecycle — complete
+4. Authenticated thread and turn API with cancellation and durable
+   finalization — complete
+5. Server-side OpenAI and Muse adapters with secret-safe error mapping — complete
 6. Mobile-first Chat UI with model selection and reconnect/history behavior
-7. Memory recall integration with evidence provenance
+7. Memory recall integration — context assembly and failure isolation are
+   complete; ingestion remains future work
 8. Adversarial review: cross-owner reads, concurrent turns, duplicate client
    turn IDs, disconnect races, provider outages, secret leakage, and
-   provider/model mismatch
+   provider/model mismatch — owner scoping, revision, retry, completion
+   integrity, and failure finalization are covered; the remaining items depend
+   on concrete adapters and the browser client
 
 Each slice keeps Elara useful when providers are unavailable.

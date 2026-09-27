@@ -91,6 +91,8 @@ Elara Relay follows several security invariants:
 - external providers are adapters rather than authorities over Elara state
 - AI providers do not receive unrestricted database mutation access
 - secrets must not be committed to the repository or exposed in browser bundles
+- unauthenticated health responses expose only liveness, readiness, build metadata, and fixed dependency states
+- structured logs use safe categories and generated request IDs; raw exception messages, tokens, credentials, and stack traces are not logged
 
 These controls are defense-in-depth measures and should not be interpreted as a
 claim that the software is free from security vulnerabilities.

@@ -51,8 +51,12 @@ role-level search path.
 
 ## Application authentication boundary
 
-Operational API routes require a Supabase Auth access token. The public
-`/health` endpoint remains unauthenticated; operational domain routes are protected.
+Operational API routes require a Supabase Auth access token. `/health`,
+`/health/live`, and `/health/ready` remain unauthenticated and report only safe
+liveness/readiness, build metadata, and component states. Liveness does not
+probe PostgreSQL; readiness performs a constant-only `SELECT 1`. Operational
+domain routes are protected. See `docs/observability-runtime.md` for the exact
+contract.
 
 The server verifies asymmetric Supabase session JWTs against the project's
 JWKS endpoint and validates issuer, audience, expiry, role, anonymous-session
@@ -73,57 +77,7 @@ Mutation actor provenance is server-owned. Browser requests do not submit
 ChatGPT and embedded-AI adapters must receive separate authenticated server
 entry points rather than impersonating the operator route.
 
-## Health, readiness, and recovery observability
-
-`GET /health` is liveness only: a deterministic process-up signal with no
-dependencies.
-
-`GET /ready` is readiness: it checks live database connectivity and
-verifies the schema against the recovery contract (all authoritative
-tables, RLS, revoked browser roles, append-only triggers, unique
-identities). It fails closed — an unwired or failing probe yields 503
-with enum-coded facts only (`database: up/down`, `schema:
-ready/incomplete/unknown`) and never exposes database diagnostics to
-unauthenticated callers.
-
-`GET /recovery/status` is bearer-protected like every operational route.
-It reports the last restore-verification result (`VERIFIED`, `FAILED`
-with named checks, or `UNVERIFIED`) sourced from the server-side report
-file named by `ELARA_RECOVERY_REPORT_PATH`. A missing or malformed report
-never reads as success.
-
-## Recovery and disaster recovery
-
-Elara's recovery mechanism is PostgreSQL-centric and documented in
-`docs/recovery.md`. Summary:
-
-- The canonical artifact is a `pg_dump --format=custom` archive plus a
-  strict backup manifest (migration SHA-256 digests, per-table row
-  counts and content checksums, security expectations, probe ids).
-- Restore targets a clean database, ensures the cluster-level `anon` /
-  `authenticated` roles, and applies `pg_restore --exit-on-error
-  --single-transaction`, so a failed restore leaves the target empty.
-- A verification battery (schema contract, digests, negative behavioral
-  probes) must pass before a restore is reported successful; the result
-  is written to the recovery report and served at
-  `/recovery/status`.
-- The deterministic proof — seed → backup → destroy → restore → verify →
-  application-level behavior — runs as `npm run recovery:check`
-  (scripts/recovery-gate.mjs) in CI and locally.
-- Backups contain no credentials: no `DATABASE_URL`, no passwords, no
-  tokens, no service-role keys. Supabase Auth users are not part of the
-  artifact.
-
 ## Live migration state
-
-The repository migration set is:
-
-- `0001_domain_kernel`
-- `0002_security_hardening`
-- `0003_repairs_domain`
-- `0004_scheduler`
-- `0005_scheduler_backoff`
-- `0006_ai_chat` (not yet applied to the live Supabase project)
 
 As of 2026-09-24, the live Elara Relay Supabase project has applied:
 

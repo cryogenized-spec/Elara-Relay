@@ -63,7 +63,13 @@ hostileMutation(
   const path = 'package.json';
   const absolute = join(root, path);
   const original = readFileSync(absolute, 'utf8');
-  const hostile = original.replace('"hono": "4.13.8"', '"hono": "^4.13.8"');
+  const manifest = JSON.parse(original);
+  const honoVersion = manifest.dependencies?.hono;
+  if (typeof honoVersion !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(honoVersion)) {
+    throw new Error('Mutation target disappeared: exact direct dependency pin');
+  }
+  const exactPin = `"hono": "${honoVersion}"`;
+  const hostile = original.replace(exactPin, `"hono": "^${honoVersion}"`);
   if (hostile === original) {
     throw new Error('Mutation target disappeared: exact direct dependency pin');
   }
@@ -125,6 +131,70 @@ hostileMutation(
   }
 }
 
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  'store: false,',
+  'store: true,',
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'provider conversation retention re-enabled',
+);
+
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  'if (modelId === undefined) throw new ChatModelUnavailableError();',
+  'if (modelId === undefined && false) throw new ChatModelUnavailableError();',
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'unknown model no longer fails closed before a provider request',
+);
+
+hostileMutation(
+  'src/ai/muse-chat-adapter.ts',
+  "case 'length':\n      throw new ChatProviderFault('INCOMPLETE');",
+  "case 'length':\n      return;",
+  ['src/ai/muse-chat-adapter.test.ts'],
+  'output-limit termination accepted as a completed answer',
+);
+
+hostileMutation(
+  'src/ai/muse-chat-adapter.ts',
+  "if (!terminal) throw new ChatProviderFault('INVALID_RESPONSE');",
+  "if (false) throw new ChatProviderFault('INVALID_RESPONSE');",
+  ['src/ai/muse-chat-adapter.test.ts'],
+  'unterminated provider stream accepted as a completed answer',
+);
+
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  "case 'response.refusal.delta': {",
+  "case 'response.refusal.delta.disabled': {",
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'provider refusal text silently discarded',
+);
+
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  'if (!emittedAssistantText) {',
+  'if (!emittedAssistantText && false) {',
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'empty completed generation accepted as an answer',
+);
+
+hostileMutation(
+  'src/ai/chat-http.ts',
+  "if (callerSignal.aborted) return new ChatProviderFault('CANCELLED');",
+  "if (callerSignal.aborted && false) return new ChatProviderFault('CANCELLED');",
+  ['src/ai/chat-http.test.ts'],
+  'caller cancellation misclassified as a provider outage',
+);
+
+hostileMutation(
+  'src/ai/chat-http.ts',
+  'while (read < maxBytes) {',
+  'while (true) {',
+  ['src/ai/chat-http.test.ts'],
+  'provider error body read bound removed',
+);
+
 {
   const path = 'src/app/App.tsx';
   const absolute = join(root, path);
@@ -149,25 +219,6 @@ hostileMutation(
   }
 }
 
-// Recovery certification must fail loudly when restore verification loses a
-// check. Removing the anti-drift tripwire (unknown public tables) or the
-// content-digest comparison must break the recovery unit suite.
-hostileMutation(
-  'src/runtime/node/recovery/verify.mjs',
-  "'no unaccounted public tables',",
-  "'no unaccounted public tables (check disabled)',",
-  ['src/runtime/node/recovery/recovery.test.ts'],
-  'recovery unknown-table drift check removed',
-);
-
-hostileMutation(
-  'src/runtime/node/recovery/verify.mjs',
-  '`content checksum preserved: ${expected.name}`,',
-  '`content checksum (check disabled): ${expected.name}`,',
-  ['src/runtime/node/recovery/recovery.test.ts'],
-  'recovery content-digest verification removed',
-);
-
 process.stdout.write(
-  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, client-injection, and recovery-verification mutations were rejected.\n',
+  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, client-injection, provider-retention, provider-model, provider-termination, refusal-text, cancellation and error-bound mutations were rejected.\n',
 );
