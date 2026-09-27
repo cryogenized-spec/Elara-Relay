@@ -246,10 +246,12 @@ Current application state:
 Remaining Phase 1 product work:
 
 - Repair progression and final-test UI
-- production API deployment
+- production API hosting: the Node API plane is deployment-ready and
+  certified in-repository, and a host has deliberately not been chosen as an
+  architectural dependency
 - production web/PWA deployment
-- secret/runtime configuration
-- richer health/observability boundary
+- provisioning production secrets in the chosen platform's secret store
+- richer observability beyond the health/readiness boundary
 - backup/export
 - restore proof
 - final Phase 1 adversarial / recovery kill-test
@@ -332,15 +334,33 @@ No provider should own Elara's durable business model.
 
 ## 11. Deployment direction
 
-The server API should run on a proper Node 24 runtime compatible with the
-existing Hono/PostgreSQL architecture.
+Elara deploys as two separate planes.
 
-The web/PWA may be deployed separately as static assets.
+The privileged Operations API is a single Node 24 ESM artifact built from
+`src/runtime/node/main.ts` (`npm run build:server` →
+`dist-server/server.mjs`, run with `npm start`). It binds an HTTP socket,
+reads PostgreSQL through `pg`, and verifies Supabase Auth tokens over HTTPS.
+
+No proprietary hosting provider is an architectural dependency. Any Node 24
+runtime that can inject environment variables, route TCP to a port, and send
+`SIGTERM` can host the API.
+
+The web/PWA is deployed separately as static assets and receives only public
+build-time values.
+
+Startup fails closed: the whole configuration contract is validated before a
+socket or a pool is opened, an unreachable database is a startup failure, and
+a rejected startup names variables without echoing their values. Readiness
+(`GET /ready`) is the traffic gate and flips to unavailable before connections
+drain on termination. Startup never migrates schema.
 
 Production secrets live only in the deployment platform's secret store.
 
 Supabase remains infrastructure for PostgreSQL/Auth rather than the browser's
 direct operational data layer.
+
+The runtime configuration contract is documented in
+[`docs/production-deployment.md`](../docs/production-deployment.md).
 
 ## 12. Reliability direction
 

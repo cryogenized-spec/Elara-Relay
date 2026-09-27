@@ -38,6 +38,7 @@ import {
 } from '../domain/errors';
 import type { DomainKernel } from '../domain/kernel';
 import { RevisionConflictError } from '../domain/revision';
+import type { ReadinessProbe } from './readiness';
 
 type ApiEnv = {
   Variables: {
@@ -49,6 +50,13 @@ type ApiContext = Context<ApiEnv>;
 
 export interface ApiOptions {
   allowedOrigins?: readonly string[] | undefined;
+  /**
+   * Optional readiness dependency check.
+   *
+   * `GET /ready` is registered either way and fails closed: without a probe
+   * the instance reports unavailable, because readiness was never proven.
+   */
+  readiness?: ReadinessProbe | undefined;
 }
 
 const mutationRequestSchema = z
@@ -522,6 +530,44 @@ export function createApi(
       status: 'ok',
       schemaVersion: 1,
     }),
+  );
+
+  const readiness = options.readiness;
+
+  // Readiness is the gateway's traffic switch. It is unauthenticated, so its
+  // response is deliberately a fixed status word: no driver message, host,
+  // query, version, or stack detail may reach an unauthenticated caller.
+  app.get('/ready', async (context) => {
+    let ready = false;
+    if (readiness !== undefined) {
+      try {
+        ready = await readiness.check();
+      } catch {
+        ready = false;
+      }
+    }
+    return context.json(
+      {
+        service: 'elara-relay',
+        status: ready ? 'ready' : 'unavailable',
+        schemaVersion: 1,
+      },
+      ready ? 200 : 503,
+    );
+  });
+
+  // Unknown endpoints answer with the same JSON envelope as every other
+  // failure so the API never emits an HTML body or route inventory.
+  app.notFound((context) =>
+    context.json(
+      {
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Unknown endpoint',
+        },
+      },
+      404,
+    ),
   );
 
   if (kernel !== undefined) {

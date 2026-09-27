@@ -11,7 +11,8 @@ import {
 } from '../domain/errors';
 import { DomainKernel } from '../domain/kernel';
 import type { DomainStore } from '../domain/store';
-import { api, createApi } from './app';
+import { api, createApi, type ApiOptions } from './app';
+import type { ReadinessProbe } from './readiness';
 
 const ACCESS_TOKEN = 'header.payload.signature';
 
@@ -50,7 +51,7 @@ const ids = [
   '10000000-0000-4000-8000-000000000016',
 ] as const;
 
-function makeApi(options?: { allowedOrigins?: readonly string[] }) {
+function makeApi(options?: ApiOptions) {
   let index = 0;
   const kernel = new DomainKernel(new MemoryDomainStore(), {
     clock: () => '2026-09-24T09:00:00.000Z',
@@ -739,3 +740,69 @@ class CorruptStore implements DomainStore {
     throw new StoredRecordError('Task');
   }
 }
+
+describe('readiness boundary', () => {
+  function probe(behavior: () => Promise<boolean>): ReadinessProbe {
+    return { check: behavior };
+  }
+
+  it('fails closed when no readiness dependency check is configured', async () => {
+    const response = await makeApi().request('/ready');
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      service: 'elara-relay',
+      status: 'unavailable',
+      schemaVersion: 1,
+    });
+  });
+
+  it('reports readiness from the injected probe without a bearer token', async () => {
+    const ready = await makeApi({
+      readiness: probe(() => Promise.resolve(true)),
+    }).request('/ready');
+    expect(ready.status).toBe(200);
+    await expect(ready.json()).resolves.toEqual({
+      service: 'elara-relay',
+      status: 'ready',
+      schemaVersion: 1,
+    });
+
+    const unready = await makeApi({
+      readiness: probe(() => Promise.resolve(false)),
+    }).request('/ready');
+    expect(unready.status).toBe(503);
+  });
+
+  it('treats an exploding probe as unavailable instead of a server error', async () => {
+    const response = await makeApi({
+      readiness: probe(() => Promise.reject(new Error('select 1 failed'))),
+    }).request('/ready');
+
+    expect(response.status).toBe(503);
+    const body = await response.text();
+    expect(body).not.toContain('select 1 failed');
+    expect(body).toBe(
+      '{"service":"elara-relay","status":"unavailable","schemaVersion":1}',
+    );
+  });
+
+  it('keeps liveness independent of the readiness dependency', async () => {
+    const app = makeApi({ readiness: probe(() => Promise.resolve(false)) });
+
+    expect((await app.request('/health')).status).toBe(200);
+    expect((await app.request('/ready')).status).toBe(503);
+  });
+});
+
+describe('unknown endpoints', () => {
+  it('answers with the JSON error envelope rather than an HTML body', async () => {
+    const response = await api.request('/definitely-not-an-endpoint');
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'NOT_FOUND', message: 'Unknown endpoint' },
+    });
+  });
+});

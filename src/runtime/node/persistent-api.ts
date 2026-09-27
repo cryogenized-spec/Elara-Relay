@@ -5,6 +5,7 @@ import { NullMemoryProvider } from '../../ai/memory-provider';
 import { HindsightMemoryProvider } from '../../ai/hindsight-adapter';
 import { OptionalMemoryProvider } from '../../ai/optional-memory';
 import { createApi } from '../../api/app';
+import type { ReadinessProbe } from '../../api/readiness';
 import { PostgresDomainStore } from '../../db/postgres/postgres-store';
 import { DomainKernel } from '../../domain/kernel';
 import {
@@ -46,17 +47,24 @@ export function resolveMemoryProvider(
   }));
 }
 
+/**
+ * Assemble the durable PostgreSQL-backed API.
+ *
+ * `readiness` is supplied by the deployment runtime; omitting it keeps every
+ * domain route working while `GET /ready` fails closed as unproven.
+ */
 export function createPersistentApiFromResources(
   resources: NodePostgresResources,
   authVerifier: AuthVerifier,
   allowedOrigins: readonly string[] = [],
   memoryProvider: MemoryProvider = new NullMemoryProvider(),
+  readiness?: ReadinessProbe,
 ): PersistentApiRuntime {
   const store = new PostgresDomainStore(resources.sqlPool);
   const kernel = new DomainKernel(store);
 
   return {
-    app: createApi(kernel, authVerifier, { allowedOrigins }),
+    app: createApi(kernel, authVerifier, { allowedOrigins, readiness }),
     memoryProvider,
     close: async () => {
       await resources.close();

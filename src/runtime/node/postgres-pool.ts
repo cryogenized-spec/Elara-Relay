@@ -8,6 +8,7 @@ import {
   readDatabaseRuntimeConfig,
   type DatabaseRuntimeConfig,
 } from './database-config';
+import { describeFailure } from './diagnostics';
 
 class NodePgClientAdapter implements SqlClient {
   public constructor(private readonly client: PoolClient) {}
@@ -63,10 +64,8 @@ export function createNodePostgresResources(
   // process. The pool already discards the broken client; the listener only
   // keeps observability without taking the server down with it.
   rawPool.on('error', (error: Error) => {
-    const detail =
-      error instanceof Error ? error.message.slice(0, 500) : 'unknown error';
     process.stderr.write(
-      `elara-relay: idle postgres client failed: ${detail}\n`,
+      `elara-relay: idle postgres client failed: ${describeFailure(error)}\n`,
     );
   });
 

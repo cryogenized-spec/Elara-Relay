@@ -100,7 +100,14 @@ claim that the software is free from security vulnerabilities.
 Elara Relay is currently under active development and has not yet completed its
 production deployment and recovery certification.
 
-Security assumptions that depend on the eventual hosting layer — including
-rate limiting, transport-security headers, gateway configuration, and some
-production observability controls — are tracked separately until the production
-deployment architecture is finalized.
+The privileged Node API plane is deployment-ready and certified in-repository
+by `npm run production:check`: fail-closed configuration, server-only
+credentials, TLS for remote PostgreSQL, owner-scoped authorization, bounded
+request bodies and statements, explicit trusted origins with no wildcard
+credentialed CORS, non-cacheable responses, no secrets in errors or logs,
+migration-free startup, and a drained shutdown.
+
+Security assumptions that require TLS termination or a gateway — including
+rate limiting, `Strict-Transport-Security`, edge CSP/frame policy, and some
+production observability controls — remain hosting-scope items and are tracked
+in `docs/security-follow-ups.md` until a host is chosen.

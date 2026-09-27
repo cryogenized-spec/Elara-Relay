@@ -21,6 +21,7 @@ PostgreSQL service, or another compatible PostgreSQL host.
 - `ELARA_DB_IDLE_TIMEOUT_MS`: idle connection timeout, default 30000.
 - `ELARA_DB_CONNECTION_TIMEOUT_MS`: connect timeout, default 10000.
 - `ELARA_DB_STATEMENT_TIMEOUT_MS`: per-statement timeout, default 10000, maximum 60000.
+- `ELARA_READINESS_TIMEOUT_MS`: readiness round-trip deadline, default 2000, maximum 10000.
 
 The checked-in `.env.example` contains local placeholders only. Never commit
 a production database password or Supabase service-role credential.
@@ -72,6 +73,40 @@ Mutation actor provenance is server-owned. Browser requests do not submit
 `actor`; the authenticated operator API records `operator-ui`. Future
 ChatGPT and embedded-AI adapters must receive separate authenticated server
 entry points rather than impersonating the operator route.
+
+## Production deployment planes
+
+Elara deploys as two separate planes that share no secret.
+
+The privileged Operations API is one Node 24 ESM artifact built from
+`src/runtime/node/main.ts` (`npm run build:server` →
+`dist-server/server.mjs`, run with `npm start`). The browser plane is the
+static GitHub Pages build and receives only public `VITE_*` values.
+
+No proprietary hosting provider is an architectural dependency. The API needs
+a Node 24 runtime, injected environment variables, TCP routing to a port, and
+`SIGTERM`.
+
+Startup fails closed. `NODE_ENV` selects the profile, an absent value is
+treated as production, and in production the listen socket (`ELARA_HOST`,
+`PORT`) and every trusted browser origin (HTTPS only) must be declared
+explicitly. The configuration contract is validated before a socket or a pool
+is opened, PostgreSQL is then proven reachable with a bounded `select 1`, and
+a rejected startup exits `1` naming variables without echoing values.
+Unrecognized variables in the `ELARA_` namespace are rejected so a typo cannot
+silently disable a boundary.
+
+`GET /health` is liveness and never touches PostgreSQL. `GET /ready` is the
+traffic gate: it answers `200` only while the database is reachable and the
+instance is not draining, and both endpoints answer with a fixed status word
+so an unauthenticated probe discloses nothing. On termination, readiness flips
+first, in-flight requests drain inside `ELARA_SHUTDOWN_TIMEOUT_MS`, and then
+the HTTP socket and the PostgreSQL pool are closed.
+
+The full runtime configuration contract — required server variables, public
+browser variables, secret storage, startup procedure, health/readiness
+behavior, deployment assumptions, and rollback — lives in
+[`docs/production-deployment.md`](../../docs/production-deployment.md).
 
 ## Live migration state
 
