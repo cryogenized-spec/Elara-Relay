@@ -579,6 +579,33 @@ describe('API foundation', () => {
     });
   });
 
+  it('rejects oversized request bodies instead of buffering them', async () => {
+    const app = makeApi();
+
+    const oversized = await app.request('/parties', {
+      method: 'POST',
+      headers: {
+        ...authorizationHeaders(),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        mutation: { mutationId: 'MUT-api-huge-body-1' },
+        input: { name: 'x'.repeat(1_500_000), kind: 'OTHER' },
+      }),
+    });
+    expect(oversized.status).toBe(400);
+    await expect(oversized.json()).resolves.toMatchObject({
+      error: { code: 'INVALID_REQUEST' },
+    });
+
+    // A body exactly at the boundary still parses and validates normally.
+    const boundary = await jsonRequest(app, '/parties', 'POST', {
+      mutation: { mutationId: 'MUT-api-body-boundary-1' },
+      input: { name: 'Boundary', kind: 'OTHER' },
+    });
+    expect(boundary.status).toBe(201);
+  });
+
   it('maps corrupt stored records to a generic 500 instead of echoing values', async () => {
     const kernel = new DomainKernel(new CorruptStore(), {
       clock: () => '2026-09-24T09:00:00.000Z',
