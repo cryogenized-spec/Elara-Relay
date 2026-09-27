@@ -1,7 +1,7 @@
 {
   "imports": {
     "hono": "npm:hono@4.13.9",
-    "hono/": "npm:hono@4.13.9/",
+    "hono/cors": "npm:hono@4.13.9/cors",
     "jose": "npm:jose@6.2.12",
     "pg": "npm:pg@8.23.0",
     "zod": "npm:zod@4.6.5"
