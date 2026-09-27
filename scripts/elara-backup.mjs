@@ -5,7 +5,7 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { finished } from 'node:stream/promises';
-import { resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
 import { Pool } from 'pg';
 
 const tables = [
@@ -166,6 +166,7 @@ async function checkManifest(dir) {
 
 async function exportData(dir) {
   const conn = connection(process.env.ELARA_BACKUP_SOURCE_URL);
+  await mkdir(dirname(dir), { recursive: true, mode: 0o700 });
   await mkdir(dir, { mode: 0o700 }); // never overwrite or append an existing export
   const pool = poolFor(conn);
   let client;
