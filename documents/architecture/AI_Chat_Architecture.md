@@ -190,20 +190,22 @@ Pass 1I does not add:
 - unaudited external actions
 - hidden provider-specific reasoning or memory APIs
 
-The current increment provides the provider-neutral streaming contract and
-model catalog. Persistence, authenticated Chat endpoints, concrete provider
-adapters, and the Chat UI remain implementation slices to build against this
-contract.
+The repository currently contains the provider-neutral streaming contract
+and model catalog, plus migration `0006_ai_chat.sql` with the owner-scoped
+Thread/Message schema and lifecycle constraints. A PostgreSQL Chat repository,
+authenticated endpoints, concrete provider adapters, and the Chat UI remain
+implementation slices to build against this contract.
 
 ## 10. Delivery sequence
 
-1. Provider-neutral model and streaming contract
-2. PostgreSQL Thread/Message migration and repository with owner isolation
-3. Authenticated thread and turn API with cancellation and durable finalization
-4. Server-side OpenAI and Muse adapters with secret-safe error mapping
-5. Mobile-first Chat UI with model selection and reconnect/history behavior
-6. Memory recall integration with evidence provenance
-7. Adversarial review: cross-owner reads, concurrent turns, duplicate client
+1. Provider-neutral model and streaming contract — complete
+2. PostgreSQL Thread/Message schema and owner isolation — complete
+3. PostgreSQL Chat repository and transactional turn lifecycle
+4. Authenticated thread and turn API with cancellation and durable finalization
+5. Server-side OpenAI and Muse adapters with secret-safe error mapping
+6. Mobile-first Chat UI with model selection and reconnect/history behavior
+7. Memory recall integration with evidence provenance
+8. Adversarial review: cross-owner reads, concurrent turns, duplicate client
    turn IDs, disconnect races, provider outages, secret leakage, and
    provider/model mismatch
 
