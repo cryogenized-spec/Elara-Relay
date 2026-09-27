@@ -92,3 +92,16 @@ therefore enables CORS only for exact origins listed in
   token.
 - A disallowed origin receives no CORS authorization; it does not expand the
   server-side identity allowlist.
+
+## Readiness and recovery
+
+- `GET /ready` reports database connectivity plus expected schema/migration
+  readiness against the recovery contract. It fails closed (503, enum-coded
+  facts only) when no probe is wired or the probe fails.
+- `GET /recovery/status` (bearer-protected) reports the last
+  restore-verification result from the server-side report file
+  (`ELARA_RECOVERY_REPORT_PATH`): `VERIFIED`, `FAILED`, or `UNVERIFIED`.
+- The recovery procedure — `pg_dump --format=custom` artifact plus strict
+  manifest, atomic `pg_restore --single-transaction` into a clean target,
+  and a full verification battery — is documented in `docs/recovery.md`.
+  The deterministic proof runs as `npm run recovery:check`.

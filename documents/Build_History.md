@@ -504,6 +504,59 @@ Supabase database.
 
 ---
 
+### 2026-09-27 10:15:00 UTC
+### 2026-09-27 12:15:00 SAST
+
+**Pass 1J — Recovery and Disaster-Recovery Boundary**
+
+PR #29 (open for review; merge requires explicit human approval).
+
+Established:
+
+- canonical backup artifact: `pg_dump --format=custom` archive plus a
+  strict manifest recording migration SHA-256 digests, per-table row
+  counts and content checksums, security expectations, and probe ids
+- atomic restore into a clean PostgreSQL target via
+  `pg_restore --exit-on-error --single-transaction`; failed restores
+  leave the target empty and report failure
+- recovery verification battery: recovery schema contract with
+  anti-drift unknown-table detection, RLS and revoked browser-role
+  checks, append-only trigger checks with pinned search_path, unique
+  identity and foreign-key survival, content digests, and negative
+  behavioral probes
+- recovery kill-test gate (`npm run recovery:check`): deterministic
+  seed → backup → destroy → restore → verify → application-level proof
+  through the real domain kernel and API, including replay safety,
+  optimistic revisions, scheduler duplicate-delivery protection, chat
+  owner scoping, and adversarial cases (tampered artifacts, dirty
+  targets, failed restores, partial restores, replay mismatches)
+- recovery-focused adversarial mutations added to the adversarial
+  foundation gate; verification-integrity gate pins the new script and
+  CI control
+- readiness and recovery observability: `GET /ready` (database +
+  schema readiness, fail-closed) and bearer-protected
+  `GET /recovery/status` (last restore verification)
+- canonical recovery runbook: `docs/recovery.md` (backup/restore
+  procedures, tooling, artifact storage, secret boundaries, RTO/RPO
+  assumptions, failure handling, limitations, kill-test instructions)
+
+Verification:
+
+- recovery kill-test gate green against a live PostgreSQL server
+- full Certification suite green (lint, TypeScript 6 and 7, coverage,
+  adversarial foundation/domain/auth gates, migration contract,
+  PostgreSQL integration, production build)
+
+State after milestone:
+
+A lost Elara operational database can be recovered from a known-good
+artifact into a clean PostgreSQL environment, with automated proof that
+domain invariants, history, security boundaries, scheduler guarantees,
+and usable application state survived. Backup/restore proof and the
+recovery kill-test moved out of the Phase 1 remaining-work list.
+
+---
+
 ## Current Phase 1 state
 
 Completed:
@@ -529,10 +582,6 @@ Still required before Phase 1 freeze:
 - production API deployment
 - production web/PWA deployment
 - production secret/runtime wiring
-- richer health/observability boundary
-- backup/export
-- restore proof
-- final Phase 1 adversarial/recovery kill-test
 
 ## Future entry format
 

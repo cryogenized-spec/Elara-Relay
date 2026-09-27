@@ -229,6 +229,7 @@ Completed foundations and product slices:
 - Pass 1G — Live Auth and Authenticated Read Model
 - Pass 1H-A — Durable Task and Reminder Capture
 - Pass 1H-B — Durable Repair / Job Capture and Task State Mutations
+- Pass 1J — Recovery and Disaster-Recovery Boundary
 
 Current application state:
 
@@ -249,10 +250,6 @@ Remaining Phase 1 product work:
 - production API deployment
 - production web/PWA deployment
 - secret/runtime configuration
-- richer health/observability boundary
-- backup/export
-- restore proof
-- final Phase 1 adversarial / recovery kill-test
 
 ## 8. UI direction
 
@@ -343,6 +340,19 @@ Supabase remains infrastructure for PostgreSQL/Auth rather than the browser's
 direct operational data layer.
 
 ## 12. Reliability direction
+
+The recovery capability is implemented and continuously proven:
+
+- backup is a `pg_dump --format=custom` archive plus a strict manifest of
+  migration digests, per-table counts, and content checksums
+- restore is an atomic `pg_restore --single-transaction` into a clean
+  PostgreSQL target, followed by a verification battery (schema contract,
+  security posture, history, scheduler identity, content digests)
+- the deterministic kill-test (`npm run recovery:check`) proves
+  seed → backup → destroy → restore → verify → application-level
+  behavior, including adversarial artifacts and partial restores
+- `/ready` reports database and schema readiness; `/recovery/status`
+  reports the last verified restore outcome
 
 Before Phase 1 is frozen:
 
