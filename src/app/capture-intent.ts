@@ -84,3 +84,13 @@ export function johannesburgIsoToLocalDateTimeInput(
 
   return `${read('year')}-${read('month')}-${read('day')}T${read('hour')}:${read('minute')}`;
 }
+
+export function resolveLocalDateTimeEdit(
+  formValue: string,
+  originalValue: string | null,
+): string | null {
+  if (formValue === johannesburgIsoToLocalDateTimeInput(originalValue)) {
+    return originalValue;
+  }
+  return johannesburgLocalDateTimeToIso(formValue);
+}

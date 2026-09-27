@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   johannesburgIsoToLocalDateTimeInput,
   johannesburgLocalDateTimeToIso,
+  resolveLocalDateTimeEdit,
   resolveMutationAttempt,
 } from './capture-intent';
 
@@ -57,5 +58,22 @@ describe('Capture mutation intent', () => {
     expect(() => johannesburgLocalDateTimeToIso('2026-09-26T24:00')).toThrow(
       'Date and time is invalid',
     );
+  });
+
+  it('preserves timestamp precision when the visible minute is unchanged', () => {
+    const original = '2026-09-26T12:30:42.375Z';
+    expect(resolveLocalDateTimeEdit('2026-09-26T14:30', original)).toBe(
+      original,
+    );
+    expect(resolveLocalDateTimeEdit('', null)).toBeNull();
+  });
+
+  it('converts an edited local minute to an ISO timestamp', () => {
+    expect(
+      resolveLocalDateTimeEdit(
+        '2026-09-26T14:31',
+        '2026-09-26T12:30:42.375Z',
+      ),
+    ).toBe('2026-09-26T12:31:00.000Z');
   });
 });

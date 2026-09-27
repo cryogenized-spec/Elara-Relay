@@ -458,6 +458,10 @@ test('Repair Capture opens one atomic durable workshop case', async ({
     name: 'New repair / Job',
   });
 
+  await expect(repairCapture.getByLabel('Customer')).toHaveAttribute(
+    'maxlength',
+    '200',
+  );
   await repairCapture.getByLabel('Customer').fill('Demo workshop customer');
   await repairCapture.getByLabel('Item / model').fill('Spyder Victor service');
   await repairCapture
@@ -496,6 +500,15 @@ test('Task detail can edit, wait, and complete through versioned writes', async 
   page,
 }) => {
   await installLiveHarness(page);
+  const taskPatchBodies: Record<string, unknown>[] = [];
+  page.on('request', (request) => {
+    if (
+      request.method() === 'PATCH' &&
+      /\/tasks\//.test(request.url())
+    ) {
+      taskPatchBodies.push(request.postDataJSON() as Record<string, unknown>);
+    }
+  });
   await page.goto('/');
   await signInOwner(page);
   await page.getByRole('button', { name: 'Work' }).click();
@@ -514,6 +527,8 @@ test('Task detail can edit, wait, and complete through versioned writes', async 
   await edit.getByLabel('Title').fill('Pressure-test regulator block today');
   await edit.getByLabel('Priority').selectOption('NORMAL');
   await edit.getByRole('button', { name: 'Save changes' }).click();
+  expect(taskPatchBodies[0]?.['patch']).not.toHaveProperty('dueAt');
+  expect(taskPatchBodies[0]?.['patch']).not.toHaveProperty('followUpAt');
 
   await expect(taskDetail).toHaveAttribute(
     'aria-label',

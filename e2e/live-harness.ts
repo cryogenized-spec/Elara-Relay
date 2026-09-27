@@ -247,7 +247,7 @@ function tasks(asOf: string): HarnessTask[] {
       title: 'Pressure-test regulator block',
       status: 'DOING',
       priority: 'HIGH',
-      dueAt: isoOffset(asOf, 120),
+      dueAt: new Date(Date.parse(asOf) + 120 * 60_000 + 42_375).toISOString(),
       followUpAt: null,
       waitingOn: null,
       waitingSince: null,

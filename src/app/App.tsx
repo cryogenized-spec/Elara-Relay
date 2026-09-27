@@ -25,6 +25,7 @@ import {
 import {
   johannesburgIsoToLocalDateTimeInput,
   johannesburgLocalDateTimeToIso,
+  resolveLocalDateTimeEdit,
   resolveMutationAttempt,
   type PendingMutationAttempt,
 } from './capture-intent';
@@ -1862,8 +1863,11 @@ function LiveTaskDetailSurface({
     let dueAt: string | null;
     let followUpAt: string | null;
     try {
-      dueAt = johannesburgLocalDateTimeToIso(editDueLocal);
-      followUpAt = johannesburgLocalDateTimeToIso(editFollowUpLocal);
+      dueAt = resolveLocalDateTimeEdit(editDueLocal, data.task.dueAt);
+      followUpAt = resolveLocalDateTimeEdit(
+        editFollowUpLocal,
+        data.task.followUpAt,
+      );
     } catch (caught: unknown) {
       setMutationError(readableError(caught));
       return;
@@ -3125,7 +3129,7 @@ function LiveRepairCaptureForm({
           value={customer}
           onChange={(event) => setCustomer(event.target.value)}
           required
-          maxLength={240}
+          maxLength={200}
           disabled={state === 'saving'}
         />
         <small>
