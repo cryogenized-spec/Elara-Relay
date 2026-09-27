@@ -255,6 +255,10 @@ describe('chat turn orchestration', () => {
       ): AsyncIterable<ChatStreamEvent> {
         providerSawAbort = signal.aborted;
         await new Promise<void>(() => undefined);
+
+        // Unreachable by design; keeps this deliberately hanging test double
+        // a syntactically valid async generator for the lint contract.
+        yield { type: 'completed' };
       },
     };
     const harness = makeHarness([provider], undefined, { turnTimeoutMs: 60_000 });
