@@ -115,6 +115,17 @@ function isoOffset(asOf: string, minutes: number): string {
   return new Date(Date.parse(asOf) + minutes * 60_000).toISOString();
 }
 
+function capturedEntityId(caseNumber: number, slot: 1 | 2 | 3): string {
+  const firstSegment = (0xca7e0000 + caseNumber * 4 + slot)
+    .toString(16)
+    .padStart(8, '0');
+  return `${firstSegment}-0000-4000-8000-000000000000`;
+}
+
+function jobKeyForId(id: string): string {
+  return `JOB-${id.slice(0, 8).toUpperCase()}`;
+}
+
 function base64Url(value: unknown): string {
   return Buffer.from(JSON.stringify(value))
     .toString('base64url');
@@ -429,9 +440,21 @@ export async function installLiveHarness(
   let capturedTask: HarnessTask | null = null;
   let mutatedPressureTask: HarnessTask | null = null;
   let capturedAction: HarnessScheduledAction | null = null;
-  let capturedParty: HarnessParty | null = null;
-  let capturedJob: HarnessJob | null = null;
-  let capturedRepair: HarnessRepair | null = null;
+  const capturedParties: HarnessParty[] = [];
+  const capturedJobs: HarnessJob[] = [];
+  const capturedRepairs: HarnessRepair[] = [];
+  const repairCaseReceipts = new Map<
+    string,
+    {
+      fingerprint: string;
+      result: {
+        party: HarnessParty;
+        job: HarnessJob;
+        repair: HarnessRepair;
+      };
+    }
+  >();
+  let repairCaseSequence = 0;
   let taskCreateAttempts = 0;
   let firstTaskIntent:
     | { mutationId: string; inputJson: string }
@@ -474,14 +497,8 @@ export async function installLiveHarness(
     const requestedAsOf = url.searchParams.get('asOf');
     if (requestedAsOf !== null) currentAsOf = requestedAsOf;
     const asOf = requestedAsOf ?? currentAsOf;
-    const allParties = [
-      baseParty(),
-      ...(capturedParty === null ? [] : [capturedParty]),
-    ];
-    const allJobs = [
-      ...jobs(),
-      ...(capturedJob === null ? [] : [capturedJob]),
-    ];
+    const allParties = [baseParty(), ...capturedParties];
+    const allJobs = [...jobs(), ...capturedJobs];
     const baseTasks = tasks(asOf).map((task) =>
       task.id === IDS.taskPressure && mutatedPressureTask !== null
         ? mutatedPressureTask
@@ -491,10 +508,7 @@ export async function installLiveHarness(
       ...baseTasks,
       ...(capturedTask === null ? [] : [capturedTask]),
     ];
-    const allRepairs = [
-      ...repairs(asOf),
-      ...(capturedRepair === null ? [] : [capturedRepair]),
-    ];
+    const allRepairs = [...repairs(asOf), ...capturedRepairs];
     const schedule = scheduledActions(asOf);
     if (capturedAction !== null) {
       if (
@@ -564,11 +578,15 @@ export async function installLiveHarness(
           storageLocation?: unknown;
         };
       };
+      const mutationId =
+        typeof raw.mutation?.mutationId === 'string'
+          ? raw.mutation.mutationId
+          : null;
 
       if (
-        typeof raw.mutation?.mutationId !== 'string' ||
+        mutationId === null ||
         typeof raw.input?.jobTitle !== 'string' ||
-        typeof raw.input?.reportedFault !== 'string'
+        typeof raw.input.reportedFault !== 'string'
       ) {
         await route.fulfill(
           json(
@@ -583,6 +601,31 @@ export async function installLiveHarness(
         );
         return;
       }
+
+      const fingerprint = JSON.stringify(raw.input);
+      const existingReceipt = repairCaseReceipts.get(mutationId);
+      if (existingReceipt !== undefined) {
+        if (existingReceipt.fingerprint !== fingerprint) {
+          await route.fulfill(
+            json(
+              {
+                error: {
+                  code: 'MUTATION_REPLAY_MISMATCH',
+                  message: 'Mutation id was reused for different Repair-case intent',
+                },
+              },
+              409,
+            ),
+          );
+          return;
+        }
+        await route.fulfill(json(existingReceipt.result, 201));
+        return;
+      }
+
+      const caseNumber = repairCaseSequence;
+      repairCaseSequence += 1;
+      const committedAt = isoOffset(currentAsOf, caseNumber + 1);
 
       let party: HarnessParty;
       if (raw.input.party?.mode === 'EXISTING') {
@@ -601,34 +644,50 @@ export async function installLiveHarness(
           return;
         }
         party = existing;
-      } else {
-        capturedParty ??= {
-          id: IDS.partyCaptured,
-          name:
-            typeof raw.input.party?.name === 'string'
-              ? raw.input.party.name
-              : 'Captured customer',
+      } else if (
+        raw.input.party?.mode === 'NEW_CUSTOMER' &&
+        typeof raw.input.party.name === 'string'
+      ) {
+        party = {
+          id: capturedEntityId(caseNumber, 1),
+          name: raw.input.party.name,
           kind: 'CUSTOMER',
-          createdAt: '2026-09-26T05:00:00.000Z',
-          updatedAt: '2026-09-26T05:00:00.000Z',
+          createdAt: committedAt,
+          updatedAt: committedAt,
           revision: 1,
         };
-        party = capturedParty;
+        capturedParties.push(party);
+      } else {
+        await route.fulfill(
+          json(
+            {
+              error: {
+                code: 'INVALID_REQUEST',
+                message: 'Repair-case Party intent is invalid',
+              },
+            },
+            400,
+          ),
+        );
+        return;
       }
 
-      capturedJob ??= {
-        id: IDS.jobCaptured,
-        key: 'JOB-CA7E0001',
+      const jobId = capturedEntityId(caseNumber, 2);
+      const job: HarnessJob = {
+        id: jobId,
+        key: jobKeyForId(jobId),
         title: raw.input.jobTitle,
         category: 'ACTIVE',
         partyId: party.id,
-        createdAt: '2026-09-26T05:00:00.000Z',
-        updatedAt: '2026-09-26T05:00:00.000Z',
+        createdAt: committedAt,
+        updatedAt: committedAt,
         revision: 1,
       };
-      capturedRepair ??= {
-        id: IDS.repairCaptured,
-        jobId: capturedJob.id,
+      capturedJobs.push(job);
+
+      const repair: HarnessRepair = {
+        id: capturedEntityId(caseNumber, 3),
+        jobId: job.id,
         stage: 'RECEIVED',
         reportedFault: raw.input.reportedFault,
         diagnosis: null,
@@ -652,18 +711,19 @@ export async function installLiveHarness(
         finalTestResult: null,
         finalTestDetail: null,
         testedAt: null,
-        receivedAt: '2026-09-26T05:00:00.000Z',
+        receivedAt: committedAt,
         readyAt: null,
         collectedAt: null,
         cancelledAt: null,
-        createdAt: '2026-09-26T05:00:00.000Z',
-        updatedAt: '2026-09-26T05:00:00.000Z',
+        createdAt: committedAt,
+        updatedAt: committedAt,
         revision: 1,
       };
+      capturedRepairs.push(repair);
 
-      await route.fulfill(
-        json({ party, job: capturedJob, repair: capturedRepair }, 201),
-      );
+      const result = { party, job, repair };
+      repairCaseReceipts.set(mutationId, { fingerprint, result });
+      await route.fulfill(json(result, 201));
       return;
     }
 
