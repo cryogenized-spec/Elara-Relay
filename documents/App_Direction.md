@@ -228,6 +228,7 @@ Completed foundations and product slices:
 - Pass 1F0 — Visual Evidence Bootstrap
 - Pass 1G — Live Auth and Authenticated Read Model
 - Pass 1H-A — Durable Task and Reminder Capture
+- Pass 1H-B — Durable Repair / Job Capture and Task State Mutations
 
 Current application state:
 
@@ -237,12 +238,13 @@ Current application state:
 - Job / Task / Repair detail reads are live
 - Task Capture persists durably
 - Reminder Capture persists durably
+- Repair / Job Capture commits Party → Job → Repair atomically
+- Task edit / waiting / complete / cancel mutations are live
 - browser writes use replay-safe mutation IDs and strict response validation
+- stale Task conflicts refresh before an edit is discarded
 
 Remaining Phase 1 product work:
 
-- durable Repair / Job Capture
-- Task update / waiting / complete / cancel UI
 - Repair progression and final-test UI
 - production API deployment
 - production web/PWA deployment
