@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
@@ -20,6 +20,7 @@ const source = new Pool({ connectionString: sourceUrl.toString() });
 const target = new Pool({ connectionString: targetUrl.toString() });
 const admin = new Pool({ connectionString: process.env['DATABASE_URL'] });
 let directory: string;
+let rootDirectory: string;
 const env = {
   ...process.env,
   ELARA_BACKUP_SOURCE_URL: sourceUrl.toString(),
@@ -38,7 +39,8 @@ beforeAll(async () => {
   }
   await admin.query(`create database ${dbName}_source`);
   await admin.query(`create database ${dbName}_target`);
-  directory = join(await mkdtemp(join(tmpdir(), 'elara-restore-proof-')), 'export');
+  rootDirectory = await mkdtemp(join(tmpdir(), 'elara-restore-proof-'));
+  directory = join(rootDirectory, 'missing-parent', 'export');
   for (const file of [
     '0001_domain_kernel.sql', '0002_security_hardening.sql',
     '0003_repairs_domain.sql', '0004_scheduler.sql',
@@ -75,12 +77,14 @@ afterAll(async () => {
   await admin.query(`drop database if exists ${dbName}_source with (force)`);
   await admin.query(`drop database if exists ${dbName}_target with (force)`);
   await admin.end();
-  if (directory) await rm(join(directory, '..'), { recursive: true, force: true });
+  if (rootDirectory) await rm(rootDirectory, { recursive: true, force: true });
 });
 
 describe('portable PostgreSQL restore proof', () => {
-  it('exports, validates, restores and verifies all ten table histories without re-creating events', async () => {
+  it('exports under a missing parent, refuses overwrite, restores and verifies all ten table histories without re-creating events', async () => {
+    await expect(access(join(rootDirectory, 'missing-parent'))).rejects.toThrow();
     await run('export');
+    await expect(run('export')).rejects.toThrow();
     await run('validate');
     const restored = await run('restore', '--confirm-empty-target');
     expect(restored).toContain('Scheduler: 1 claimed runs, 1 due actions');
