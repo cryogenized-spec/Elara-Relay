@@ -47,8 +47,39 @@ type ApiEnv = {
 
 type ApiContext = Context<ApiEnv>;
 
+// Liveness vs readiness separation: `/health` reports that the process is
+// up (deterministic, no external dependency). `/ready` reports whether the
+// runtime can currently serve operational traffic: database connectivity
+// and expected schema/migration readiness. Probe failures are expressed as
+// enum codes only — no database diagnostics are exposed to unauthenticated
+// callers.
+export type ReadinessProvider = () => Promise<ReadinessProbeResult>;
+
+export interface ReadinessProbeResult {
+  database: 'up' | 'down';
+  schema: 'ready' | 'incomplete' | 'unknown';
+}
+
+// Restore verification result, served only behind the authenticated
+// boundary. Elara never reports a recovery status it cannot prove: an
+// absent verification is UNVERIFIED, not success.
+export type RecoveryStatusProvider = () => Promise<RecoveryStatusSnapshot>;
+
+export interface RecoveryStatusSnapshot {
+  status: 'VERIFIED' | 'FAILED' | 'UNVERIFIED';
+  verifiedAt?: string;
+  failures?: readonly string[];
+  artifact?: {
+    dumpFile: string;
+    dumpSha256: string;
+    manifestSha256: string;
+  };
+}
+
 export interface ApiOptions {
   allowedOrigins?: readonly string[] | undefined;
+  readiness?: ReadinessProvider | undefined;
+  recoveryStatus?: RecoveryStatusProvider | undefined;
 }
 
 const mutationRequestSchema = z
@@ -481,6 +512,7 @@ function registerProtectedDomainApi(
   app: Hono<ApiEnv>,
   kernel: DomainKernel,
   verifier: AuthVerifier,
+  options: ApiOptions = {},
 ): void {
   const protectedApp = new Hono<ApiEnv>();
 
@@ -490,6 +522,19 @@ function registerProtectedDomainApi(
     );
     context.set('authIdentity', await verifier.verify(token));
     await next();
+  });
+
+  protectedApp.get('/recovery/status', async (context) => {
+    const provider = options.recoveryStatus;
+    if (provider === undefined) {
+      return context.json({ status: 'UNVERIFIED' });
+    }
+    try {
+      return context.json(await provider());
+    } catch {
+      // A broken status source must never be reported as verified.
+      return context.json({ status: 'UNVERIFIED' });
+    }
   });
 
   registerDomainRoutes(protectedApp, kernel);
@@ -524,13 +569,42 @@ export function createApi(
     }),
   );
 
+  app.get('/ready', async (context) => {
+    let probe: ReadinessProbeResult;
+    if (options.readiness === undefined) {
+      // Fail closed: without a wired readiness probe the runtime must not
+      // claim it is ready for operational traffic.
+      probe = { database: 'down', schema: 'unknown' };
+    } else {
+      try {
+        probe = await options.readiness();
+      } catch {
+        // Probe failure is itself the readiness answer; no error details
+        // escape to an unauthenticated caller.
+        probe = { database: 'down', schema: 'unknown' };
+      }
+    }
+    const ready = probe.database === 'up' && probe.schema === 'ready';
+    return context.json(
+      {
+        service: 'elara-relay',
+        status: ready ? 'ready' : 'degraded',
+        checks: {
+          database: probe.database,
+          schema: probe.schema,
+        },
+      },
+      ready ? 200 : 503,
+    );
+  });
+
   if (kernel !== undefined) {
     if (authVerifier === undefined) {
       throw new Error(
         'AuthVerifier is required whenever domain routes are enabled',
       );
     }
-    registerProtectedDomainApi(app, kernel, authVerifier);
+    registerProtectedDomainApi(app, kernel, authVerifier, options);
   }
 
   app.onError((error, context) => {

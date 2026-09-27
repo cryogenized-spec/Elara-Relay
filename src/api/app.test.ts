@@ -11,7 +11,12 @@ import {
 } from '../domain/errors';
 import { DomainKernel } from '../domain/kernel';
 import type { DomainStore } from '../domain/store';
-import { api, createApi } from './app';
+import {
+  api,
+  createApi,
+  type ReadinessProbeResult,
+  type RecoveryStatusSnapshot,
+} from './app';
 
 const ACCESS_TOKEN = 'header.payload.signature';
 
@@ -50,7 +55,13 @@ const ids = [
   '10000000-0000-4000-8000-000000000016',
 ] as const;
 
-function makeApi(options?: { allowedOrigins?: readonly string[] }) {
+function makeApi(
+  options?: {
+    allowedOrigins?: readonly string[];
+    readiness?: () => Promise<ReadinessProbeResult>;
+    recoveryStatus?: () => Promise<RecoveryStatusSnapshot>;
+  },
+) {
   let index = 0;
   const kernel = new DomainKernel(new MemoryDomainStore(), {
     clock: () => '2026-09-24T09:00:00.000Z',
@@ -739,3 +750,137 @@ class CorruptStore implements DomainStore {
     throw new StoredRecordError('Task');
   }
 }
+
+describe('readiness and recovery observability', () => {
+  it('keeps /health purely a liveness signal', async () => {
+    const app = makeApi({
+      readiness: () => Promise.resolve({ database: 'down', schema: 'unknown' }),
+    });
+    const response = await app.request('/health');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      service: 'elara-relay',
+      status: 'ok',
+      schemaVersion: 1,
+    });
+  });
+
+  it('fails closed when no readiness probe is wired', async () => {
+    const app = makeApi();
+    const response = await app.request('/ready');
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      service: 'elara-relay',
+      status: 'degraded',
+      checks: { database: 'down', schema: 'unknown' },
+    });
+  });
+
+  it('reports ready only when database and schema checks pass', async () => {
+    const app = makeApi({
+      readiness: () =>
+        Promise.resolve({ database: 'up', schema: 'ready' }),
+    });
+    const response = await app.request('/ready');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      service: 'elara-relay',
+      status: 'ready',
+      checks: { database: 'up', schema: 'ready' },
+    });
+  });
+
+  it('degrades without leaking database diagnostics', async () => {
+    const app = makeApi({
+      readiness: () => {
+        throw new Error('FATAL: password authentication failed for user postgres');
+      },
+    });
+    const response = await app.request('/ready');
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { checks: unknown };
+    expect(body.checks).toEqual({ database: 'down', schema: 'unknown' });
+    expect(JSON.stringify(body)).not.toContain('password');
+  });
+
+  it('reports incomplete schema as degraded', async () => {
+    const app = makeApi({
+      readiness: () =>
+        Promise.resolve({ database: 'up', schema: 'incomplete' }),
+    });
+    const response = await app.request('/ready');
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'degraded',
+      checks: { database: 'up', schema: 'incomplete' },
+    });
+  });
+
+  it('keeps recovery status inside the authenticated boundary', async () => {
+    const app = makeApi({
+      recoveryStatus: () =>
+        Promise.resolve({
+          status: 'VERIFIED',
+          verifiedAt: '2026-09-27T09:00:00.000Z',
+        }),
+    });
+
+    const unauthenticated = await app.request('/recovery/status');
+    expect(unauthenticated.status).toBe(401);
+    expect(unauthenticated.headers.get('www-authenticate')).toBe('Bearer');
+  });
+
+  it('reports the restore verification result to authenticated operators', async () => {
+    const app = makeApi({
+      recoveryStatus: () =>
+        Promise.resolve({
+          status: 'VERIFIED',
+          verifiedAt: '2026-09-27T09:00:00.000Z',
+          failures: [],
+          artifact: {
+            dumpFile: 'elara-backup.dump',
+            dumpSha256: 'a'.repeat(64),
+            manifestSha256: 'b'.repeat(64),
+          },
+        }),
+    });
+    const response = await app.request(
+      '/recovery/status',
+      { headers: authorizationHeaders() },
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'VERIFIED',
+    });
+  });
+
+  it('never reports verified without a verification source', async () => {
+    const app = makeApi();
+    const response = await app.request(
+      '/recovery/status',
+      { headers: authorizationHeaders() },
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: 'UNVERIFIED' });
+  });
+
+  it('reports failed restore verification as FAILED, not success', async () => {
+    const app = makeApi({
+      recoveryStatus: () =>
+        Promise.resolve({
+          status: 'FAILED',
+          verifiedAt: '2026-09-27T09:00:00.000Z',
+          failures: ['row count preserved: events: expected 7 rows, restored 5'],
+        }),
+    });
+    const response = await app.request(
+      '/recovery/status',
+      { headers: authorizationHeaders() },
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'FAILED',
+      failures: ['row count preserved: events: expected 7 rows, restored 5'],
+    });
+  });
+});

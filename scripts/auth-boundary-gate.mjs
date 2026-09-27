@@ -70,7 +70,14 @@ for (const marker of [
 for (const marker of [
   'new SupabaseAuthVerifier',
   'readAuthRuntimeConfig(env)',
-  'app: createApi(kernel, authVerifier, { allowedOrigins })',
+  'app: createApi(kernel, authVerifier, {',
+  'allowedOrigins,',
+  // Readiness (database/schema) and restore-verification observability stay
+  // wired into the persistent runtime; /recovery/status remains behind the
+  // authenticated boundary.
+  'readiness,',
+  'recoveryStatus,',
+  'probeDatabaseReadiness(resources.sqlPool.connect)',
 ]) {
   if (!persistent.includes(marker)) {
     findings.push(`Persistent runtime lost auth wiring: ${marker}`);
