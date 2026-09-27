@@ -291,6 +291,22 @@ AI providers must remain replaceable.
 
 Google and ClickUp must remain integrations rather than architectural centers.
 
+### Current Phase 2 foundation
+
+Pass 1I has started the AI Chat and memory boundaries:
+
+- provider-neutral `MemoryProvider` port and Null implementation
+- provider-neutral streaming `ChatProvider` port
+- stable Elara model identities for `gpt-6-luna` and
+  `muse-spark-1.3-contributor`, separate from adapter IDs
+- owner-scoped PostgreSQL Chat Threads and Messages in migration `0006`
+- assistant generation state and provider/model provenance constraints
+- RLS and browser-role table privileges revoked for Chat records
+
+The authenticated Chat API, PostgreSQL Chat repository, concrete provider
+adapters, and Chat UI are the next implementation work. Operational features
+continue to work without any provider configured.
+
 ## 10. Provider model
 
 Preferred architecture:

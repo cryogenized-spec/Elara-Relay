@@ -29,8 +29,16 @@ Merged milestones now include:
 - Pass 1C — Application Authentication Boundary
 - Pass 1D — First-class Repairs Domain
 - Pass 1E — Scheduler & Delivery Kernel
+- Pass 1F — Mobile UI Foundation and visual evidence
+- Pass 1G — Live Auth and authenticated read model
+- Pass 1H-A — Durable Task and Reminder Capture
+- Pass 1H-B — Durable Repair/Job Capture and Task mutations
+- Pass 1I foundation — provider-neutral memory/chat contracts and durable
+  owner-scoped chat record schema
 
-The live Supabase project is migrated through `0004_scheduler`.
+The chat API, provider adapters, and Chat UI are still in progress. The live
+Supabase project is last recorded as migrated through `0004_scheduler`;
+migration `0006_ai_chat` is in the repository but has not been applied there.
 
 ## Documentation
 
@@ -41,7 +49,7 @@ The canonical documentation home is:
 Start with:
 
 - [Layout Guide](documents/Layout_Guide.md)
-- [Product Direction](documents/Product_Direction.md)
+- [Product Direction](documents/App_Direction.md)
 - [Build History](documents/Build_History.md)
 
 Architecture, domain notes, research, and timestamped milestone records live under
