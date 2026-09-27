@@ -1,5 +1,6 @@
 import {
   createRemoteJWKSet,
+  customFetch,
   decodeJwt,
   decodeProtectedHeader,
   jwtVerify,
@@ -38,6 +39,7 @@ export interface SupabaseAuthVerifierConfig {
   supabaseUrl: string;
   publishableKey: string;
   allowedUserIds: ReadonlySet<string>;
+  requestTimeoutMs: number;
 }
 
 export interface SupabaseAuthVerifierOptions {
@@ -72,6 +74,14 @@ export class SupabaseAuthVerifier implements AuthVerifier {
     private readonly config: SupabaseAuthVerifierConfig,
     options: SupabaseAuthVerifierOptions = {},
   ) {
+    // Auth fetches bound every request handler, so a missing or absurd
+    // timeout fails closed at construction instead of hanging workers.
+    if (
+      !Number.isInteger(config.requestTimeoutMs) ||
+      config.requestTimeoutMs <= 0
+    ) {
+      throw new Error('requestTimeoutMs must be a positive integer');
+    }
     this.origin = normalizedOrigin(config.supabaseUrl);
     // JWKS and user-info fetches authenticate the issuer, so a plaintext
     // issuer would let a network attacker mint trusted tokens. Production
@@ -89,6 +99,10 @@ export class SupabaseAuthVerifier implements AuthVerifier {
     this.now = options.now ?? (() => Date.now());
     this.jwks = createRemoteJWKSet(
       new URL(`${this.issuer}/.well-known/jwks.json`),
+      {
+        timeoutDuration: config.requestTimeoutMs,
+        [customFetch]: this.fetchFn,
+      },
     );
   }
 
@@ -128,6 +142,7 @@ export class SupabaseAuthVerifier implements AuthVerifier {
         authorization: `Bearer ${accessToken}`,
       },
       redirect: 'error',
+      signal: AbortSignal.timeout(this.config.requestTimeoutMs),
     });
 
     if (!response.ok) {

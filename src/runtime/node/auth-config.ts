@@ -2,6 +2,24 @@ import { z } from 'zod';
 import type { SupabaseAuthVerifierConfig } from '../../auth/supabase-auth-verifier';
 
 const uuidSchema = z.string().uuid();
+const positiveIntegerSchema = z.number().int().positive();
+
+function parseRequestTimeoutMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') {
+    return 5_000;
+  }
+
+  const value = Number(raw);
+  if (!positiveIntegerSchema.safeParse(value).success) {
+    throw new Error(
+      'ELARA_AUTH_REQUEST_TIMEOUT_MS must be a positive integer',
+    );
+  }
+  if (value > 30_000) {
+    throw new Error('ELARA_AUTH_REQUEST_TIMEOUT_MS may not exceed 30000');
+  }
+  return value;
+}
 
 function requiredEnv(
   env: NodeJS.ProcessEnv,
@@ -125,6 +143,9 @@ export function readAuthRuntimeConfig(
     publishableKey,
     allowedUserIds: parseAllowedUserIds(
       requiredEnv(env, 'ELARA_ALLOWED_USER_IDS'),
+    ),
+    requestTimeoutMs: parseRequestTimeoutMs(
+      env['ELARA_AUTH_REQUEST_TIMEOUT_MS'],
     ),
   };
 }

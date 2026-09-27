@@ -64,6 +64,10 @@ project's modern publishable key rather than storing the legacy JWT secret.
 Auth user UUID. This keeps the initial deployment owner-only even if project-level
 signup configuration changes unexpectedly.
 
+Both JWKS and user-endpoint fetches are bounded by
+`ELARA_AUTH_REQUEST_TIMEOUT_MS` (default 5000, maximum 30000) so a stalled
+Auth server fails closed instead of stalling request workers.
+
 Mutation actor provenance is server-owned. Browser requests do not submit
 `actor`; the authenticated operator API records `operator-ui`. Future
 ChatGPT and embedded-AI adapters must receive separate authenticated server

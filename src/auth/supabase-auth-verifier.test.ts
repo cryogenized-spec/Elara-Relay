@@ -24,6 +24,7 @@ const SESSION_ID = '60000000-0000-4000-8000-000000000003';
 let server: Server;
 let origin: string;
 let privateKey: CryptoKey;
+let publicJwk: Record<string, unknown>;
 
 function encodeJwtPart(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -83,7 +84,7 @@ async function tokenFor(
 beforeAll(async () => {
   const pair = await generateKeyPair('ES256');
   privateKey = pair.privateKey;
-  const publicJwk = await exportJWK(pair.publicKey);
+  publicJwk = await exportJWK(pair.publicKey);
 
   server = createServer((request, response) => {
     if (
@@ -140,6 +141,7 @@ describe('SupabaseAuthVerifier', () => {
         supabaseUrl: origin,
         publishableKey: 'sb_publishable_test',
         allowedUserIds: new Set([ALLOWED_USER]),
+        requestTimeoutMs: 5_000,
       },
       { allowInsecureIssuer: true },
     );
@@ -158,6 +160,7 @@ describe('SupabaseAuthVerifier', () => {
         supabaseUrl: origin,
         publishableKey: 'sb_publishable_test',
         allowedUserIds: new Set([ALLOWED_USER]),
+        requestTimeoutMs: 5_000,
       },
       { allowInsecureIssuer: true },
     );
@@ -173,6 +176,7 @@ describe('SupabaseAuthVerifier', () => {
         supabaseUrl: origin,
         publishableKey: 'sb_publishable_test',
         allowedUserIds: new Set([ALLOWED_USER]),
+        requestTimeoutMs: 5_000,
       },
       { allowInsecureIssuer: true },
     );
@@ -223,6 +227,7 @@ describe('SupabaseAuthVerifier', () => {
         supabaseUrl: 'https://legacy.supabase.co',
         publishableKey: 'sb_publishable_legacy_test',
         allowedUserIds: new Set([ALLOWED_USER]),
+        requestTimeoutMs: 5_000,
       },
       { fetch: fakeFetch },
     );
@@ -245,6 +250,7 @@ describe('SupabaseAuthVerifier', () => {
         supabaseUrl: origin,
         publishableKey: 'sb_publishable_test',
         allowedUserIds: new Set([ALLOWED_USER]),
+        requestTimeoutMs: 5_000,
       },
       { allowInsecureIssuer: true },
     );
@@ -272,6 +278,7 @@ describe('SupabaseAuthVerifier', () => {
         supabaseUrl: 'https://legacy.supabase.co',
         publishableKey: 'sb_publishable_legacy_test',
         allowedUserIds: new Set([ALLOWED_USER]),
+        requestTimeoutMs: 5_000,
       },
       {
         fetch: () =>
@@ -294,6 +301,7 @@ describe('SupabaseAuthVerifier', () => {
       supabaseUrl: 'http://127.0.0.1:54321',
       publishableKey: 'sb_publishable_test',
       allowedUserIds: new Set([ALLOWED_USER]),
+      requestTimeoutMs: 5_000,
     };
 
     expect(() => new SupabaseAuthVerifier(config)).toThrow(
@@ -305,6 +313,154 @@ describe('SupabaseAuthVerifier', () => {
     ).not.toThrow();
   });
 
+  it('rejects a missing or absurd request timeout at construction', () => {
+    for (const requestTimeoutMs of [0, -1, 1.5, Number.NaN]) {
+      expect(
+        () =>
+          new SupabaseAuthVerifier({
+            supabaseUrl: 'https://example.supabase.co',
+            publishableKey: 'sb_publishable_test',
+            allowedUserIds: new Set([ALLOWED_USER]),
+            requestTimeoutMs,
+          }),
+      ).toThrow('requestTimeoutMs must be a positive integer');
+    }
+  });
+
+  it('fails closed when the JWKS endpoint hangs', async () => {
+    const hanging = createServer((_request, response) => {
+      // Never respond: jose must give up after timeoutDuration.
+      const timer = setTimeout(() => response.end(), 30_000);
+      timer.unref();
+    });
+    await new Promise<void>((resolve) => {
+      hanging.listen(0, '127.0.0.1', resolve);
+    });
+    try {
+      const address = hanging.address();
+      if (address === null || typeof address === 'string') {
+        throw new Error('Hanging JWKS server did not expose an address');
+      }
+      const hangingOrigin = `http://127.0.0.1:${address.port}`;
+      const verifier = new SupabaseAuthVerifier(
+        {
+          supabaseUrl: hangingOrigin,
+          publishableKey: 'sb_publishable_test',
+          allowedUserIds: new Set([ALLOWED_USER]),
+          requestTimeoutMs: 50,
+        },
+        { allowInsecureIssuer: true },
+      );
+
+      await expect(
+        verifier.verify(
+          await tokenFor(ALLOWED_USER, {
+            issuer: `${hangingOrigin}/auth/v1`,
+          }),
+        ),
+      ).rejects.toBeInstanceOf(AuthenticationError);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        hanging.close((error) => {
+          if (error === undefined) resolve();
+          else reject(error);
+        });
+      });
+    }
+  });
+
+  it('routes JWKS fetches through the injected fetch implementation', async () => {
+    const jwksFetch: typeof fetch = (input) => {
+      expect(new Request(input).url).toBe(
+        'http://127.0.0.1:1/auth/v1/.well-known/jwks.json',
+      );
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            keys: [
+              {
+                ...publicJwk,
+                kid: 'test-es256',
+                alg: 'ES256',
+                use: 'sig',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      );
+    };
+
+    // Port 1 refuses connections, so success proves the injected fetch —
+    // not the global one — served the key set.
+    const verifier = new SupabaseAuthVerifier(
+      {
+        supabaseUrl: 'http://127.0.0.1:1',
+        publishableKey: 'sb_publishable_test',
+        allowedUserIds: new Set([ALLOWED_USER]),
+        requestTimeoutMs: 5_000,
+      },
+      { allowInsecureIssuer: true, fetch: jwksFetch },
+    );
+
+    await expect(
+      verifier.verify(
+        await tokenFor(ALLOWED_USER, {
+          issuer: 'http://127.0.0.1:1/auth/v1',
+        }),
+      ),
+    ).resolves.toMatchObject({ userId: ALLOWED_USER });
+  });
+
+  it('aborts a hanging user-endpoint fetch instead of stalling workers', async () => {
+    const hangingFetch: typeof fetch = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      });
+
+    const verifier = new SupabaseAuthVerifier(
+      {
+        supabaseUrl: 'https://legacy.supabase.co',
+        publishableKey: 'sb_publishable_legacy_test',
+        allowedUserIds: new Set([ALLOWED_USER]),
+        requestTimeoutMs: 20,
+      },
+      { fetch: hangingFetch },
+    );
+
+    await expect(
+      verifier.verify(legacyTokenFor(ALLOWED_USER)),
+    ).rejects.toBeInstanceOf(AuthenticationError);
+  });
+
+  it('sends an abort signal with every user-endpoint fetch', async () => {
+    let seenSignal: AbortSignal | null | undefined;
+    const observingFetch: typeof fetch = (_input, init) => {
+      seenSignal = init?.signal;
+      return Promise.resolve(new Response(null, { status: 401 }));
+    };
+
+    const verifier = new SupabaseAuthVerifier(
+      {
+        supabaseUrl: 'https://legacy.supabase.co',
+        publishableKey: 'sb_publishable_legacy_test',
+        allowedUserIds: new Set([ALLOWED_USER]),
+        requestTimeoutMs: 5_000,
+      },
+      { fetch: observingFetch },
+    );
+
+    await expect(
+      verifier.verify(legacyTokenFor(ALLOWED_USER)),
+    ).rejects.toBeInstanceOf(AuthenticationError);
+    expect(seenSignal).toBeInstanceOf(AbortSignal);
+  });
+
   it('rejects a legacy token when the Auth server does not validate it', async () => {
     const token = legacyTokenFor(ALLOWED_USER);
 
@@ -313,6 +469,7 @@ describe('SupabaseAuthVerifier', () => {
         supabaseUrl: 'https://legacy.supabase.co',
         publishableKey: 'sb_publishable_legacy_test',
         allowedUserIds: new Set([ALLOWED_USER]),
+        requestTimeoutMs: 5_000,
       },
       {
         fetch: () =>
