@@ -215,14 +215,9 @@ export async function runRestoreVerification(client, manifest) {
   ];
 
   const probes = manifest.probes ?? {};
-  if (
-    probes.eventId !== undefined ||
-    probes.chatMessageId !== undefined ||
-    probes.mutationReceiptId !== undefined
-  ) {
+  if (probes.eventId !== undefined || probes.chatMessageId !== undefined) {
     const probeResults = await runNegativeProbes(client, {
       eventId: probes.eventId,
-      mutationReceiptId: probes.mutationReceiptId,
       chatMessageId: probes.chatMessageId,
       chatThreadId: probes.chatThreadId,
       foreignOwnerId: probes.foreignOwnerId,

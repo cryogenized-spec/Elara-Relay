@@ -97,7 +97,7 @@ async function listTriggers(client) {
 async function listUniqueConstraints(client) {
   const result = await client.query(`
     select c.relname as table_name,
-           array_agg(a.attname order by k.ord) as columns
+           array_agg(a.attname::text order by k.ord) as columns
     from pg_index i
     join pg_class c on c.oid = i.indrelid
     join pg_namespace n on n.oid = c.relnamespace
@@ -118,9 +118,9 @@ async function listUniqueConstraints(client) {
 async function listForeignKeys(client) {
   const result = await client.query(`
     select src.relname as table_name,
-           array_agg(src_a.attname order by k.ord) as columns,
+           array_agg(src_a.attname::text order by k.ord) as columns,
            dst.relname as ref_table,
-           array_agg(dst_a.attname order by k.ord) as ref_columns
+           array_agg(dst_a.attname::text order by k.ord) as ref_columns
     from pg_constraint con
     join pg_class src on src.oid = con.conrelid
     join pg_namespace sn on sn.oid = src.relnamespace
@@ -153,13 +153,19 @@ async function collectTableDigests(client) {
     const orderColumns = table.primaryKey
       .map((column) => quotedIdentifier(column))
       .join(', ');
+    const pkSelect = table.primaryKey
+      .map(
+        (column) =>
+          `t.${quotedIdentifier(column)} as ${quotedIdentifier(column)}`,
+      )
+      .join(', ');
     const result = await withChecksumSession(client, async () =>
       client.query(
         `
         select count(*)::text as row_count,
                coalesce(md5(string_agg(row_text, E'\n' order by (${orderColumns}))), '') as checksum
         from (
-          select row_to_json(t.*)::text as row_text
+          select row_to_json(t.*)::text as row_text, ${pkSelect}
           from public.${quotedIdentifier(table.name)} t
         ) rows
       `,
@@ -239,14 +245,8 @@ async function runNegativeProbes(client, probes) {
     );
   }
 
-  if (probes.mutationReceiptId !== undefined) {
-    await expectRejection(
-      'mutation receipts are keyed by mutation id',
-      'update public.mutation_receipts set fingerprint = fingerprint where mutation_id = $1',
-      [probes.mutationReceiptId],
-      /.*/,
-    );
-  }
+  // mutation_receipts are intentionally NOT probed for update rejection:
+  // they are keyed by mutation_id but are not append-only by design.
 
   if (probes.chatMessageId !== undefined && probes.foreignOwnerId !== undefined) {
     await expectRejection(

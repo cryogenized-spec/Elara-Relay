@@ -46,10 +46,14 @@ export function parseTocTableDataEntries(tocText) {
     if (segments.length < 2) continue;
     const tail = segments[1];
     if (tail === undefined) continue;
+    // pg_restore -l data lines look like:
+    //   2732; 0 21291 TABLE DATA public chat_messages postgres
+    // schema-only lines look like:
+    //   224; 1259 21291 TABLE public chat_messages postgres
     const fields = tail.trim().split(/\s+/);
-    // fields: <table-oid> <table-oid> TABLE data <table> <schema> <owner>
-    if (fields[2] !== 'TABLE' || fields[3] !== 'data') continue;
-    const table = fields[4];
+    if (fields[2] !== 'TABLE') continue;
+    if ((fields[3] ?? '').toUpperCase() !== 'DATA') continue;
+    const table = fields[5];
     if (typeof table === 'string' && table !== '') {
       entries.push(table);
     }

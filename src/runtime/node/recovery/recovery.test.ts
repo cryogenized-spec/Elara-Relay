@@ -91,20 +91,23 @@ describe('recovery migration loader', () => {
 describe('backup table of contents', () => {
   const toc = [
     '; Archive created at 2026-09-27T08:00:00Z',
-    '214; 1259 16456 TABLE data parties postgres public',
-    '215; 1259 16457 TABLE data jobs postgres public',
-    '216; 1259 16458 TABLE data events postgres public',
-    '217; 1259 16459 TABLE data mutation_receipts postgres public',
-    '218; 1259 16460 TABLE repairs postgres public',
+    ';     Dumped from database version: 17.6',
+    '2720; 0 16456 TABLE DATA public parties postgres',
+    '2721; 0 16457 TABLE DATA public jobs postgres',
+    '2722; 0 16458 TABLE DATA public events postgres',
+    '2723; 0 16459 TABLE DATA public mutation_receipts postgres',
+    '218; 1259 16460 TABLE public repairs postgres',
+    '2730; 0 16461 TABLE DATA public repairs postgres',
     '; done',
   ].join('\n');
 
-  it('extracts only TABLE data entries', () => {
+  it('extracts only TABLE DATA entries, never schema-only entries', () => {
     expect(parseTocTableDataEntries(toc)).toEqual([
       'parties',
       'jobs',
       'events',
       'mutation_receipts',
+      'repairs',
     ]);
   });
 
