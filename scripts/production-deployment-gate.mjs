@@ -147,6 +147,7 @@ const transport = read('src/runtime/node/http-adapter.ts');
 const readiness = read('src/runtime/node/readiness.ts');
 const authConfig = read('src/runtime/node/auth-config.ts');
 const apiApp = read('src/api/app.ts');
+const requestBody = read('src/api/request-body.ts');
 
 for (const marker of [
   "'DATABASE_URL'",
@@ -241,10 +242,21 @@ for (const marker of [
   "app.get('/health'",
   'health.databaseProbe',
   'await verifier.verify(token)',
-  'MAX_REQUEST_BODY_BYTES',
 ]) {
   if (!apiApp.includes(marker)) {
     fail(`API boundary lost required control: ${marker}`);
+  }
+}
+
+}
+
+for (const marker of [
+  'MAX_REQUEST_BODY_BYTES',
+  'readBoundedBodyText',
+  'Request body is too large',
+]) {
+  if (!requestBody.includes(marker)) {
+    fail(`request-body authority lost required control: ${marker}`);
   }
 }
 
