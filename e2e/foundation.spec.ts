@@ -538,6 +538,19 @@ test('Task detail can edit, wait, and complete through versioned writes', async 
     taskDetail.getByText('Seal supplier', { exact: true }),
   ).toBeVisible();
 
+  await taskDetail.getByRole('button', { name: 'Edit Task' }).click();
+  const resume = taskDetail.getByRole('form', { name: 'Edit Task' });
+  await expect(resume.getByLabel('Status')).toHaveValue('WAITING');
+  await resume.getByLabel('Status').selectOption('NEXT');
+  await resume.getByRole('button', { name: 'Save changes' }).click();
+
+  await expect(
+    taskDetail.getByText('Next', { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    taskDetail.getByText('Seal supplier', { exact: true }),
+  ).toHaveCount(0);
+
   await taskDetail.getByRole('button', { name: 'Complete' }).click();
   await expect(taskDetail).toHaveCount(0);
 });
