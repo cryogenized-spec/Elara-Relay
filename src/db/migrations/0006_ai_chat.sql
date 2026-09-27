@@ -105,7 +105,7 @@ create function public.enforce_chat_message_transition()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, public
-as $
+as $chat$
 begin
   if tg_op = 'DELETE' then
     raise exception 'chat messages are append-only';
@@ -133,7 +133,7 @@ begin
 
   return new;
 end;
-$;
+$chat$;
 
 create trigger chat_messages_append_only
 before update or delete on public.chat_messages
