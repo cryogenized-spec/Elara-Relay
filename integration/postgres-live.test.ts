@@ -64,6 +64,7 @@ beforeAll(async () => {
     'src/db/migrations/0003_repairs_domain.sql',
     'src/db/migrations/0004_scheduler.sql',
     'src/db/migrations/0005_scheduler_backoff.sql',
+    'src/db/migrations/0006_ai_chat.sql',
   ] as const;
 
   for (const migrationFile of migrationFiles) {
@@ -94,12 +95,14 @@ describe('live PostgreSQL runtime', () => {
           'mutation_receipts',
           'repairs',
           'scheduled_actions',
-          'scheduled_action_runs'
+          'scheduled_action_runs',
+          'chat_threads',
+          'chat_messages'
         )
       order by relname
     `);
 
-    expect(rls.rows).toHaveLength(8);
+    expect(rls.rows).toHaveLength(10);
     expect(rls.rows.every((row) => row.relrowsecurity)).toBe(true);
 
     const privileges = await resources.rawPool.query<{
@@ -127,13 +130,15 @@ describe('live PostgreSQL runtime', () => {
           'mutation_receipts',
           'repairs',
           'scheduled_actions',
-          'scheduled_action_runs'
+          'scheduled_action_runs',
+          'chat_threads',
+          'chat_messages'
         ]
       ) as table_name
       order by role_name, table_name
     `);
 
-    expect(privileges.rows).toHaveLength(16);
+    expect(privileges.rows).toHaveLength(20);
     expect(
       privileges.rows.every(
         (row) =>
@@ -154,6 +159,180 @@ describe('live PostgreSQL runtime', () => {
     expect(functionConfig.rows[0]?.proconfig).toContain(
       'search_path=pg_catalog, public',
     );
+
+    const chatFunctionConfig = await resources.rawPool.query<{
+      proconfig: string[] | null;
+    }>(`
+      select proconfig
+      from pg_proc
+      where oid = 'public.enforce_chat_message_transition()'::regprocedure
+    `);
+    expect(chatFunctionConfig.rows[0]?.proconfig).toContain(
+      'search_path=pg_catalog, public',
+    );
+  });
+
+  it('enforces owner-bound chat records and terminal message lifecycle', async () => {
+    const threadId = '50000000-0000-4000-8000-000000000001';
+    const ownerId = identity.userId;
+    const otherOwnerId = '50000000-0000-4000-8000-000000000099';
+    const userTurnId = '50000000-0000-4000-8000-000000000010';
+    const assistantTurnId = '50000000-0000-4000-8000-000000000011';
+    const userMessageId = '50000000-0000-4000-8000-000000000020';
+    const assistantMessageId = '50000000-0000-4000-8000-000000000021';
+    const failedMessageId = '50000000-0000-4000-8000-000000000022';
+
+    await resources.rawPool.query(
+      `insert into public.chat_threads (id, owner_id, title)
+       values ($1, $2, $3)`,
+      [threadId, ownerId, 'Integration chat'],
+    );
+
+    await expect(
+      resources.rawPool.query(
+        `insert into public.chat_messages (
+           id, thread_id, owner_id, turn_id, role, status, content,
+           completed_at
+         ) values ($1, $2, $3, $4, 'USER', 'COMPLETED', 'cross-owner', now())`,
+        [
+          '50000000-0000-4000-8000-000000000030',
+          threadId,
+          otherOwnerId,
+          userTurnId,
+        ],
+      ),
+    ).rejects.toThrow();
+
+    await resources.rawPool.query(
+      `insert into public.chat_messages (
+         id, thread_id, owner_id, turn_id, role, status, content, completed_at
+       ) values ($1, $2, $3, $4, 'USER', 'COMPLETED', 'Hello Elara', now())`,
+      [userMessageId, threadId, ownerId, userTurnId],
+    );
+
+    await expect(
+      resources.rawPool.query(
+        `insert into public.chat_messages (
+           id, thread_id, owner_id, turn_id, role, status, content,
+           completed_at
+         ) values ($1, $2, $3, $4, 'USER', 'COMPLETED', 'duplicate', now())`,
+        [
+          '50000000-0000-4000-8000-000000000031',
+          threadId,
+          ownerId,
+          userTurnId,
+        ],
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      resources.rawPool.query(
+        `insert into public.chat_messages (
+           id, thread_id, owner_id, turn_id, role, status, content,
+           provider_id, model_id, generation_id
+         ) values ($1, $2, $3, $4, 'ASSISTANT', 'PENDING', '', 'muse',
+           'gpt-6-luna', $5)`,
+        [
+          '50000000-0000-4000-8000-000000000032',
+          threadId,
+          ownerId,
+          '50000000-0000-4000-8000-000000000013',
+          '50000000-0000-4000-8000-000000000042',
+        ],
+      ),
+    ).rejects.toThrow();
+
+    await resources.rawPool.query(
+      `insert into public.chat_messages (
+         id, thread_id, owner_id, turn_id, role, status, content,
+         provider_id, model_id, generation_id
+       ) values ($1, $2, $3, $4, 'ASSISTANT', 'PENDING', '', 'openai',
+         'gpt-6-luna', $5)`,
+      [
+        assistantMessageId,
+        threadId,
+        ownerId,
+        assistantTurnId,
+        '50000000-0000-4000-8000-000000000040',
+      ],
+    );
+
+    await resources.rawPool.query(
+      `update public.chat_messages
+       set status = 'COMPLETED', content = 'Hello back', completed_at = now(),
+           input_tokens = 4, output_tokens = 2
+       where id = $1`,
+      [assistantMessageId],
+    );
+
+    await expect(
+      resources.rawPool.query(
+        `update public.chat_messages set content = 'rewritten'
+         where id = $1`,
+        [assistantMessageId],
+      ),
+    ).rejects.toThrow('chat message transition is invalid');
+
+    await expect(
+      resources.rawPool.query(
+        'delete from public.chat_messages where id = $1',
+        [userMessageId],
+      ),
+    ).rejects.toThrow('chat messages are append-only');
+
+    await resources.rawPool.query(
+      `insert into public.chat_messages (
+         id, thread_id, owner_id, turn_id, role, status, content,
+         provider_id, model_id, generation_id
+       ) values ($1, $2, $3, $4, 'ASSISTANT', 'PENDING', '', 'muse',
+         'muse-spark-1.3-contributor', $5)`,
+      [
+        failedMessageId,
+        threadId,
+        ownerId,
+        '50000000-0000-4000-8000-000000000012',
+        '50000000-0000-4000-8000-000000000041',
+      ],
+    );
+    await resources.rawPool.query(
+      `update public.chat_messages
+       set status = 'FAILED', completed_at = now(),
+           failure_code = 'PROVIDER_UNAVAILABLE'
+       where id = $1`,
+      [failedMessageId],
+    );
+
+    const rows = await resources.rawPool.query<{
+      role: string;
+      status: string;
+      provider_id: string | null;
+      model_id: string | null;
+    }>(
+      `select role, status, provider_id, model_id
+       from public.chat_messages
+       where thread_id = $1
+       order by created_at, id`,
+      [threadId],
+    );
+    expect(rows.rows).toHaveLength(3);
+    expect(rows.rows[0]).toMatchObject({
+      role: 'USER',
+      status: 'COMPLETED',
+      provider_id: null,
+      model_id: null,
+    });
+    expect(rows.rows[1]).toMatchObject({
+      role: 'ASSISTANT',
+      status: 'COMPLETED',
+      provider_id: 'openai',
+      model_id: 'gpt-6-luna',
+    });
+    expect(rows.rows[2]).toMatchObject({
+      role: 'ASSISTANT',
+      status: 'FAILED',
+      provider_id: 'muse',
+      model_id: 'muse-spark-1.3-contributor',
+    });
   });
 
   it('persists the API workflow and enforces replay + concurrency invariants', async () => {

@@ -21,6 +21,10 @@ const backoffSql = readFileSync(
   'src/db/migrations/0005_scheduler_backoff.sql',
   'utf8',
 );
+const chatSql = readFileSync(
+  'src/db/migrations/0006_ai_chat.sql',
+  'utf8',
+);
 const findings = [];
 
 for (const marker of [
@@ -282,6 +286,60 @@ if (
   findings.push(
     'consecutive_failures must retain a JavaScript-safe non-negative constraint',
   );
+}
+
+
+for (const marker of [
+  'create table public.chat_threads',
+  'create table public.chat_messages',
+  'unique (id, owner_id)',
+  'foreign key (thread_id, owner_id)',
+  'unique (thread_id, turn_id, role)',
+  "role in ('USER', 'ASSISTANT')",
+  "status in ('PENDING', 'COMPLETED', 'FAILED')",
+  "provider_id = 'openai' and model_id = 'gpt-6-luna'",
+  "provider_id = 'muse'",
+  "model_id = 'muse-spark-1.3-contributor'",
+  'create trigger chat_messages_append_only',
+  'before update or delete on public.chat_messages',
+  'set search_path = pg_catalog, public',
+  'alter table public.chat_threads enable row level security',
+  'alter table public.chat_messages enable row level security',
+  'public.chat_threads',
+  'public.chat_messages',
+]) {
+  if (!chatSql.toLowerCase().includes(marker.toLowerCase())) {
+    findings.push(`chat migration lost required contract: ${marker}`);
+  }
+}
+
+for (const table of ['chat_threads', 'chat_messages']) {
+  if (
+    !new RegExp(
+      `alter\\s+table\\s+public\\.${table}\\s+enable\\s+row\\s+level\\s+security`,
+      'i',
+    ).test(chatSql)
+  ) {
+    findings.push(`${table} must keep RLS enabled`);
+  }
+}
+
+for (const role of ['anon', 'authenticated']) {
+  const revoke = new RegExp(
+    `revoke[\\s\\S]*public\\.chat_threads[\\s\\S]*public\\.chat_messages[\\s\\S]*from\\s+${role}`,
+    'i',
+  );
+  if (!revoke.test(chatSql)) {
+    findings.push(`chat tables must revoke direct privileges from ${role}`);
+  }
+}
+
+if (
+  !/revision\s+bigint\s+not null default 1 check\s*\(\s*revision between 1 and 9007199254740991\s*\)/i.test(
+    chatSql,
+  )
+) {
+  findings.push('chat threads must retain a JavaScript-safe positive revision');
 }
 
 if (findings.length > 0) {
