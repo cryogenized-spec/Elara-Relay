@@ -48,12 +48,16 @@ describe('secret screening', () => {
       expect(result.matches.some((m) => m.label === 'github_pat')).toBe(true);
     });
 
-    it('blocks GitHub fine-grained tokens (ghp_/ghs_)', () => {
-      const result = screenForSecrets('ghp_' + 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef');
-      expect(result.blocked).toBe(true);
-      expect(
-        result.matches.some((m) => m.label === 'github_token'),
-      ).toBe(true);
+    it('blocks GitHub classic, app, user, refresh and OAuth tokens', () => {
+      for (const prefix of ['ghp_', 'ghs_', 'ghu_', 'ghr_', 'gho_']) {
+        const result = screenForSecrets(
+          prefix + 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef1234',
+        );
+        expect(result.blocked).toBe(true);
+        expect(
+          result.matches.some((m) => m.label === 'github_token'),
+        ).toBe(true);
+      }
     });
 
     it('blocks GitLab PATs', () => {
