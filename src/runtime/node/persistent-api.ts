@@ -1,10 +1,15 @@
 import type { AuthVerifier } from '../../auth/auth-verifier';
 import { SupabaseAuthVerifier } from '../../auth/supabase-auth-verifier';
+import type { ChatProvider } from '../../ai/chat-provider';
 import type { MemoryProvider } from '../../ai/memory-provider';
 import { NullMemoryProvider } from '../../ai/memory-provider';
 import { HindsightMemoryProvider } from '../../ai/hindsight-adapter';
 import { OptionalMemoryProvider } from '../../ai/optional-memory';
+import { ChatTurnOrchestrator } from '../../ai/chat-turn';
+import { createChatApi } from '../../api/chat-api';
 import { createApi } from '../../api/app';
+import { ChatKernel } from '../../domain/chat-kernel';
+import { PostgresChatStore } from '../../db/postgres/chat-store';
 import { PostgresDomainStore } from '../../db/postgres/postgres-store';
 import { DomainKernel } from '../../domain/kernel';
 import {
@@ -51,17 +56,34 @@ export function createPersistentApiFromResources(
   authVerifier: AuthVerifier,
   allowedOrigins: readonly string[] = [],
   memoryProvider: MemoryProvider = new NullMemoryProvider(),
+  chatProviders: readonly ChatProvider[] = [],
 ): PersistentApiRuntime {
   const store = new PostgresDomainStore(resources.sqlPool);
   const kernel = new DomainKernel(store);
+  const chatStore = new PostgresChatStore(resources.sqlPool);
+  const chatKernel = new ChatKernel(chatStore);
+  const chatOrchestrator = new ChatTurnOrchestrator(chatKernel, {
+    providers: chatProviders,
+    memoryProvider,
+  });
 
-  return {
+  const runtime: PersistentApiRuntime = {
     app: createApi(kernel, authVerifier, { allowedOrigins }),
     memoryProvider,
     close: async () => {
       await resources.close();
     },
   };
+
+  // Chat is mounted on the same server instance and behind the same verified
+  // identity middleware as the operational API. There is one authenticated
+  // surface, not a second one.
+  runtime.app.route(
+    '/',
+    createChatApi(chatKernel, chatOrchestrator, authVerifier),
+  );
+
+  return runtime;
 }
 
 export function createPersistentApiFromEnv(
@@ -74,10 +96,14 @@ export function createPersistentApiFromEnv(
   const authVerifier = new SupabaseAuthVerifier(authConfig);
   const resources = createNodePostgresResourcesFromEnv(env);
 
+  // No provider adapter is configured until the concrete adapter slice lands.
+  // With an empty list every catalog model reports unavailable, Chat turns fail
+  // closed, and every manual Elara workflow continues to work.
   return createPersistentApiFromResources(
     resources,
     authVerifier,
     origins,
     memoryProvider,
+    [],
   );
 }

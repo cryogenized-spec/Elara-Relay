@@ -58,11 +58,15 @@ Hindsight credentials.
 
 ### Bank isolation
 
-Future orchestration must derive `MemoryScope.ownerId` from the verified
-`AuthIdentity.userId` server-side. There is no browser/model memory route in
-this pass. The caller supplies an `ownerId` in every `MemoryScope`. The adapter
+The caller supplies an `ownerId` in every `MemoryScope`. The adapter
 deterministically derives a Hindsight bank identifier from that value using
 SHA-256. Callers cannot choose or inject arbitrary bank IDs.
+
+Chat orchestration is now the first production caller: `ChatTurnOrchestrator`
+derives `MemoryScope.ownerId` from the verified `AuthIdentity.userId` and tags
+recall with `chat`. There is still no browser or model memory route. A recall
+failure, block, or timeout yields an empty context and never fails the Chat
+turn; see `docs/chat-runtime.md`.
 
 ### Secret screening
 
@@ -121,4 +125,5 @@ the two operations Elara needs (`retain` and `recall`). This:
 - Adapter: `src/ai/hindsight-adapter.ts`
 - Secret screening: `src/ai/secret-screen.ts`
 - Config: `src/runtime/node/memory-config.ts`
+- Chat caller: `src/ai/chat-turn.ts`
 - Hindsight upstream: `vectorize-io/hindsight` @ `ccfe85b` (2026-09-26)

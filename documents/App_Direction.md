@@ -302,10 +302,18 @@ Pass 1I has started the AI Chat and memory boundaries:
 - owner-scoped PostgreSQL Chat Threads and Messages in migration `0006`
 - assistant generation state and provider/model provenance constraints
 - RLS and browser-role table privileges revoked for Chat records
+- PostgreSQL Chat repository with owner-scoped reads, one-turn identity, and
+  append-only completed Messages
+- durable turn lifecycle: one accepted turn advances one Thread revision
+- authenticated Chat API with Thread list/read, durable turn creation, and
+  server-sent event streaming, cancellation, and durable finalization
+- server-side turn orchestration with optional memory recall as labelled
+  context and secret-safe provider failure codes
 
-The authenticated Chat API, PostgreSQL Chat repository, concrete provider
-adapters, and Chat UI are the next implementation work. Operational features
-continue to work without any provider configured.
+Concrete provider adapters and the Chat UI are the next implementation work.
+No provider adapter is configured yet, so every catalog model reports
+unavailable and Chat fails closed. Operational features continue to work
+without any provider configured.
 
 ## 10. Provider model
 
