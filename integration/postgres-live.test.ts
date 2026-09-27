@@ -214,6 +214,23 @@ describe('live PostgreSQL runtime', () => {
       ),
     ).rejects.toThrow();
 
+    await expect(
+      resources.rawPool.query(
+        `insert into public.chat_messages (
+           id, thread_id, owner_id, turn_id, role, status, content,
+           provider_id, model_id, generation_id
+         ) values ($1, $2, $3, $4, 'ASSISTANT', 'PENDING', '', 'muse',
+           'gpt-6-luna', $5)`,
+        [
+          '50000000-0000-4000-8000-000000000032',
+          threadId,
+          ownerId,
+          '50000000-0000-4000-8000-000000000013',
+          '50000000-0000-4000-8000-000000000042',
+        ],
+      ),
+    ).rejects.toThrow();
+
     await resources.rawPool.query(
       `insert into public.chat_messages (
          id, thread_id, owner_id, turn_id, role, status, content,
