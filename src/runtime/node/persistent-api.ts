@@ -1,30 +1,40 @@
 import type { AuthVerifier } from '../../auth/auth-verifier';
 import { SupabaseAuthVerifier } from '../../auth/supabase-auth-verifier';
 import type { ChatProvider } from '../../ai/chat-provider';
+import { HindsightMemoryProvider } from '../../ai/hindsight-adapter';
 import type { MemoryProvider } from '../../ai/memory-provider';
 import { NullMemoryProvider } from '../../ai/memory-provider';
-import { HindsightMemoryProvider } from '../../ai/hindsight-adapter';
+import { MuseChatProvider } from '../../ai/muse-chat-adapter';
+import { OpenAiChatProvider } from '../../ai/openai-chat-adapter';
 import { OptionalMemoryProvider } from '../../ai/optional-memory';
 import { ChatTurnOrchestrator } from '../../ai/chat-turn';
 import { createChatApi } from '../../api/chat-api';
 import { createApi } from '../../api/app';
-import { ChatKernel } from '../../domain/chat-kernel';
 import { PostgresChatStore } from '../../db/postgres/chat-store';
 import { PostgresDomainStore } from '../../db/postgres/postgres-store';
+import { ChatKernel } from '../../domain/chat-kernel';
 import { DomainKernel } from '../../domain/kernel';
-import {
-  logSafely,
-  type StructuredLogger,
-} from '../../observability/logger';
 import type {
   ApiHealthOptions,
   OptionalProviderHealthStatus,
   SchedulerHealthProbe,
 } from '../../observability/health';
 import {
+  logSafely,
+  type StructuredLogger,
+} from '../../observability/logger';
+import {
   readAllowedOrigins,
   readAuthRuntimeConfig,
 } from './auth-config';
+import {
+  readRuntimeBuildInfo,
+  type RuntimeBuildInfo,
+} from './build-info';
+import {
+  readChatRuntimeConfig,
+  type ChatRuntimeConfig,
+} from './chat-config';
 import {
   readMemoryRuntimeConfig,
   type MemoryRuntimeConfig,
@@ -33,15 +43,13 @@ import {
   createNodePostgresResourcesFromEnv,
   type NodePostgresResources,
 } from './postgres-pool';
-import {
-  readRuntimeBuildInfo,
-  type RuntimeBuildInfo,
-} from './build-info';
 import { stderrStructuredLogger } from './structured-logger';
 
 export interface PersistentApiRuntime {
   app: ReturnType<typeof createApi>;
   memoryProvider: MemoryProvider;
+  /** Only configured chat providers are present; missing configuration disables one provider. */
+  chatProviders: readonly ChatProvider[];
   close(): Promise<void>;
 }
 
@@ -79,6 +87,28 @@ export function resolveMemoryProvider(
         code,
       });
     },
+  );
+}
+
+/**
+ * Resolve only providers with complete server-side configuration.
+ * Missing configuration disables that provider without affecting Elara core.
+ */
+export function resolveChatProviders(
+  config: ChatRuntimeConfig,
+): readonly ChatProvider[] {
+  return config.providers.map((provider) =>
+    provider.provider === 'openai'
+      ? new OpenAiChatProvider({
+          apiKey: provider.apiKey,
+          baseUrl: provider.baseUrl,
+          requestTimeoutMs: provider.requestTimeoutMs,
+        })
+      : new MuseChatProvider({
+          apiKey: provider.apiKey,
+          baseUrl: provider.baseUrl,
+          requestTimeoutMs: provider.requestTimeoutMs,
+        }),
   );
 }
 
@@ -151,15 +181,14 @@ export function createPersistentApiFromResources(
       logger,
     }),
     memoryProvider,
+    chatProviders,
     close: async () => {
       await resources.close();
     },
   };
 
-  // Chat is mounted on the same server instance and behind the same verified
-  // identity middleware as the operational API. There is one authenticated
-  // surface, not a second one. The shared structured logger preserves the
-  // request-correlated observability boundary for streaming failures.
+  // Concrete providers feed the existing durable Chat authority; they do not
+  // create a second conversation, auth, persistence, or observability surface.
   runtime.app.route(
     '/',
     createChatApi(chatKernel, chatOrchestrator, authVerifier, logger),
@@ -174,21 +203,20 @@ export function createPersistentApiFromEnv(
 ): PersistentApiRuntime {
   const logger = runtimeOptions.logger ?? stderrStructuredLogger;
   const memoryConfig = readMemoryRuntimeConfig(env);
+  const chatConfig = readChatRuntimeConfig(env);
   const authConfig = readAuthRuntimeConfig(env);
   const origins = readAllowedOrigins(env);
   const memoryProvider = resolveMemoryProvider(memoryConfig, logger);
+  const chatProviders = resolveChatProviders(chatConfig);
   const authVerifier = new SupabaseAuthVerifier(authConfig);
   const resources = createNodePostgresResourcesFromEnv(env, logger);
 
-  // No provider adapter is configured until the concrete adapter slice lands.
-  // With an empty list every catalog model reports unavailable, Chat turns fail
-  // closed, and every manual Elara workflow continues to work.
   return createPersistentApiFromResources(
     resources,
     authVerifier,
     origins,
     memoryProvider,
-    [],
+    chatProviders,
     {
       ...runtimeOptions,
       logger,

@@ -78,6 +78,45 @@ export class ChatModelUnavailableError extends Error {
   }
 }
 
+/**
+ * Safe, provider-independent chat generation failure.
+ *
+ * A code and an optional HTTP status are the only information that may cross
+ * the adapter boundary. Provider error messages, response bodies, request
+ * headers, URLs, prompts and credentials are never attached, logged or
+ * re-thrown.
+ *
+ * `INCOMPLETE`, `CONTENT_FILTERED` and `UNSUPPORTED_TOOL_CALL` exist so that
+ * adapters can represent provider terminations that are neither a completed
+ * answer nor a transport fault. A generation stopped by an output limit,
+ * blocked by content policy, or awaiting tool execution must never be
+ * committed as a completed assistant answer.
+ */
+export type ChatProviderFaultCode =
+  | 'CANCELLED'
+  | 'TIMEOUT'
+  | 'NETWORK'
+  | 'HTTP'
+  | 'INVALID_RESPONSE'
+  | 'PROVIDER_FAILURE'
+  | 'INCOMPLETE'
+  | 'CONTENT_FILTERED'
+  | 'UNSUPPORTED_TOOL_CALL';
+
+export class ChatProviderFault extends Error {
+  public constructor(
+    public readonly code: ChatProviderFaultCode,
+    public readonly status?: number,
+  ) {
+    super(
+      status === undefined
+        ? `Chat provider ${code}`
+        : `Chat provider ${code} (${status})`,
+    );
+    this.name = 'ChatProviderFault';
+  }
+}
+
 export function findChatModel(
   modelId: string,
 ): ChatModelIdentity | undefined {

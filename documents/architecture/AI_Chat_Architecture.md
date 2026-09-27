@@ -162,6 +162,60 @@ never written to PostgreSQL, sent to the browser, included in prompts, or
 stored in logs. Missing configuration disables that adapter without breaking
 manual Elara operations or other configured providers.
 
+### Concrete adapters
+
+Two concrete adapters implement this boundary:
+
+| Adapter | Provider boundary | Protocol |
+| --- | --- | --- |
+| `src/ai/openai-chat-adapter.ts` | `openai` | OpenAI Responses API streaming |
+| `src/ai/muse-chat-adapter.ts` | `muse` (Meta Model API) | OpenAI-compatible Chat Completions streaming |
+
+Each adapter:
+
+- declares its own provider SDK model identifier table, so provider
+  identifiers never appear in Elara model identities, the browser contract, or
+  persisted provenance
+- yields only normalized `text-delta` events plus one terminal `completed`
+  event with usage when the provider reports it, and normalizes provider refusal
+  text into that same visible stream instead of silently reporting an empty
+  completed answer
+- interprets provider termination reasons explicitly: a generation stopped by an
+  output limit (`INCOMPLETE`), blocked by provider content policy
+  (`CONTENT_FILTERED`), awaiting tool execution (`UNSUPPORTED_TOOL_CALL`), or
+  ended without a terminal completion never becomes a completed assistant answer
+- combines the caller's `AbortSignal` with a bounded overall request timeout
+  and passes both to `fetch`
+- drains error bodies only up to a fixed byte bound and raises sanitized typed
+  faults that carry a code and, at most, an HTTP status
+- caps a single provider event size and cancels the upstream body whenever the
+  consumer stops reading
+- fails closed on an unknown model/provider combination or a stream that ends
+  without a terminal completion
+
+Providers are enabled by server-side API key presence, so a missing key
+disables exactly one provider. `docs/ai-chat-runtime.md` documents the
+variables, protocols, failure codes and testing strategy.
+
+### Provider data handling
+
+Provider-side content handling is an account and model-tier property that an
+adapter cannot guarantee:
+
+- `store: false` on the OpenAI Responses API disables provider-managed Response
+  application state; it does not by itself determine the provider account's
+  retention or abuse-monitoring policy.
+- The configured Muse identity is the `-contributor` tier, whose lower price is
+  exchanged for permission for the provider to use prompts and completions to
+  train future models. The standard tier does not carry that permission, and
+  moving to it is a reviewed catalog change rather than a configuration toggle.
+
+Elara therefore treats a configured provider as an external data processor for
+whatever context the Chat orchestrator assembles, including recalled memory and
+operational context. Operators choose a provider only when its data terms match
+the sensitivity of that content. The chat path does not screen outbound prompts
+for secrets yet; that remains a follow-up slice.
+
 ## 8. Memory and operational context
 
 Memory is optional context. The chat orchestrator may call
@@ -263,14 +317,14 @@ The repository currently contains the provider-neutral streaming contract
 and model catalog, migration `0006_ai_chat.sql` with the owner-scoped
 Thread/Message schema and lifecycle constraints, the PostgreSQL Chat
 repository, the durable turn lifecycle, the authenticated turn API with SSE
-streaming, and the server-side orchestration that joins the provider, the
-memory provider and the Chat records. Concrete provider adapters, the Chat
-browser client, and the Chat UI remain implementation slices to build against
-this contract.
+streaming, the server-side orchestration that joins providers, optional memory
+and Chat records, and concrete server-side `openai` and `muse` adapters.
+The Chat browser client and Chat UI remain implementation slices to build
+against this contract.
 
-No provider adapter is configured yet, so every catalog model reports
-unavailable and every turn fails closed. Manual Elara workflows are
-unaffected.
+Provider adapters remain disabled unless their server-side keys are configured.
+With no provider configured, catalog models report unavailable and Chat fails
+closed. Manual Elara workflows are unaffected.
 
 ## 11. Delivery sequence
 
@@ -279,7 +333,7 @@ unaffected.
 3. PostgreSQL Chat repository and transactional turn lifecycle — complete
 4. Authenticated thread and turn API with cancellation and durable
    finalization — complete
-5. Server-side OpenAI and Muse adapters with secret-safe error mapping
+5. Server-side OpenAI and Muse adapters with secret-safe error mapping — complete
 6. Mobile-first Chat UI with model selection and reconnect/history behavior
 7. Memory recall integration — context assembly and failure isolation are
    complete; ingestion remains future work

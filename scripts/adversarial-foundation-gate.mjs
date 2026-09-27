@@ -131,6 +131,70 @@ hostileMutation(
   }
 }
 
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  'store: false,',
+  'store: true,',
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'provider conversation retention re-enabled',
+);
+
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  'if (modelId === undefined) throw new ChatModelUnavailableError();',
+  'if (modelId === undefined && false) throw new ChatModelUnavailableError();',
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'unknown model no longer fails closed before a provider request',
+);
+
+hostileMutation(
+  'src/ai/muse-chat-adapter.ts',
+  "case 'length':\n      throw new ChatProviderFault('INCOMPLETE');",
+  "case 'length':\n      return;",
+  ['src/ai/muse-chat-adapter.test.ts'],
+  'output-limit termination accepted as a completed answer',
+);
+
+hostileMutation(
+  'src/ai/muse-chat-adapter.ts',
+  "if (!terminal) throw new ChatProviderFault('INVALID_RESPONSE');",
+  "if (false) throw new ChatProviderFault('INVALID_RESPONSE');",
+  ['src/ai/muse-chat-adapter.test.ts'],
+  'unterminated provider stream accepted as a completed answer',
+);
+
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  "case 'response.refusal.delta': {",
+  "case 'response.refusal.delta.disabled': {",
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'provider refusal text silently discarded',
+);
+
+hostileMutation(
+  'src/ai/openai-chat-adapter.ts',
+  'if (!emittedAssistantText) {',
+  'if (!emittedAssistantText && false) {',
+  ['src/ai/openai-chat-adapter.test.ts'],
+  'empty completed generation accepted as an answer',
+);
+
+hostileMutation(
+  'src/ai/chat-http.ts',
+  "if (callerSignal.aborted) return new ChatProviderFault('CANCELLED');",
+  "if (callerSignal.aborted && false) return new ChatProviderFault('CANCELLED');",
+  ['src/ai/chat-http.test.ts'],
+  'caller cancellation misclassified as a provider outage',
+);
+
+hostileMutation(
+  'src/ai/chat-http.ts',
+  'while (read < maxBytes) {',
+  'while (true) {',
+  ['src/ai/chat-http.test.ts'],
+  'provider error body read bound removed',
+);
+
 {
   const path = 'src/app/App.tsx';
   const absolute = join(root, path);
@@ -156,5 +220,5 @@ hostileMutation(
 }
 
 process.stdout.write(
-  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, and client-injection mutations were rejected.\n',
+  'Adversarial foundation gate passed: hostile concurrency, schema-boundary, dependency-pin, focused-test, workflow-permission, client-injection, provider-retention, provider-model, provider-termination, refusal-text, cancellation and error-bound mutations were rejected.\n',
 );

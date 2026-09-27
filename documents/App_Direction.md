@@ -311,11 +311,15 @@ Pass 1I has started the AI Chat and memory boundaries:
   server-sent event streaming, cancellation, and durable finalization
 - server-side turn orchestration with optional memory recall as labelled
   context and secret-safe provider failure codes
+- server-side concrete adapters for the `openai` and `muse` provider
+  boundaries, with server-only configuration, cancellation, bounded timeouts,
+  bounded SSE framing, explicit provider termination handling, and sanitized
+  provider faults
 
-Concrete provider adapters and the Chat UI are the next implementation work.
-No provider adapter is configured yet, so every catalog model reports
-unavailable and Chat fails closed. Operational features continue to work
-without any provider configured.
+The Chat UI is the next implementation work. Provider adapters are optional and
+enabled only by server-side configuration; with no provider configured, catalog
+models report unavailable and Chat fails closed while operational features
+continue to work normally.
 
 ## 10. Provider model
 
