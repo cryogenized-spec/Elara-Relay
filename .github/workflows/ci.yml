@@ -114,17 +114,33 @@ jobs:
       - name: Playwright desktop and Android portrait
         run: npm run e2e -- --project=chromium --project=mobile-9x16 --project=android-portrait
 
-      - name: Summarize chromium screenshot evidence
+      - name: Prepare lossless screenshot evidence
         if: failure()
-        run: node scripts/report-visual-evidence.mjs chromium
+        run: node scripts/report-visual-evidence.mjs prepare
 
-      - name: Summarize mobile-9x16 screenshot evidence
+      - name: Publish screenshot evidence part 1
         if: failure()
-        run: node scripts/report-visual-evidence.mjs mobile-9x16
+        run: node scripts/report-visual-evidence.mjs 0
 
-      - name: Summarize android-portrait screenshot evidence
+      - name: Publish screenshot evidence part 2
         if: failure()
-        run: node scripts/report-visual-evidence.mjs android-portrait
+        run: node scripts/report-visual-evidence.mjs 1
+
+      - name: Publish screenshot evidence part 3
+        if: failure()
+        run: node scripts/report-visual-evidence.mjs 2
+
+      - name: Publish screenshot evidence part 4
+        if: failure()
+        run: node scripts/report-visual-evidence.mjs 3
+
+      - name: Publish screenshot evidence part 5
+        if: failure()
+        run: node scripts/report-visual-evidence.mjs 4
+
+      - name: Publish screenshot evidence part 6
+        if: failure()
+        run: node scripts/report-visual-evidence.mjs 5
 
       - name: Upload Playwright report on failure
         if: failure()
