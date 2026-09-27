@@ -248,8 +248,6 @@ for (const marker of [
   }
 }
 
-}
-
 for (const marker of [
   'MAX_REQUEST_BODY_BYTES',
   'readBoundedBodyText',
