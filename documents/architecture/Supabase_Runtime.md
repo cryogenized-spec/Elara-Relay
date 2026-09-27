@@ -87,3 +87,10 @@ As of 2026-09-24, the live Elara Relay Supabase project has applied:
 - `0004_scheduler`
 
 The operational tables were empty at the Pass 1E verification boundary.
+## Production Node API plane
+
+The privileged Operations API has a separate Node 24 build/runtime plane. It
+validates deployment configuration before binding, never migrates schema on
+startup, and feeds the canonical observability health boundary. The browser
+remains a separate static plane and receives no server credentials. See
+`docs/production-deployment.md`.

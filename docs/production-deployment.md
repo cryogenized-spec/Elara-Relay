@@ -59,10 +59,17 @@ Optional server variables (defaults shown):
 | `ELARA_HINDSIGHT_URL` | — | HTTPS (HTTP on loopback only) | Required when the provider is `hindsight` |
 | `ELARA_HINDSIGHT_API_KEY` | — | secret | Required for non-loopback Hindsight |
 | `ELARA_MEMORY_REQUEST_TIMEOUT_MS` | `5000` | ≤ 30000 | Memory adapter request timeout |
+| `ELARA_CHAT_REQUEST_TIMEOUT_MS` | `120000` | ≤ 600000 | Chat provider request timeout |
+| `ELARA_BUILD_SHA` | `unknown` | 7–40 hex chars | Public build identifier for health output |
 
 Unrecognized variables inside the `ELARA_` namespace are a **startup failure**.
 A typo such as `ELARA_ALLOW_ORIGINS` would otherwise leave CORS silently
 unconfigured. Platform variables outside that namespace are never policed.
+
+Optional Chat provider variables are server-only:
+`ELARA_OPENAI_API_KEY`, `ELARA_OPENAI_BASE_URL`, `ELARA_MUSE_API_KEY`,
+and `ELARA_MUSE_BASE_URL`. A provider is enabled only when its corresponding
+key is present.
 
 ## Public browser variables
 
@@ -162,28 +169,25 @@ Two unauthenticated endpoints with deliberately different meanings:
 
 | Endpoint | Meaning | Touches PostgreSQL | Answers |
 | --- | --- | --- | --- |
-| `GET /health` | Liveness: the process is serving | No | `200` always, with a fixed body |
-| `GET /ready` | Readiness: route traffic here | Yes (`select 1`, bounded) | `200` when healthy and not draining, otherwise `503` |
+| `GET /health` / `GET /health/live` | Liveness: the process is serving | No | `200` with safe build metadata |
+| `GET /health/ready` | Readiness: route traffic here | Yes (`select 1`, bounded) | `200` when core dependencies are ready and not draining, otherwise `503` |
 
-Bodies are fixed and coarse:
-
-```json
-{"service":"elara-relay","status":"ok","schemaVersion":1}
-{"service":"elara-relay","status":"ready","schemaVersion":1}
-{"service":"elara-relay","status":"unavailable","schemaVersion":1}
-```
+Bodies remain safe and coarse. Liveness exposes only service/version/build metadata.
+Readiness additionally exposes fixed component states for database,
+authentication, scheduler, and optional providers; it never exposes hostnames,
+queries, driver messages, exception text, or credentials.
 
 Properties an operator can rely on:
 
 - No hostname, driver message, query text, stack trace, version, or
   configuration detail is ever returned. A failing probe answers `503` with
   the same body as a draining one.
-- A missing probe fails closed: `/ready` answers `503` rather than pretending
+- A missing probe fails closed: `/health/ready` answers `503` rather than pretending
   to be ready.
 - A probe that throws is treated as unavailable, never as a `500`.
 - Liveness does not flap when PostgreSQL is slow or down; only readiness does.
   Point a platform liveness check at `/health` and its traffic gate at
-  `/ready`.
+  `/health/ready`.
 - Both endpoints sit behind CORS like every other route, and both are excluded
   from bearer verification so a gateway can probe them without a token.
 
@@ -285,7 +289,7 @@ against the real artifact:
   insecure production origin, and a remote database without TLS — without
   leaking a configured secret value into its output
 - with a reachable `DATABASE_URL` supplied, the artifact boots and is
-  certified live: `/health` and `/ready` bodies, `401` for anonymous reads,
+  certified live: `/health` and `/health/ready` bodies, `401` for anonymous reads,
   `401` (not `404`) for unknown endpoints, trusted-origin preflight accepted,
   untrusted origin refused, oversized unauthenticated write refused with a
   non-reusable socket, `no-store` on responses, and a clean `0` exit on

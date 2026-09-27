@@ -249,7 +249,7 @@ Current application state:
 Remaining Phase 1 product work:
 
 - Repair progression and final-test UI
-- production API deployment
+- production API hosting rollout (deployable Node 24 server and certification gate implemented)
 - production web/PWA deployment
 - secret/runtime configuration
 - backup/export deployment operation (workflow implemented; operational rollout pending)
@@ -346,10 +346,12 @@ No provider should own Elara's durable business model.
 
 ## 11. Deployment direction
 
-The server API should run on a proper Node 24 runtime compatible with the
-existing Hono/PostgreSQL architecture.
+The server API has a separately built Node 24 runtime compatible with the
+existing Hono/PostgreSQL architecture. The repository contains the fail-closed
+entrypoint, bounded HTTP transport, graceful drain lifecycle, and deployment
+certification gate; selecting/configuring the actual host remains rollout work.
 
-The web/PWA may be deployed separately as static assets.
+The web/PWA remains a separately deployed static asset plane.
 
 Production secrets live only in the deployment platform's secret store.
 

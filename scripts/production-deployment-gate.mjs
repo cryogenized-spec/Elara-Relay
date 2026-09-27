@@ -170,7 +170,7 @@ const DRAIN_MARKER = 'readiness.drain()';
 const STOP_ACCEPTING_MARKER = 'server.close(() => resolve())';
 
 for (const marker of [
-  'readiness.probe.check()',
+  'readiness.databaseProbe()',
   'database readiness check failed at startup',
   DRAIN_MARKER,
   STOP_ACCEPTING_MARKER,
@@ -210,7 +210,7 @@ for (const marker of [
 for (const marker of [
   "pool.query('select 1')",
   'pool.ending || pool.ended',
-  'if (draining) return false;',
+  "if (draining) throw new Error('instance draining');",
 ]) {
   if (!readiness.includes(marker)) {
     fail(`readiness boundary lost required control: ${marker}`);
@@ -237,9 +237,9 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  "app.get('/ready'",
+  "app.get('/health/ready'",
   "app.get('/health'",
-  'readiness?: ReadinessProbe | undefined',
+  'health.databaseProbe',
   'await verifier.verify(token)',
   'MAX_REQUEST_BODY_BYTES',
 ]) {
@@ -281,6 +281,9 @@ const serverOnlyVariables = [
   'ELARA_SHUTDOWN_TIMEOUT_MS',
   'ELARA_READINESS_TIMEOUT_MS',
   'ELARA_HINDSIGHT_API_KEY',
+  'ELARA_OPENAI_API_KEY',
+  'ELARA_MUSE_API_KEY',
+  'ELARA_CHAT_REQUEST_TIMEOUT_MS',
 ];
 
 /**
@@ -537,23 +540,23 @@ async function certifyLiveBoot(databaseUrl) {
     if (health.status !== 200) {
       fail(`live boot: /health must answer 200, received ${health.status}`);
     }
-    const healthBody = await health.text();
-    if (
-      healthBody !== '{"service":"elara-relay","status":"ok","schemaVersion":1}'
-    ) {
-      fail(`live boot: unexpected /health body ${healthBody}`);
+    const healthBody = await health.json();
+    if (healthBody.service !== 'elara-relay' || healthBody.status !== 'ok') {
+      fail(`live boot: unexpected /health body ${JSON.stringify(healthBody)}`);
     }
 
-    const ready = await fetch(`${baseUrl}/ready`);
+    const ready = await fetch(`${baseUrl}/health/ready`);
     if (ready.status !== 200) {
-      fail(`live boot: /ready must answer 200 against a reachable database, received ${ready.status}`);
+      fail(`live boot: /health/ready must answer 200 against a reachable database, received ${ready.status}`);
     }
-    const readyBody = await ready.text();
+    const readyBody = await ready.json();
     if (
-      readyBody !==
-      '{"service":"elara-relay","status":"ready","schemaVersion":1}'
+      readyBody.service !== 'elara-relay' ||
+      readyBody.status !== 'ready' ||
+      readyBody.checks?.database !== 'available' ||
+      readyBody.checks?.authentication !== 'valid'
     ) {
-      fail(`live boot: unexpected /ready body ${readyBody}`);
+      fail(`live boot: unexpected /health/ready body ${JSON.stringify(readyBody)}`);
     }
 
     const anonymous = await fetch(
