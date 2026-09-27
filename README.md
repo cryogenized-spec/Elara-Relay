@@ -49,7 +49,7 @@ The canonical documentation home is:
 Start with:
 
 - [Layout Guide](documents/Layout_Guide.md)
-- [Product Direction](documents/Product_Direction.md)
+- [Product Direction](documents/App_Direction.md)
 - [Build History](documents/Build_History.md)
 
 Architecture, domain notes, research, and timestamped milestone records live under
