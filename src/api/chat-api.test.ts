@@ -187,6 +187,8 @@ describe('authenticated chat api', () => {
     await expect(health.json()).resolves.toEqual({
       service: 'elara-relay',
       status: 'ok',
+      version: 'unknown',
+      buildSha: 'unknown',
       schemaVersion: 1,
     });
   });
