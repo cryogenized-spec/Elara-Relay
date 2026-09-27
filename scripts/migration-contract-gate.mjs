@@ -302,6 +302,7 @@ for (const marker of [
   "model_id = 'muse-spark-1.3-contributor'",
   'create trigger chat_messages_append_only',
   'before update or delete on public.chat_messages',
+  'set search_path = pg_catalog, public',
   'alter table public.chat_threads enable row level security',
   'alter table public.chat_messages enable row level security',
   'public.chat_threads',
