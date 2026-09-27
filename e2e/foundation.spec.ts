@@ -546,41 +546,9 @@ test('Task detail can edit, wait, and complete through versioned writes', async 
 test('Task conflict keeps the edit recoverable when refresh fails', async ({
   page,
 }) => {
-  await installLiveHarness(page);
-  let taskReads = 0;
-
-  await page.route('**/api-test/tasks/10000000-0000-4000-8000-000000000006', async (route) => {
-    if (route.request().method() === 'PATCH') {
-      await route.fulfill({
-        status: 409,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          error: { code: 'CONFLICT', message: 'Revision conflict' },
-        }),
-      });
-      return;
-    }
-
-    if (route.request().method() === 'GET') {
-      taskReads += 1;
-      if (taskReads > 1) {
-        await route.fulfill({
-          status: 503,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            error: {
-              code: 'TRANSIENT_TEST_FAILURE',
-              message: 'Task refresh unavailable',
-            },
-          }),
-        });
-        return;
-      }
-    }
-
-    await route.fallback();
+  await installLiveHarness(page, {
+    failTaskConflictRefresh: true,
   });
-
   await page.goto('/');
   await signInOwner(page);
   await page.getByRole('button', { name: 'Work' }).click();
