@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "npm run typecheck:ts6 && vite build",
     "build:server": "vite build --outDir dist-server --ssr src/runtime/node/server.ts",
+    "build:edge": "vite build --config vite.edge.config.mjs",
     "start:server": "node dist-server/server.js",
     "lint": "eslint . --max-warnings 0",
     "typecheck:ts6": "tsc6 -p tsconfig.json --noEmit && tsc6 -p tsconfig.e2e.json --noEmit && tsc6 -p tsconfig.integration.json --noEmit",

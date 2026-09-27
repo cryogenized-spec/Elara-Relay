@@ -1,0 +1,4 @@
+[functions.elara-api]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/elara-api/index.ts"
