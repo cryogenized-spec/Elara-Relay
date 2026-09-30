@@ -35,10 +35,32 @@ Merged milestones now include:
 - Pass 1H-B — Durable Repair/Job Capture and Task mutations
 - Pass 1I foundation — provider-neutral memory/chat contracts and durable
   owner-scoped chat record schema
+- Production Node API plane — fail-closed configuration contract, health and
+  readiness boundaries, graceful shutdown, and a certified server artifact
 
 The chat API, provider adapters, and Chat UI are still in progress. The live
 Supabase project is last recorded as migrated through `0004_scheduler`;
 migration `0006_ai_chat` is in the repository but has not been applied there.
+
+## Deployment planes
+
+Elara deploys as two separate planes that share no secret:
+
+- **Browser (public):** `npm run build` → `dist/`, published as static assets
+  by `.github/workflows/pages.yml`. Only public `VITE_*` values are inlined.
+- **Operations API (privileged):** `npm run build:server` →
+  `dist-server/server.mjs`, run on Node 24 with `npm start`. `DATABASE_URL`,
+  the owner allowlist, and the trusted browser origins stay server-side.
+
+No proprietary hosting provider is an architectural dependency: the API needs
+a Node 24 runtime, environment variables, TCP routing to a port, and
+`SIGTERM`.
+
+The runtime configuration contract — required server variables, public browser
+variables, secret storage, startup procedure, health/readiness behavior,
+deployment assumptions, and rollback — is in
+[`docs/production-deployment.md`](docs/production-deployment.md). It is
+certified by `npm run production:check`.
 
 ## Documentation
 

@@ -117,13 +117,16 @@ test('operator progresses, waits, records findings, fails/retests and collects t
   await stage(dialog, 'DIAGNOSING');
   await expectStage(dialog, 'Diagnosing');
   await dialog.getByRole('button', { name: 'Edit findings' }).click();
+  const saveFindings = dialog.getByRole('button', { name: 'Save findings' });
+  await expect(saveFindings).toBeDisabled();
   await dialog
     .getByLabel('Diagnosis', { exact: true })
     .fill('Transfer seal leaking');
+  await expect(saveFindings).toBeEnabled();
   await dialog
     .getByLabel('Current finding', { exact: true })
     .fill('Replace transfer seal');
-  await dialog.getByRole('button', { name: 'Save findings' }).click();
+  await saveFindings.click();
   await expect(
     dialog.locator('.detailFields').getByText('Transfer seal leaking'),
   ).toBeVisible();

@@ -147,10 +147,15 @@ export function RepairWorkflow({
     }
   }
 
+  const detailsChanged =
+    (diagnosis.trim() || null) !== originalDetails.current.diagnosis ||
+    (finding.trim() || null) !== originalDetails.current.currentFinding;
+
   async function submit() {
     if (lock.current || mode === null || needsRefresh) return;
     if (mode === 'stage' && stage === '') return;
     if (mode === 'test' && result === '') return;
+    if (mode === 'details' && !detailsChanged) return;
     if (
       mode === 'stage' &&
       (stage === 'CANCELLED' || stage === 'COLLECTED') &&
@@ -312,7 +317,12 @@ export function RepairWorkflow({
         </p>
       )}
       {error === null ? null : (
-        <p role="alert" ref={alertRef} className="captureError formError">
+        <p
+          id="repair-workflow-error"
+          role="alert"
+          ref={alertRef}
+          className="captureError formError"
+        >
           {error}
         </p>
       )}
@@ -497,7 +507,9 @@ export function RepairWorkflow({
             <button
               className="primaryButton"
               type="submit"
-              disabled={busy || needsRefresh}
+              disabled={
+                busy || needsRefresh || (mode === 'details' && !detailsChanged)
+              }
             >
               {busy
                 ? 'Saving…'

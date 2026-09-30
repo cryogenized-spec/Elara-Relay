@@ -120,6 +120,15 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: Production server build
+        run: npm run build:server
+
+      - name: Production deployment gate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/elara?sslmode=disable
+          GATE_REQUIRE_DATABASE: "1"
+        run: npm run production:check
+
       - name: Install Playwright Chromium
         run: ./node_modules/.bin/playwright install --with-deps chromium
 

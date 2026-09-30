@@ -110,4 +110,17 @@ describe('API CORS runtime config', () => {
       ).toThrow();
     }
   });
+
+  it('rejects wildcard and relative hosts so trust is always one exact origin', () => {
+    for (const value of [
+      '*',
+      'https://*.example.com',
+      'https://.example.com',
+      'https://exa%2Ample.com',
+    ]) {
+      expect(() =>
+        readAllowedOrigins({ ELARA_ALLOWED_ORIGINS: value }),
+      ).toThrow();
+    }
+  });
 });

@@ -12,6 +12,7 @@ export default defineConfig({
       include: [
         'src/{api,auth,contracts,domain,db,scheduler}/**/*.ts',
         'src/runtime/node/auth-config.ts',
+        'src/runtime/node/server-config.ts',
       ],
       exclude: ['src/**/*.test.ts'],
       thresholds: {
