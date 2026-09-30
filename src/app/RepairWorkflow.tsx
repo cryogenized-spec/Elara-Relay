@@ -79,7 +79,7 @@ export function RepairWorkflow({
   const [notice, setNotice] = useState<string | null>(null);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const lock = useRef(false);
-  const originalDetails = useRef({
+  const [originalDetails, setOriginalDetails] = useState({
     diagnosis: repair.diagnosis,
     currentFinding: repair.currentFinding,
   });
@@ -135,10 +135,10 @@ export function RepairWorkflow({
       setWaitingOn(repair.waitingOn ?? '');
       setFollowUp(johannesburgIsoToLocalDateTimeInput(repair.followUpAt));
     } else if (next === 'details') {
-      originalDetails.current = {
+      setOriginalDetails({
         diagnosis: repair.diagnosis,
         currentFinding: repair.currentFinding,
-      };
+      });
       setDiagnosis(repair.diagnosis ?? '');
       setFinding(repair.currentFinding ?? '');
     } else {
@@ -148,8 +148,8 @@ export function RepairWorkflow({
   }
 
   const detailsChanged =
-    (diagnosis.trim() || null) !== originalDetails.current.diagnosis ||
-    (finding.trim() || null) !== originalDetails.current.currentFinding;
+    (diagnosis.trim() || null) !== originalDetails.diagnosis ||
+    (finding.trim() || null) !== originalDetails.currentFinding;
 
   async function submit() {
     if (lock.current || mode === null || needsRefresh) return;
@@ -184,9 +184,9 @@ export function RepairWorkflow({
             }
           : null;
       const patch: RepairDetailsPatch = {};
-      if ((diagnosis.trim() || null) !== originalDetails.current.diagnosis)
+      if ((diagnosis.trim() || null) !== originalDetails.diagnosis)
         patch.diagnosis = diagnosis.trim() || null;
-      if ((finding.trim() || null) !== originalDetails.current.currentFinding)
+      if ((finding.trim() || null) !== originalDetails.currentFinding)
         patch.currentFinding = finding.trim() || null;
       const test =
         result === ''
