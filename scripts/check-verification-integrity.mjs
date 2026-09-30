@@ -38,7 +38,17 @@ const expectedScripts = {
   'docs:check': 'node scripts/documentation-contract-gate.mjs',
   'adversarial:auth': 'node scripts/adversarial-auth-gate.mjs',
   'test:postgres': 'vitest run --config vitest.postgres.config.mjs',
+  'build:server': 'vite build --config vite.server.config.mjs',
+  start: 'node dist-server/server.mjs',
+  'production:check': 'node scripts/production-deployment-gate.mjs',
 };
+
+// The production deployment gate is part of certification, not optional.
+for (const required of ['npm run build:server', 'npm run production:check']) {
+  if (!pkg.scripts?.verify?.includes(required)) {
+    fail(`verify chain lost ${required}`);
+  }
+}
 
 for (const [name, expected] of Object.entries(expectedScripts)) {
   if (pkg.scripts?.[name] !== expected) {
@@ -86,6 +96,7 @@ for (const marker of [
   "environment: 'jsdom'",
   "'src/{api,auth,contracts,domain,db,scheduler}/**/*.ts'",
   "'src/runtime/node/auth-config.ts'",
+  "'src/runtime/node/server-config.ts'",
   "exclude: ['src/**/*.test.ts']",
   'lines: 80',
   'statements: 80',
@@ -183,6 +194,9 @@ for (const required of [
   'npm run adversarial:domain',
   'npm run adversarial:auth',
   'npm run schema:check',
+  'npm run build:server',
+  'npm run production:check',
+  'GATE_REQUIRE_DATABASE: "1"',
   'image: postgres:17.6-alpine',
   'npm run test:postgres',
   'npm run build',

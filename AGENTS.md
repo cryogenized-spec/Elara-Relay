@@ -52,7 +52,8 @@ Package versions are pinned deliberately. Do not casually widen or replace them.
 - `src/db/migrations/` — reviewed, source-controlled schema evolution.
 - `src/auth/` — portable authentication contracts and Supabase verification.
 - `src/api/` — authenticated Hono intent/API boundary.
-- `src/runtime/node/` — server-only configuration and runtime assembly.
+- `src/runtime/node/` — server-only configuration, the production server
+  entrypoint, and runtime assembly.
 - `src/scheduler/` — execution/delivery boundary for Scheduled Actions.
 - `src/app/` — React application surface.
 - `integration/` — real PostgreSQL integration tests.
@@ -102,9 +103,25 @@ Production build:
 
 `npm run build`
 
+Privileged Node API artifact:
+
+`npm run build:server`
+
+Run the production API server (configuration comes from the environment):
+
+`npm start`
+
+Production deployment gate (requires both build artifacts):
+
+`npm run production:check`
+
 Primary non-browser certification:
 
 `npm run verify`
+
+The browser plane and the privileged API plane are deployed separately; the
+API never serves static browser assets. The deployment contract lives in
+`docs/production-deployment.md`.
 
 PostgreSQL integration test against the standard local CI database:
 

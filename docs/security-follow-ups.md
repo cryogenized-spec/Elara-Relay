@@ -30,12 +30,24 @@ can trigger JWKS/user-info fetches) should be limited first.
 
 ## Security response headers (hosting scope)
 
-The API does not set hardening headers (`Strict-Transport-Security`,
-`X-Content-Type-Options`, `Referrer-Policy`, frame/CSP policy for the UI).
-Hono serves no `X-Powered-By`, and the UI is a static client, so the
-current exposure is low — but headers should be pinned once at the hosting
-layer (CDN/gateway) rather than scattered across app code, and that layer
-is chosen at deploy time.
+The production Node transport now pins the two headers that belong to the
+application rather than to a gateway: every non-preflight response carries
+`Cache-Control: no-store` (authenticated operational payloads must not be
+cached by an intermediary) and `X-Content-Type-Options: nosniff`. Preflight
+responses are left untouched so `Access-Control-Max-Age` caching still works.
+Hono serves no `X-Powered-By`, and the UI is a static client.
+
+Still hosting scope, because they depend on TLS termination or edge policy:
+`Strict-Transport-Security`, `Referrer-Policy`, and frame/CSP policy for the
+UI. Those should be pinned once at the gateway (CDN/edge) rather than
+scattered across app code, and that layer is chosen at deploy time.
+
+## Rate limiting and proxy trust
+
+The production transport does not read `X-Forwarded-*`, so no caller identity
+or rate-limit key can be spoofed through a proxy header today. That also means
+per-caller limiting still needs either trusted-proxy configuration or a
+gateway-level limiter; see the rate-limiting item above.
 
 ## Already patched on this branch
 

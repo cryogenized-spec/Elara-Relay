@@ -57,6 +57,7 @@ export interface PersistentApiRuntimeOptions {
   readonly logger?: StructuredLogger;
   readonly buildInfo?: RuntimeBuildInfo;
   readonly schedulerProbe?: SchedulerHealthProbe;
+  readonly databaseProbe?: (() => Promise<void>) | undefined;
 }
 
 /**
@@ -164,7 +165,8 @@ export function createPersistentApiFromResources(
   const health: ApiHealthOptions = {
     version: buildInfo.version,
     buildSha: buildInfo.buildSha,
-    databaseProbe: () => checkPostgres(resources.sqlPool),
+    databaseProbe:
+      runtimeOptions.databaseProbe ?? (() => checkPostgres(resources.sqlPool)),
     authenticationConfiguration: 'valid',
     optionalProviders: () => ({
       memory: memoryProviderStatus(memoryProvider),

@@ -101,3 +101,11 @@ therefore enables CORS only for exact origins listed in
 The provider-neutral plain-SQL export and restore-proof runbook is
 [`postgres-backup-restore.md`](postgres-backup-restore.md). It exports only
 Elara-owned application tables, not Supabase Auth or deployment secrets.
+
+## Production Node API plane
+
+The privileged Operations API is built separately with `npm run build:server`
+and started from `dist-server/server.mjs`. Startup validates configuration
+before binding, proves PostgreSQL reachability without running DDL, and uses
+the canonical `/health`, `/health/live`, and `/health/ready` observability
+boundary. See [`production-deployment.md`](production-deployment.md).

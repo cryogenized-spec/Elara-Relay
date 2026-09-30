@@ -99,10 +99,11 @@ claim that the software is free from security vulnerabilities.
 
 ## Development Status
 
-Elara Relay is currently under active development and has not yet completed its
-production deployment and recovery certification.
+Elara Relay is currently under active development. The privileged Node API
+plane is deployment-ready and certified in-repository by
+`npm run production:check`; hosting rollout and production recovery operations
+remain separate operational steps.
 
-Security assumptions that depend on the eventual hosting layer — including
-rate limiting, transport-security headers, gateway configuration, and some
-production observability controls — are tracked separately until the production
-deployment architecture is finalized.
+Security assumptions that require the hosting layer — including rate limiting,
+TLS termination, HSTS, and edge CSP/frame policy — remain hosting-scope items
+tracked in `docs/security-follow-ups.md`.

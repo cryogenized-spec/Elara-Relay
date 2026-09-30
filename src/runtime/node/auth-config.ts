@@ -60,7 +60,18 @@ function parseAllowedUserIds(raw: string): ReadonlySet<string> {
     throw new Error('ELARA_ALLOWED_USER_IDS must contain at least one UUID');
   }
 
-  const parsed = parts.map((value) => uuidSchema.parse(value));
+  // safeParse rather than parse: a thrown Zod message would echo the supplied
+  // value into a startup log, and a rejected allowlist entry is diagnostic
+  // enough by name alone.
+  const parsed = parts.map((value) => {
+    const result = uuidSchema.safeParse(value);
+    if (!result.success) {
+      throw new Error(
+        'ELARA_ALLOWED_USER_IDS must contain valid user UUIDs',
+      );
+    }
+    return result.data;
+  });
   const unique = new Set(parsed);
   if (unique.size !== parsed.length) {
     throw new Error('ELARA_ALLOWED_USER_IDS must not contain duplicates');
@@ -85,6 +96,19 @@ function parseAllowedOrigins(raw: string): readonly string[] {
       url = new URL(value);
     } catch {
       throw new Error('ELARA_ALLOWED_ORIGINS must contain valid origins');
+    }
+
+    // A trusted origin must name one exact host. A wildcard (or a relative
+    // host) would turn the browser allowlist into a pattern-match decision,
+    // which is not a boundary this API is allowed to have.
+    if (
+      url.hostname === '' ||
+      url.hostname.includes('*') ||
+      url.hostname.startsWith('.')
+    ) {
+      throw new Error(
+        'ELARA_ALLOWED_ORIGINS must not contain wildcard or relative hosts',
+      );
     }
 
     const local =
