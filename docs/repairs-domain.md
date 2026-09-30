@@ -70,3 +70,49 @@ Supported event identities are:
 
 The browser cannot choose the Event actor; authenticated operator traffic is
 stamped by the server as `operator-ui`.
+
+
+## Operator progression UI
+
+Signed-in Repair detail exposes the existing operations:
+
+- `PATCH /repairs/:repairId` — diagnosis/current-finding patches (blank clears).
+- `POST /repairs/:repairId/stage` — explicit stage selection, including waiting,
+  rework, cancellation and collection.
+- `POST /repairs/:repairId/test` — observed Pass/Fail and optional test detail.
+
+The kernel's unchanged transition table now lives in
+`src/domain/repair-policy.ts`, shared with the UI for available-stage hints.
+Test-recording eligibility is shared there too. Waiting-stage identification
+comes from the Repair contract. These hints do not authorize writes: the server
+still performs all transition, revision and final-test validation. No migrations
+or new Repair endpoints are introduced.
+
+Waiting forms require a reason and an Africa/Johannesburg follow-up. Leaving a
+waiting stage clears both through the existing kernel operation. Waiting-stage
+self-transitions and direct switches between waiting stages remain unsupported;
+there is intentionally no new in-place waiting-metadata update operation.
+
+Test results can be recorded or replaced only during Testing. The form requires
+an explicit observed result; it never infers a Pass. Test recording does not
+advance the stage. Ready/Collected remain subject to the contract's passing-test
+invariant; server validation is displayed inline without discarding the draft.
+Terminal stage changes require an explicit confirmation. Findings remain editable
+where the existing details operation allows them, including terminal Repairs.
+
+The UI reuses mutation IDs for unchanged retries, including a lost success
+response. On a revision conflict, it refreshes current state while retaining the
+operator's entries, requires review and an explicit resubmit, and never silently
+replays against a new revision. Detail patches include only fields changed from
+the draft's starting values, avoiding overwriting unrelated concurrent findings.
+A stage rejection also refreshes state because the kernel can reject an invalid
+transition before checking the revision. If refresh fails, further writes are
+blocked until an explicit refresh succeeds; entries remain available.
+
+Successful mutation responses are strictly validated before display. Repair,
+Job history and workspace reads refresh afterward without remounting the open
+Repair surface. A failed post-commit refresh is distinguished from a failed write
+and can be retried without resubmitting the mutation. Authorization failure still
+uses the existing fail-closed session lifecycle.
+
+See [UI verification and visual evidence](repair-workflow-ui.md).

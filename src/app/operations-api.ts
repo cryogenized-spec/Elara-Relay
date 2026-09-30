@@ -13,6 +13,9 @@ import {
 import {
   repairSchema,
   type CreateRepairInput,
+  type RepairDetailsPatch,
+  type MoveRepairStageInput,
+  type RecordRepairTestInput,
   type Repair,
 } from '../contracts/repair';
 import {
@@ -120,6 +123,18 @@ export interface OperationsApi {
   ): Promise<Task>;
   createRepair(
     command: CreateMutationCommand<CreateRepairInput>,
+  ): Promise<Repair>;
+  updateRepairDetails(
+    repairId: string,
+    command: VersionedPatchCommand<RepairDetailsPatch>,
+  ): Promise<Repair>;
+  moveRepairStage(
+    repairId: string,
+    command: VersionedMutationCommand<MoveRepairStageInput>,
+  ): Promise<Repair>;
+  recordRepairTest(
+    repairId: string,
+    command: VersionedMutationCommand<RecordRepairTestInput>,
   ): Promise<Repair>;
   createRepairCase(
     command: CreateMutationCommand<CreateRepairCaseInput>,
@@ -329,6 +344,39 @@ export function createOperationsApi(
         method: 'POST',
         body: {
           mutation: { mutationId: command.mutationId },
+          input: command.input,
+        },
+      }),
+    updateRepairDetails: (repairId, command) =>
+      request(`/repairs/${encodeURIComponent(repairId)}`, repairSchema, {
+        method: 'PATCH',
+        body: {
+          mutation: {
+            mutationId: command.mutationId,
+            expectedRevision: command.expectedRevision,
+          },
+          patch: command.patch,
+        },
+      }),
+    moveRepairStage: (repairId, command) =>
+      request(`/repairs/${encodeURIComponent(repairId)}/stage`, repairSchema, {
+        method: 'POST',
+        body: {
+          mutation: {
+            mutationId: command.mutationId,
+            expectedRevision: command.expectedRevision,
+          },
+          input: command.input,
+        },
+      }),
+    recordRepairTest: (repairId, command) =>
+      request(`/repairs/${encodeURIComponent(repairId)}/test`, repairSchema, {
+        method: 'POST',
+        body: {
+          mutation: {
+            mutationId: command.mutationId,
+            expectedRevision: command.expectedRevision,
+          },
           input: command.input,
         },
       }),

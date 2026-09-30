@@ -242,13 +242,16 @@ Current application state:
 - Task edit / waiting / complete / cancel mutations are live
 - browser writes use replay-safe mutation IDs and strict response validation
 - stale Task conflicts refresh before an edit is discarded
+- Repair detail supports stage progression, waiting metadata, diagnosis/findings,
+  final-test recording, Ready/Collected and cancellation through existing intents
+- Repair conflicts refresh without discarding drafts; unchanged network retries
+  reuse mutation IDs, and successful writes refresh detail, history and lists
 - public liveness/readiness reports safe component and build metadata
 - provider-neutral structured logs correlate failures without recording secrets
 - optional-provider degradation does not block manual API readiness
 
 Remaining Phase 1 product work:
 
-- Repair progression and final-test UI
 - production API hosting rollout (deployable Node 24 server and certification gate implemented)
 - production web/PWA deployment
 - secret/runtime configuration

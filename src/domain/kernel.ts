@@ -19,6 +19,7 @@ import {
 } from '../contracts/party';
 import {
   createRepairInputSchema,
+  isWaitingRepairStage,
   moveRepairStageInputSchema,
   recordRepairTestInputSchema,
   repairDetailsPatchSchema,
@@ -29,7 +30,6 @@ import {
   type RecordRepairTestInput,
   type Repair,
   type RepairDetailsPatch,
-  type RepairStage,
   type RepairWarning,
 } from '../contracts/repair';
 import {
@@ -66,6 +66,7 @@ import {
   type UpdateTaskPatch,
 } from '../contracts/task';
 import { canonicalJson } from './canonical-json';
+import { REPAIR_STAGE_TRANSITIONS, canRecordRepairTest } from './repair-policy';
 import {
   DomainNotFoundError,
   DomainValidationError,
@@ -165,37 +166,6 @@ async function repairCaseChildMutationId(
     .join('');
   return mutationIdSchema.parse(`MUT-${hex}`);
 }
-
-const REPAIR_STAGE_TRANSITIONS: Readonly<
-  Record<RepairStage, readonly RepairStage[]>
-> = {
-  RECEIVED: ['DIAGNOSING', 'AWAITING_CUSTOMER', 'CANCELLED'],
-  DIAGNOSING: [
-    'AWAITING_PARTS',
-    'AWAITING_CUSTOMER',
-    'REPAIRING',
-    'TESTING',
-    'CANCELLED',
-  ],
-  AWAITING_PARTS: ['DIAGNOSING', 'REPAIRING', 'CANCELLED'],
-  AWAITING_CUSTOMER: ['DIAGNOSING', 'REPAIRING', 'CANCELLED'],
-  REPAIRING: [
-    'AWAITING_PARTS',
-    'AWAITING_CUSTOMER',
-    'TESTING',
-    'CANCELLED',
-  ],
-  TESTING: [
-    'AWAITING_PARTS',
-    'AWAITING_CUSTOMER',
-    'REPAIRING',
-    'READY',
-    'CANCELLED',
-  ],
-  READY: ['REPAIRING', 'TESTING', 'COLLECTED', 'CANCELLED'],
-  COLLECTED: [],
-  CANCELLED: [],
-};
 
 function comparable(value: unknown): string {
   return canonicalJson(value);
@@ -1063,9 +1033,7 @@ export class DomainKernel {
           current.revision,
           context.expectedRevision,
         );
-        const waiting =
-          input.stage === 'AWAITING_PARTS' ||
-          input.stage === 'AWAITING_CUSTOMER';
+        const waiting = isWaitingRepairStage(input.stage);
         const invalidateTest =
           input.stage === 'TESTING' ||
           (current.stage === 'READY' && input.stage === 'REPAIRING');
@@ -1149,7 +1117,7 @@ export class DomainKernel {
       },
       async (transaction) => {
         const current = await this.requireRepair(transaction, id);
-        if (current.stage !== 'TESTING') {
+        if (!canRecordRepairTest(current.stage)) {
           throw new DomainValidationError(
             'Final test results may only be recorded while testing',
           );

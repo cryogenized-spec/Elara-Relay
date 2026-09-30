@@ -1156,7 +1156,8 @@ button.workRow:active {
   gap: 6px;
 }
 
-.formField > span {
+.formField > span,
+.formField > label {
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 580;
@@ -1446,4 +1447,33 @@ button.workRow:active {
   color: #ff8d97;
   font-size: 11.5px;
   line-height: 1.45;
+}
+
+/* Repair forms remain one-column and in the detail scroll flow. */
+.repairWorkflow__form {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.repairWorkflow__testState,
+.repairWorkflow__detail {
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.repairWorkflow .taskMutationActions {
+  margin-top: 12px;
+}
+
+.repairWorkflow .formError {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.repairWorkflow .taskMutationNotice {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }

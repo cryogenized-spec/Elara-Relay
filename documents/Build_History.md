@@ -523,10 +523,10 @@ Completed:
 - durable Repair/Job Capture
 - Task edit, waiting, complete, and cancel mutations
 - public liveness/readiness and secret-safe structured observability boundary
+- interactive Repair progression/test UI
 
 Still required before Phase 1 freeze:
 
-- interactive Repair progression/test UI
 - production API deployment
 - production web/PWA deployment
 - production secret/runtime wiring
@@ -555,3 +555,37 @@ Then record:
 Do not rewrite old milestone entries merely to make history look cleaner.
 
 History should show how the system actually evolved.
+
+
+---
+
+## 2026-09-27 12:17:00 UTC / 2026-09-27 14:17:00 SAST
+
+### Phase 1 Repair progression and final-test UI — implementation branch
+
+Base main: `482dd98fa587b6f3f67302fca70cc5c36f9ff6b8`.
+Branch: `arena/01a0e2b0-elara-relay`. Not merged or deployed by this work.
+
+Introduced signed-in stage progression, waiting metadata, findings editing,
+explicit final-test recording and terminal-stage confirmation using the existing
+Repair intents. Shared policy extraction preserves the kernel transition table
+and all final-test semantics; the terminal-state adversarial mutation follows
+that table to its new file without weakening its test.
+
+Repair drafts survive recoverable write/conflict/refresh errors. Strict mutation
+responses update the detail, followed by refreshed Repair, Job history and
+workspace reads. Added real-kernel browser tests, PostgreSQL workflow coverage,
+and visual regression baselines at 405×720, 412×915 and desktop Chromium.
+
+Verification and the sandbox's pinned-browser download limitation are recorded
+in `docs/repair-workflow-ui.md`. No production migration, deployment, external
+provider activation or PR merge is included. Production runtime/deployment,
+backup/restore and final Phase 1 recovery certification remain separate work.
+
+### 2026-09-27 13:35 UTC / 15:35 SAST — Official pinned Chromium Repair baselines
+
+Replaced the twelve Repair Playwright snapshots with lossless captures from
+GitHub Certification's Chrome for Testing 153.0.8010.12 after the only CI
+failures were 1% text-rasterization diffs against the sandbox Chromium
+153.0.8010.0 images. No domain, gate, retry or screenshot-threshold change.
+Not merged.

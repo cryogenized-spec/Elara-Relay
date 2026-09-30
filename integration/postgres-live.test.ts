@@ -1,3 +1,5 @@
+import { repairSchema } from '../src/contracts/repair';
+import { repairCaseResultSchema } from '../src/contracts/repair-case';
 import { readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type {
@@ -688,4 +690,67 @@ describe('live PostgreSQL runtime', () => {
       events: '15',
     });
   });
+
+  it('persists Repair test enforcement, conflict recovery, replay and collection', async () => {
+    const opened = await jsonRequest('/repair-cases', 'POST', {
+      mutation: { mutationId: 'MUT-pg-workflow-case-001' },
+      input: {
+        party: { mode: 'NEW_CUSTOMER', name: 'Workflow customer' },
+        jobTitle: 'Final-test workflow', reportedFault: 'Pressure leak',
+      },
+    });
+    expect(opened.status).toBe(201);
+    let repair = repairCaseResultSchema.parse(await opened.json()).repair;
+    let sequence = 0;
+    const stage = async (value: string) => {
+      const response = await jsonRequest(`/repairs/${repair.id}/stage`, 'POST', {
+        mutation: { mutationId: `MUT-pg-workflow-stage-${++sequence}`, expectedRevision: repair.revision },
+        input: { stage: value },
+      });
+      expect(response.status).toBe(200);
+      repair = repairSchema.parse(await response.json());
+    };
+    await stage('DIAGNOSING');
+    await stage('TESTING');
+    const testInput = (result: 'FAIL' | 'PASS', mutationId: string) => ({
+      mutation: { mutationId, expectedRevision: repair.revision },
+      input: { result, detail: 'Recorded under pressure' },
+    });
+    const failed = await jsonRequest(`/repairs/${repair.id}/test`, 'POST', testInput('FAIL', 'MUT-pg-workflow-failed-test'));
+    expect(failed.status).toBe(200);
+    repair = repairSchema.parse(await failed.json());
+    const blocked = await jsonRequest(`/repairs/${repair.id}/stage`, 'POST', {
+      mutation: { mutationId: 'MUT-pg-workflow-blocked-ready', expectedRevision: repair.revision },
+      input: { stage: 'READY' },
+    });
+    expect(blocked.status).toBe(400);
+    expect(await blocked.text()).toContain('passing final test');
+    const stale = await jsonRequest(`/repairs/${repair.id}`, 'PATCH', {
+      mutation: { mutationId: 'MUT-pg-workflow-stale-details', expectedRevision: 1 },
+      patch: { diagnosis: 'Stale finding' },
+    });
+    expect(stale.status).toBe(409);
+    const unchanged = await new DomainKernel(new PostgresDomainStore(resources.sqlPool)).getRepair(repair.id);
+    expect(unchanged.repair).toEqual(repair);
+    const command = testInput('PASS', 'MUT-pg-workflow-passing-test');
+    const passed = await jsonRequest(`/repairs/${repair.id}/test`, 'POST', command);
+    expect(passed.status).toBe(200);
+    repair = repairSchema.parse(await passed.json());
+    const replay = await jsonRequest(`/repairs/${repair.id}/test`, 'POST', command);
+    expect(replay.status).toBe(200);
+    expect(repairSchema.parse(await replay.json())).toEqual(repair);
+    await stage('READY');
+    await stage('COLLECTED');
+    const reopened = await jsonRequest(`/repairs/${repair.id}/stage`, 'POST', {
+      mutation: { mutationId: 'MUT-pg-workflow-invalid-reopen', expectedRevision: repair.revision },
+      input: { stage: 'REPAIRING' },
+    });
+    expect(reopened.status).toBe(400);
+    const freshKernel = new DomainKernel(new PostgresDomainStore(resources.sqlPool));
+    expect((await freshKernel.getRepair(repair.id)).repair).toEqual(repair);
+    const events = (await freshKernel.getJob(repair.jobId)).events;
+    expect(events.filter((event) => event.eventType === 'REPAIR_TEST_RECORDED')).toHaveLength(2);
+    expect(events.every((event) => event.actor === 'operator-ui')).toBe(true);
+  });
+
 });
