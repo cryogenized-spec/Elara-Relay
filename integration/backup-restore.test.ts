@@ -7,6 +7,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApi } from '../src/api/app';
 import { DomainKernel } from '../src/domain/kernel';
+import { MutationReplayMismatchError } from '../src/domain/errors';
 import { PostgresDomainStore } from '../src/db/postgres/postgres-store';
 import { NodePgPoolAdapter } from '../src/runtime/node/postgres-pool';
 
@@ -83,6 +84,21 @@ afterAll(async () => {
 describe('portable PostgreSQL restore proof', () => {
   it('exports under a missing parent, refuses overwrite, restores and verifies all ten table histories without re-creating events', async () => {
     await expect(access(join(rootDirectory, 'missing-parent'))).rejects.toThrow();
+
+    // Seed one mutation receipt through the real kernel so the restore proof
+    // can verify replay fingerprints survive the backup boundary.
+    const sourceKernel = new DomainKernel(
+      new PostgresDomainStore(new NodePgPoolAdapter(source)),
+    );
+    await sourceKernel.completeTask(
+      {
+        mutationId: 'MUT-proof-task-complete1',
+        actor: 'operator-ui',
+        expectedRevision: 4,
+      },
+      '10000000-0000-4000-8000-000000000003',
+    );
+
     await run('export');
     await expect(run('export')).rejects.toThrow();
     await run('validate');
@@ -92,7 +108,11 @@ describe('portable PostgreSQL restore proof', () => {
     const tables = ['parties', 'jobs', 'tasks', 'repairs', 'events', 'mutation_receipts', 'scheduled_actions', 'scheduled_action_runs', 'chat_threads', 'chat_messages'];
     for (const table of tables) {
       const { rows } = await target.query(`select count(*)::int as count from public.${table}`);
-      expect(rows[0].count, table).toBe(['scheduled_action_runs', 'chat_messages'].includes(table) ? 2 : 1);
+      expect(rows[0].count, table).toBe(
+        ['events', 'mutation_receipts', 'scheduled_action_runs', 'chat_messages'].includes(table)
+          ? 2
+          : 1,
+      );
     }
     const store = new PostgresDomainStore(new NodePgPoolAdapter(target));
     const read = await store.read(async (db) => ({
@@ -128,6 +148,17 @@ describe('portable PostgreSQL restore proof', () => {
     expect(chat.rows).toContainEqual(expect.objectContaining({ owner_id: read.parties[0]?.id, content: 'Please help' }));
     const assistant = await target.query("select provider_id, model_id, generation_id from chat_messages where role = 'ASSISTANT'");
     expect(assistant.rows[0]).toMatchObject({ provider_id: 'openai', model_id: 'gpt-6-luna', generation_id: '10000000-0000-4000-8000-000000000016' });
+    const restoredKernel = new DomainKernel(store);
+    await expect(
+      restoredKernel.completeTask(
+        {
+          mutationId: 'MUT-proof-task-complete1',
+          actor: 'operator-ui',
+          expectedRevision: 999,
+        },
+        '10000000-0000-4000-8000-000000000003',
+      ),
+    ).rejects.toBeInstanceOf(MutationReplayMismatchError);
     await expect(target.query("update events set detail = 'rewritten' where mutation_id = 'MUT-proof-event-0001'")).rejects.toThrow();
     await expect(target.query("insert into jobs (id, job_key, title, category, party_id, created_at, updated_at, revision) values ('10000000-0000-4000-8000-000000000012', 'JOB-ABCDEF13', 'Invalid', 'ACTIVE', '10000000-0000-4000-8000-000000000099', now(), now(), 1)")).rejects.toThrow();
     await expect(run('restore', '--confirm-empty-target')).rejects.toThrow();
@@ -135,6 +166,8 @@ describe('portable PostgreSQL restore proof', () => {
     await expect(run('verify')).rejects.toThrow();
     const file = join(directory, 'data.sql');
     await writeFile(file, `${await readFile(file, 'utf8')}\n-- damaged\n`);
+    await expect(run('validate')).rejects.toThrow();
+    await rm(file);
     await expect(run('validate')).rejects.toThrow();
   }, 90_000);
 });
